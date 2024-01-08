@@ -27,8 +27,8 @@ Follow these simple steps to set up and run HANDY:
 2. **Install Dependencies**
 
    ```shell
-   cd handy
-   pip install -r lstm_ner/requirements.txt
+   cd lstm_ner
+   pip install -r requirements.txt
    ```
 
 3. **Run HANDY**
