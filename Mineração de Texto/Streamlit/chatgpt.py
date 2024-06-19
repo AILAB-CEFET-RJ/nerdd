@@ -3,7 +3,7 @@ import openai
 import re
 
 # Configure a chave da API do OpenAI
-openai.api_key = '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'
+openai.api_key = 'YOUR-TOKEN'
 
 # Título do aplicativo
 st.title("ChatGPT com Identificação Simples de Entidades usando chat.completions.create")
