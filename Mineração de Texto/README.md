@@ -48,8 +48,9 @@ Follow these simple steps to set up and run Text Mining:
 
 3. **Run Streamlit**
 
+
    ```shell
-  streamlit run index.py
+   streamlit run index.py
    ```
 
 ## Results Codes 🧪
