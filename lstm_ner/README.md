@@ -1,8 +1,8 @@
-# HANDY (MÃOZINHA) - Offensive Gesture Detector 👋🚫 
+# LSTM NER -🚫 
 
-**HANDY (MÃOZINHA)** is a tool that utilizes the pretrained **MediaPipe** model to detect the presence of a hand in an image or video. Additionally, it employs another pretrained model (which will be mentioned later) to perform classification and check for an offensive gesture, specifically the middle finger gesture.
+**LSTM NER** is a tool that uses the pre-trained model **Pytorch** to detect the recognition entity. It also uses a pre-trained model to perform the identification, differentiating the context window for each text.
 
-This project is a fun and interesting way to explore the power of computer vision and real-time gesture detection. Let's help you set up and run HANDY in your environment.
+This project is a fun and interesting way to explore entity recognition. We will help you configure and run **LSTM NER** in your environment.
 
 ## Prerequisites 📋
 
@@ -10,6 +10,7 @@ Make sure you have the following prerequisites installed in your development env
 
 - Python 3.x
 - Pip (Python package manager)
+- Pytorch
 
 ## How to Run 🏃‍♀️
 
@@ -18,37 +19,28 @@ Follow these simple steps to set up and run HANDY:
 1. **Clone the Repository**
 
    ```shell
-   git clone https://github.com/birdred/handy.git
+   git clone https://github.com/AIRGOLAB-CEFET-RJ/nerdd.git
    ```
 
 2. **Install Dependencies**
 
    ```shell
-   cd handy
+   cd lstn_ner
    pip install -r requirements.txt
    ```
 
-3. **Run HANDY**
+3. **Run LSTM NER**
 
    ```shell
    python main.py
    ```
 
-   Now you should see the live camera window with hand detection and offensive gesture classification.
+Now you must check the results of entity recognition and the number of items checked through epochs using EarlyStopping
 
-## Test Codes 🧪
-
-In the `tests/` directory, you will find some sample images and videos to test HANDY's functionality. To run the tests, you can use the following command:
-
-```shell
-python test.py
-```
-
-This will run the offensive gesture detector on the test images and videos and display the results in the output.
 
 ## Contribution 🤝
 
-If you want to contribute to the HANDY project, we would be happy to receive your contributions. Feel free to open issues or submit pull requests with improvements, bug fixes, or new features.
+If you want to contribute to the LSTM NER project, we would be happy to receive your contributions. Feel free to open issues or submit pull requests with improvements, bug fixes, or new features.
 
 ## License 📄
 
@@ -56,4 +48,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-We hope you enjoy offensive gesture detection with **HANDY (MÃOZINHA)**! If you have any questions or need assistance, please feel free to reach out to the development team. 😊👋
+We hope you enjoy entity recognitiion with **LSTM NER**! If you have any questions or need assistance, please feel free to reach out to the development team. 😊👋
