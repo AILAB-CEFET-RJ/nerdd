@@ -3,8 +3,12 @@ import random
 from multiprocessing import cpu_count
 from datasets import load_dataset
 from datasets import DatasetDict
-from transformers import AutoTokenizer
 from transformers import BitsAndBytesConfig
+from trl import SFTTrainer
+from peft import LoraConfig
+from transformers import TrainingArguments
+from transformers import AutoTokenizer, AutoModelForCausalLM
+from unsloth import is_bfloat16_supported
 import torch
 
 raw_datasets = load_dataset("HuggingFaceH4/ultrachat_200k")
@@ -64,23 +68,24 @@ quantization_config = BitsAndBytesConfig(
 device_map = {"": torch.cuda.current_device()} if torch.cuda.is_available() else None
 
 model_kwargs = dict(
-    attn_implementation="flash_attention_2", # set this to True if your GPU supports it (Flash Attention drastically speeds up model computations)
+    #attn_implementation="flash_attention_2", # set this to True if your GPU supports it (Flash Attention drastically speeds up model computations)
     torch_dtype="auto",
     use_cache=False, # set to False as we're going to use gradient checkpointing
-    device_map=device_map,
-    quantization_config=quantization_config,
+    device_map=None,
+    #quantization_config=quantization_config,
 )
 
-from trl import SFTTrainer
-from peft import LoraConfig
-from transformers import TrainingArguments
+
 
 # path where the Trainer will save its checkpoints and logs
 output_dir = 'data/zephyr-7b-sft-lora'
 
+
 # based on config
 training_args = TrainingArguments(
-    fp16=True, # specify bf16=True instead when training on GPUs that support bf16
+    #fp16=True, # specify bf16=True instead when training on GPUs that support bf16
+    fp16 = not is_bfloat16_supported(),
+    bf16 = is_bfloat16_supported(),
     do_eval=True,
     evaluation_strategy="epoch",
     gradient_accumulation_steps=128,
@@ -129,4 +134,37 @@ trainer = SFTTrainer(
         max_seq_length=tokenizer.model_max_length,
     )
 
-     
+train_result = trainer.train()
+"""
+metrics = train_result.metrics
+max_train_samples = training_args.max_train_samples if training_args.max_train_samples is not None else len(train_dataset)
+metrics["train_samples"] = min(max_train_samples, len(train_dataset))
+trainer.log_metrics("train", metrics)
+trainer.save_metrics("train", metrics)
+trainer.save_state()
+
+tokenizer = AutoTokenizer.from_pretrained(output_dir)
+model = AutoModelForCausalLM.from_pretrained(output_dir, load_in_4bit=True, device_map="auto")
+
+# We use the tokenizer's chat template to format each message - see https://huggingface.co/docs/transformers/main/en/chat_templating
+messages = [
+    {
+        "role": "system",
+        "content": "You are a friendly chatbot who always responds in the style of a pirate",
+    },
+    {"role": "user", "content": "How many helicopters can a human eat in one sitting?"},
+]
+
+# prepare the messages for the model
+input_ids = tokenizer.apply_chat_template(messages, truncation=True, add_generation_prompt=True, return_tensors="pt").to("cuda")
+
+# inference
+outputs = model.generate(
+        input_ids=input_ids,
+        max_new_tokens=128,
+        do_sample=True,
+        temperature=0.7,
+        top_k=50,
+        top_p=0.95
+)
+print(tokenizer.batch_decode(outputs, skip_special_tokens=True)[0]) """
