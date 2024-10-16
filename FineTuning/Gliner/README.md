@@ -11,6 +11,12 @@ The GliNER documentation and thesis are described in the links below:
 
 The files are arranged in GliNER for the creation of the JSON file for FineTuning (GliNER - JSON Criacao.py), the file in which the GliNER model is generated, the output file with the generated tests (GliNER.py) and the result of the GliNER file compared to the files generated for the tests (GliNER - Resultado.py).
 
+The steps to run GliNER:
+
+    1 - Run the file "GliNER - Criacao JSON.py" with the python command pointing to a CSV file with the following markup (token;markup)
+    2 - Then run the file "GliNER.py" to generate the training and data markup through GliNER. (Note: This file must be run on a GPU with at least 16 GB)
+    3 - Run the file "GliNER - Resultado.py" which, at the end of the execution, will generate a report with the classification metrics.
+
 ----------------------------------------------------------------------------------------
 **NERDD - GliNER** é um modelo Named Entity Recognition (NER) capaz de identificar qualquer tipo de entidade usando um codificador transformador bidirecional (tipo BERT). Ele fornece uma alternativa prática aos modelos NER tradicionais, que são limitados a entidades predefinidas, e Large Language Models (LLMs) que, apesar de sua flexibilidade, são caros e grandes para cenários com recursos limitados.
 Neste exemplo o GliNER é utilizado para identificar entidades no texto que especificam a entidades de violencia.Além disso, emprega outro modelo pré-treinado (que será mencionado posteriormente) para realizar a classificação e verificar o NER, identificando especificamente o local, a pessoa e o horário ou organização.
@@ -22,6 +28,12 @@ As documentações e a tese do GliNER estão descritos nos links abaixo:
 
 
 Os arquivos estão dispostos no GliNER para a criação do arquivo JSON para o FineTuning (GliNER - Criacao JSON.py), o arquivo em que gera o modelo do GliNER, o arquivo de saída com os testes gerados (GliNER.py) e o resultado do arquivo GliNER em comparado com os arquivos gerados para os testes (GliNER - Resultado.py).
+
+Os passos para rodar o GliNER :
+
+    1 - Executar o arquivo "GliNER - Criacao JSON.py" com o comando python apontando para um arquivo CSV com a seguinte marcação (token;marcação)
+    2 - Em seguida executar o arquivo "GliNER.py" para gerar os treinos e a marcação dos dados através do GliNER. (Obs: Esse arquivo deve ser rodado em uma GPU com no minimo 16 gbs)
+    3 - Deve se executar o arquivo "GliNER - Resultado.py" que ao final da execução irá gerar um relatório com as métricas das classificações. 
 
 ## Prerequisites 📋
 
