@@ -1,7 +1,6 @@
 from keras import Sequential, Model
 from keras.layers import Embedding, LSTM, Dropout, Dense, Reshape, Conv1D, MaxPooling1D, TimeDistributed, \
     concatenate
-import tensorflow as tf
 
 
 def generate_model(word_embedding_model: Sequential, char_embedding_model: Sequential, lstm_units: int, num_labels: int,
@@ -27,8 +26,7 @@ def generate_model(word_embedding_model: Sequential, char_embedding_model: Seque
     hidden_layer_model.add(Dense(num_labels, activation='softmax'))
     hidden_layer_model_output = hidden_layer_model(input_layer_output)
     model = Model(input_layer_model, hidden_layer_model_output)
-    model.compile(loss='categorical_crossentropy', optimizer='adagrad', metrics=['accuracy',tf.keras.metrics.Precision(),tf.keras.metrics.Recall()])
-    
+    model.compile(loss='categorical_crossentropy', optimizer='adagrad', metrics=['accuracy'])
     return model
 
 

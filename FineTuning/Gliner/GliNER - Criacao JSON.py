@@ -1,69 +1,60 @@
 import csv
 import json
 
-caminho_arquivo_csv = "Bases/test_data.csv"
+caminho_arquivo_csv = "Bases/train_data.csv"
 
-def process_csv_to_json(file_path):
-    tokenized_sentences = []
-    current_sentence = []
-    ner_annotations = []
-    current_ner = []
+def csv_to_json_no_sentence_ids(file_path):
+    # Lista para armazenar cada sentença como um item separado
+    sentences = []
+    
+    # Dicionário temporário para a sentença atual
+    current_sentence = None
+    current_sentence_id = None
 
-    # Abre o arquivo CSV e processa linha a linha
-    with open(file_path, 'r', encoding='utf-8') as file:
-        # Lê todo o conteúdo do arquivo
-        content = file.read()
+    # Lendo o CSV
+    with open(file_path, mode='r', encoding='utf-8') as file:
+        reader = csv.DictReader(file)
+        
+        for row in reader:
+            sentence_id = int(row["sentence_id"])
+            word = row["word"]
+            label = row["label"]
 
-        #sentences = content.replace("\"\n\"", "@@")
+            # Se encontramos um novo sentence_id, salvamos a sentença anterior e criamos uma nova
+            if sentence_id != current_sentence_id:
+                if current_sentence is not None:
+                    sentences.append(current_sentence)
+                current_sentence = {
+                    "tokenized_text": [],
+                    "ner": []
+                }
+                current_sentence_id = sentence_id
 
-        # Divide o conteúdo em sentenças usando '@@' como delimitador
-        sentences = content.split("\"\n\"")
+            # Adiciona a palavra ao tokenized_text da sentença atual
+            index = len(current_sentence["tokenized_text"])
+            current_sentence["tokenized_text"].append(word)
+            
+            # Adiciona cada palavra com um rótulo dinâmico ao ner
+            if label:  # Checa se há um rótulo
+                current_sentence["ner"].append([index, index, label.lower()])
 
-        # Processa cada sentença separada
-        for sentence in sentences:
-            # Divide a sentença em linhas por quebra de linha
-            lines = sentence.strip().split("\n")
+        # Adiciona a última sentença ao final do loop
+        if current_sentence is not None:
+            sentences.append(current_sentence)
 
-            # Processa cada linha dentro da sentença
-            for line in lines:
-                line = line.strip()  # Remove espaços em branco extras e quebras de linha
+    # Salva todas as sentenças em um único arquivo JSON
+    with open('resultado-treino.json', 'w', encoding='utf-8') as json_file:
+        json.dump(sentences, json_file, ensure_ascii=False, indent=4)
+    
+    print("Arquivo JSON único gerado com sucesso!")
 
-                # Verifica se a linha contém ponto e vírgula
-                if ";" not in line:
-                    continue  # Ignora linhas mal formatadas ou em branco
 
-                # Tenta separar o token da entidade, verificando se há exatamente dois elementos
-                parts = line.split(";")
 
-                if len(parts) != 2:
-                    continue  # Ignora linhas que não têm exatamente dois elementos (token e entidade)
 
-                token, entity = parts
-                token = token.strip()
-                entity = entity.strip()
+csv_to_json_no_sentence_ids(caminho_arquivo_csv)
 
-                # Adiciona o token à sentença atual
-                current_sentence.append(token)
+# Salvar como JSON
+#with open('output.json', 'w', encoding='utf-8') as json_file:
+#    json.dump(output, json_file, ensure_ascii=False, indent=4)
 
-                # Se o token tiver uma entidade (diferente de O), anota sua posição
-                if entity != "O":
-                    current_ner.append([len(current_sentence)-1, len(current_sentence)-1, entity.lower()])
-
-            # Adiciona a sentença ao JSON após processar todas as linhas dentro dela
-            if current_sentence:
-                tokenized_sentences.append({
-                    "tokenized_text": current_sentence,
-                    "ner": current_ner
-                })
-                current_sentence = []
-                current_ner = []
-
-    # Retorna o JSON com as sentenças tokenizadas e as entidades
-    return json.dumps(tokenized_sentences, ensure_ascii=False, indent=2)
-
-# Converte o CSV para JSON
-json_result = process_csv_to_json(caminho_arquivo_csv)
-output_json_path = "resultado-teste.json"
-# Salva a string JSON em um arquivo
-with open(output_json_path, 'w', encoding='utf-8') as json_file:
-  json_file.write(json_result)
+print("Arquivo JSON gerado com sucesso!")

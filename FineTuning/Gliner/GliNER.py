@@ -10,9 +10,9 @@ import os
 import csv
 
 
-train_path = "resultado-treino.json"
+train_path = "resultado-teste.json"
 
-with open(train_path, "r") as f:
+with open(train_path, "r",encoding="utf-8") as f:
     data = json.load(f)
 
 print('Dataset size:', len(data))
@@ -75,7 +75,7 @@ trainer = Trainer(
 
 trainer.train()
 
-trained_model = GLiNER.from_pretrained("models-adjust/checkpoint-593", load_tokenizer=True)
+trained_model = GLiNER.from_pretrained("Models/checkpoint-593", load_tokenizer=True)
 
 # Lendo o arquivo JSON
 with open('resultado-teste.json', 'r', encoding='utf-8') as file:
@@ -93,8 +93,8 @@ texts2 = [reconstruct_sentence(item) for item in data]
 # Supondo que 'texts', 'trained_model', e 'labels' já estão definidos
 
 # Nome do arquivo CSV
-csv_file = 'entities_output.csv'
-labels = ["person", "organization","location"]
+csv_file = 'entities_output_Teste.csv'
+labels = ["person", "organization","location","object"]
 
 # Abra o arquivo em modo de escrita
 with open(csv_file, mode='w', newline='', encoding='utf-8') as file:

@@ -4,6 +4,10 @@ from typing import List, Dict, Tuple
 
 import numpy as np
 from keras.preprocessing.sequence import pad_sequences
+from sklearn.model_selection import train_test_split
+
+import pandas as pd
+import os
 
 from utils import text_utils
 
@@ -28,7 +32,6 @@ def read_input_file(filename: str):
     with open(filename, 'r', encoding='utf-8') as file:
         for line in file:
             line = line.strip()
-            print(line)
             if line == "":
                 if len(sentence) > 0:
                     sentences.append(sentence)
@@ -170,8 +173,121 @@ def load_dataset(input_data_folder: str, test_percent: float):
         thresh_idx = len(sentences) - test_amount
         train_data += sentences[:thresh_idx]
         test_data += sentences[thresh_idx:]
-
+        print(type(train_data))
     return train_data, test_data, label2idx
+
+def load_dataset_sklearn(input_data_folder: str, test_percent: float):
+    """
+    Carrega os dados do diretório, realiza a divisão de treino e teste, e retorna um DataFrame com essas divisões.
+
+    Parâmetros:
+    - input_data_folder (str): Caminho para a pasta contendo os arquivos .tsv.
+    - test_percent (float): Percentual de dados para o conjunto de teste (entre 0 e 1).
+
+    Retorna:
+    - pd.DataFrame: DataFrame com colunas 'word', 'label', 'dataset' (onde 'dataset' indica se é treino ou teste).
+    - dict: Dicionário que mapeia os rótulos para índices.
+    """
+    assert 0 <= test_percent <= 1, "O percentual de teste deve estar entre 0 e 1."
+    
+    all_sentences, label2idx = [], {}
+
+    for filename in glob.glob(f'{input_data_folder}/*.tsv'):
+        print(f"Lendo o arquivo: {filename}")
+        sentences, cur_lbl2idx = read_input_file(filename)
+        
+        if len(sentences) == 0:
+            continue
+
+        # Atualiza o mapeamento label2idx com o rótulo do arquivo atual
+        label2idx = {**label2idx, **cur_lbl2idx}
+        all_sentences.extend(sentences)
+    
+    # Converte as sentenças para DataFrame
+    # data = []
+    # for sentence in all_sentences:
+    #    for word, label in sentence:
+    #        data.append({"word": word, "label": label})
+
+    # Divide o DataFrame em treino e teste
+    train_data, test_data = train_test_split(all_sentences, test_size=test_percent, random_state=42)
+
+    salvar_em_csv(train_data, "train_data.csv")
+    salvar_em_csv(test_data, "test_data.csv")
+
+    
+    return train_data, test_data, label2idx
+
+def dataframe_para_lista(df):
+    """
+    Converte um DataFrame com colunas 'word', 'label' e 'dataset' em uma estrutura List[List[Tuple[str, str]]].
+
+    Parâmetros:
+    - df (pd.DataFrame): DataFrame com colunas 'word', 'label'.
+
+    Retorna:
+    - List[List[Tuple[str, str]]]: Lista de sentenças, onde cada sentença é uma lista de tuplas (palavra, rótulo).
+    """
+    # Lista final de listas de tuplas
+    lista_sentencas = []
+    sentenca_atual = []
+
+    for idx, row in df.iterrows():
+        word, label = row['word'], row['label']
+        
+        # Verifica se encontrou o fim de uma sentença
+        if pd.isna(word) and len(sentenca_atual) > 0:
+            lista_sentencas.append(sentenca_atual)
+            sentenca_atual = []
+        elif not pd.isna(word):
+            sentenca_atual.append((word, label))
+
+    # Adiciona a última sentença, se existir
+    if len(sentenca_atual) > 0:
+        lista_sentencas.append(sentenca_atual)
+
+    return lista_sentencas
+
+
+def sentences_to_dataframe(sentences):
+    """
+    Converte uma lista de sentenças e seus rótulos em um DataFrame do Pandas.
+    
+    Parâmetros:
+    sentences (list): Lista de sentenças, onde cada sentença é uma lista de tuplas (palavra, rótulo).
+    
+    Retorna:
+    pd.DataFrame: Um DataFrame contendo colunas 'sentence' e 'label'.
+    """
+    # Extrair rótulos e unir palavras em uma única string para cada sentença
+    data = []
+    for sentence in sentences:
+        # Unir as palavras da sentença em uma string
+        sentence_text = ' '.join(word for word, label in sentence)
+        # Encontrar o rótulo dominante
+        labels = [label for word, label in sentence]
+        dominant_label = max(set(labels), key=labels.count)
+        data.append({'sentence': sentence_text, 'label': dominant_label})
+    
+    return pd.DataFrame(data)
+
+def salvar_em_csv(data: List[List[Tuple[str, str]]], filename: str):
+    """
+    Salva os dados de sentenças em um arquivo CSV com colunas 'sentence_id', 'word' e 'label'.
+
+    Parâmetros:
+    - data (List[List[Tuple[str, str]]]): Dados de entrada no formato List[List[Tuple[str, str]]].
+    - filename (str): Nome do arquivo CSV de saída.
+    """
+    rows = []
+    for sentence_id, sentence in enumerate(data):
+        for word, label in sentence:
+            rows.append({"sentence_id": sentence_id, "word": word, "label": label})
+
+    # Cria o DataFrame e salva no arquivo CSV
+    df = pd.DataFrame(rows)
+    df.to_csv(filename, index=False, encoding='utf-8')
+    print(f"Dados salvos em {filename}")
 
 
 def save_embeddings(filename, weights, char2idx):
