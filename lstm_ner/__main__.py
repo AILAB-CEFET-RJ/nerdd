@@ -11,8 +11,11 @@ from tensorflow.keras.utils import to_categorical
 from utils import data_utils
 import ner_model as ner
 import numpy as np
+import csv
+import pandas as pd
 
-from sklearn.metrics import classification_report
+#from sklearn.metrics import classification_report
+from seqeval.metrics import classification_report
 from sklearn.metrics import confusion_matrix, f1_score, precision_score, recall_score
 from keras import Sequential, Model
 from keras.layers import Embedding, LSTM, Dropout, Dense, Reshape, Conv1D, MaxPooling1D, TimeDistributed, \
@@ -22,18 +25,15 @@ from sklearn.metrics import f1_score
 from keras.callbacks import Callback
 from sklearn.metrics import confusion_matrix, f1_score, precision_score, recall_score
 from keras.callbacks import EarlyStopping
-
-
-#---------------------Leonidia---------
-'''from pyexcel_xls import save_data
-from collections import OrderedDict'''
-#--------------------------------------
+import argparse
+from tensorflow.keras.optimizers import Adagrad
+from itertools import chain
 
 # defining constants
 word_embeddings_file = 'data/cbow_s50.txt'
 #word_embeddings_file = 'data/vectors_W3_D50.txt'
 input_data_folder = 'data'
-model_file = 'output/model.h5'
+model_file = 'output/model2.h5'
 char_embeddings_file = 'output/char_embeddings.txt'
 
 # defining hyper parameters
@@ -47,6 +47,24 @@ epochs = 200
 test_percent = 0.2
 #not_entity_threshold = 0.7
 
+from tensorflow.keras.optimizers import Adagrad
+
+class CustomAdagrad(Adagrad):
+    def __init__(self, weight_decay=0.0, use_ema=False, ema_momentum=0.99, **kwargs):
+        # Ignora esses argumentos se não forem usados no Adagrad padrão
+        self.weight_decay = weight_decay
+        self.use_ema = use_ema
+        self.ema_momentum = ema_momentum
+        super().__init__(**kwargs)
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            'weight_decay': self.weight_decay,
+            'use_ema': self.use_ema,
+            'ema_momentum': self.ema_momentum
+        })
+        return config
 
 class Metrics:
     def __init__(self):
@@ -78,15 +96,30 @@ class Metrics:
             return 0
         return 2 * precision * recall / (precision + recall)
 
-#-----------------------------------Leonidia--------------------------------------
-'''planilha = [[]]
-def get_output(pred_label, actual_label):
-    global planilha
-    aux = []
-    aux.append(pred_label)
-    aux.append(actual_label)
-    planilha.append(aux)'''
-#_________________________________________________________________________________
+def save_predictions_csv(filename, words, true_labels, pred_labels):
+    df = pd.DataFrame({
+        'sentence_id': 0,  # Inicializa tudo com 0 (ajustaremos abaixo)
+        'word': words,
+        'label': true_labels,
+        'pred': pred_labels
+    })
+
+    # Gera os sentence_ids com base nos separadores de sentença (pode ser NaN ou "" na coluna 'word')
+    sentence_id = 0
+    sentence_ids = []
+    for word in df['word']:
+        if pd.isna(word) or word.strip() == "":
+            sentence_id += 1
+        sentence_ids.append(sentence_id)
+    df['sentence_id'] = sentence_ids
+
+    # Remove linhas vazias (se tiverem sido usadas só para separar sentenças)
+    df = df[~df['word'].isna()]
+    df = df[df['word'].str.strip() != ""]
+
+    df.to_csv(filename, index=False, encoding='utf-8')
+    print(f"Arquivo salvo como: {filename}")
+
 
 def evaluate_model(predicted: List[Tuple[str, str]], actual: List[Tuple[str, str]], label2idx: Dict[str, int]):
     true_pos, true_neg, false_pos, false_neg = [0] * 4
@@ -116,11 +149,7 @@ def evaluate_model(predicted: List[Tuple[str, str]], actual: List[Tuple[str, str
         else:
             false_pos += 1
             labeled_metrics[pred_label].false_pos += 1
-    #----------------Leonidia---------------------------
-    '''dados = OrderedDict()
-                dados.update({"Sheet1": planilha})
-                save_data("Saida-do-modelo.xls", dados)'''
-    #--------------------------------------------
+
 
     print('TP: %d\nTN: %d\nFP: %d\nFN: %d' % (true_pos, true_neg, false_pos, false_neg))
     accuracy = (true_pos + true_neg) / len(predicted)
@@ -186,24 +215,22 @@ def main():
     # loading data from files
     word_embeddings, word2idx, char2idx = data_utils.read_embeddings_file(word_embeddings_file)
     max_word_len = max(map(lambda word: len(word), word2idx.keys()))
-    train_data,test_data,label2idx = data_utils.load_dataset_sklearn(input_data_folder,test_percent)
-    print(train_data)
-    print('train sentences:', len(train_data))
-    print('test sentences:', len(test_data))
+    train_sentences, test_sentences, label2idx = data_utils.load_dataset_sklearn_IOB("dados")
+
+    x_train, y_train = data_utils.transform_to_xy(train_sentences, word2idx, label2idx, word_window_size, char2idx, max_word_len)
+    x_test, y_test = data_utils.transform_to_xy(test_sentences, word2idx, label2idx, word_window_size, char2idx, max_word_len)
+    print('train sentences:', len(x_train))
+    print('test sentences:', len(x_test))
     print("epochs: ", epochs)
-    # train_data = train_data[:50]
-    # test_data = test_data[:10]
-    x_train, y_train = data_utils.transform_to_xy(train_data, word2idx, label2idx, word_window_size,
-                                                  char2idx, max_word_len)
-    x_test, y_test = data_utils.transform_to_xy(test_data, word2idx, label2idx, word_window_size,
-                                                char2idx, max_word_len)
     num_labels = len(label2idx)
     # "binarize" labels
     y_train = to_categorical(y_train, num_labels)
     y_test = to_categorical(y_test, num_labels)
     # load model whether it is saved
     if os.path.exists(model_file):
-        model = load_model(model_file)
+        model = load_model(model_file, compile=False)
+        # model = load_model(model_file, custom_objects={'Custom>Adagrad': CustomAdagrad})
+        # model.compile(optimizer=CustomAdagrad(), loss='categorical_crossentropy', metrics=['accuracy'])  # ou ajuste de acordo com seu problema
         print(f'Model loaded from {model_file}')
         print(model.summary())
     else:
@@ -239,14 +266,16 @@ def main():
     print('y_test:')
     print(y_test)
     print('@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@')
-    _, accuracy = model.evaluate(x_test, y_test)
+    # _, accuracy = model.evaluate(x_test, y_test)
     # _, accuracy = model.evaluate([x_test[0]], y_test)
-    print('Accuracy: %f' % (accuracy * 100))
+    # print('Accuracy: %f' % (accuracy * 100))
     # output = model.predict([x_test[0][:15, :], x_test[1][:15, :]])
+    print(x_test)
     output = model.predict(x_test)
     # output = model.predict([x_test[0]])
 
-    train_data_flat = reduce(lambda acc, cur: acc + cur, train_data, [])
+    """
+    train_data_flat = reduce(lambda acc, cur: acc + cur, x_train, [])
     label_dist = {label: 0 for label in label2idx.keys()}
     for _, label in train_data_flat:
         label_dist[label] += 1
@@ -257,7 +286,7 @@ def main():
         print(label, count)
     print()
 
-    test_data_flat = reduce(lambda acc, cur: acc + cur, test_data, [])
+    test_data_flat = reduce(lambda acc, cur: acc + cur, x_test, [])
     labeled_output = label_output(output, label2idx, test_data_flat)
     # evaluate_model(labeled_output, test_data_flat, label2idx)
     print(output[:5])  # Print first 5 predictions to check their values
@@ -266,106 +295,70 @@ def main():
     y_test_labels = np.argmax(y_test, axis=1)  # Se y_test for codificado como one-hot
 
     cr = classification_report(output_labels, y_test_labels)
+    #save_differences_to_csv(output_labels, y_test_labels,"output_GLINER.csv")
     print(cr)
+    """
+    # y_train e y_test são arrays one-hot -> converter para índices
+    y_train_labels = np.argmax(y_train, axis=1)
+    y_test_labels = np.argmax(y_test, axis=1)
 
-    """ train_data, test_data, label2idx = data_utils.load_dataset(input_data_folder, test_percent)
-    print('train sentences:', len(train_data))
-    print('test sentences:', len(test_data))
-    print("epochs: ", epochs)
-    # train_data = train_data[:50]
-    # test_data = test_data[:10]
-    x_train, y_train = data_utils.transform_to_xy(train_data, word2idx, label2idx, word_window_size,
-                                                  char2idx, max_word_len)
-    x_test, y_test = data_utils.transform_to_xy(test_data, word2idx, label2idx, word_window_size,
-                                                char2idx, max_word_len)
-    num_labels = len(label2idx)
-    # "binarize" labels
-    y_train = to_categorical(y_train, num_labels)
-    y_test = to_categorical(y_test, num_labels)
-    # load model whether it is saved
-    if os.path.exists(model_file):
-        model = load_model(model_file)
-        print(f'Model loaded from {model_file}')
-        print(model.summary())
-    else:
-        # defining model
-        word_input_length = 2 * word_window_size + 1
-        max_word_len_padded = max_word_len + word_window_size * 2
-        word_embedding_model = ner.generate_word_embedding_model(word_input_length, weights=word_embeddings)
-        char_embedding_model = ner.generate_char_embedding_model(max_word_len, max_word_len_padded, word_input_length,
-                                                                 char_embeddings_dim, conv_num, char_window_size,
-                                                                 vocab_size=len(char2idx))
-        model = ner.generate_model(word_embedding_model, char_embedding_model, lstm_units, num_labels, dropout_rate,
-                                    cpu_only=cpu_only)
+    # Mapeamento inverso de índices para labels
+    idx2label = {v: k for k, v in label2idx.items()}
 
-        # summarize the model
-        print(model.summary())
-
-        # training model
-        model.fit(x_train, y_train, epochs=epochs)
-        # model.fit([x_train[0]], y_train, epochs=epochs)
-
-        # saving embeddings
-        embedding_layer = char_embedding_model.layers[0]
-        weights = embedding_layer.get_weights()[0]
-        data_utils.save_embeddings(char_embeddings_file, weights, char2idx)
-
-        # saving whole model
-        model.save(model_file)
-
-    # evaluating model
-    print('x_test:')
-    print(x_test)
-    print('@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@')
-    print('y_test:')
-    print(y_test)
-    print('@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@')
-    _, accuracy = model.evaluate(x_test, y_test)
-    # _, accuracy = model.evaluate([x_test[0]], y_test)
-    print('Accuracy: %f' % (accuracy * 100))
-    # output = model.predict([x_test[0][:15, :], x_test[1][:15, :]])
-    output = model.predict(x_test)
-    # output = model.predict([x_test[0]])
-
-    train_data_flat = reduce(lambda acc, cur: acc + cur, train_data, [])
+    # Contar distribuição de rótulos no treino
     label_dist = {label: 0 for label in label2idx.keys()}
-    for _, label in train_data_flat:
+    for idx in y_train_labels:
+        label = idx2label[idx]
         label_dist[label] += 1
-    print()
-    print('####### train label distribution')
-    print('total: %d\n' % len(train_data_flat))
+
+    print('\n####### Distribuição de rótulos no treino #######')
+    print(f'Total: {len(y_train_labels)}\n')
     for label, count in label_dist.items():
-        print(label, count)
+        print(f'{label}: {count}')
     print()
 
-    test_data_flat = reduce(lambda acc, cur: acc + cur, test_data, [])
-    labeled_output = label_output(output, label2idx, test_data_flat)
-    # evaluate_model(labeled_output, test_data_flat, label2idx)
-    print(output[:5])  # Print first 5 predictions to check their values
-    print(y_test[:5])
-    output_labels = np.argmax(output, axis=1)  # Pega a classe de maior valor/probabilidade
-    y_test_labels = np.argmax(y_test, axis=1)  # Se y_test for codificado como one-hot
+    # Suponha que 'output' seja a saída do modelo (ex: logits ou softmax)
+    # e esteja no mesmo formato de y_test: (num_exemplos, num_labels)
+    # Se já for o output do modelo após softmax/argmax, ok
 
-    cr = classification_report(output_labels, y_test_labels)
-    print(cr) """
-    #print('#################################-Leonidia-####################################')
-    #print(labeled_output)
-    # precision, recall, f_measure = evaluate_model(labeled_output, test_data_flat, label2idx)
-    # print('Precision: %f\nRecall: %f\nF1 score: %f' % (precision, recall, f_measure))
-#---------------------------------------------------------------------------------------------------------
-    '''from pyexcel_xls import save_data
-    from collections import OrderedDict
-    import pyexcel_ods3 as pods
-    data = OrderedDict()
-    planilha = [[]]
-    aux = []
-    for word, ent in labeled_output:
-        aux.append(word)
-        aux.append(ent)
-        planilha.append(aux)
-        aux = []
-    #     print(word + '\t' + ent)'''
-#---------------------------------------------------------------------------------------------------------
+    # Exibir previsões de exemplo
+    print("####### Primeiras previsões:")
+    print("Output (raw):", output[:5])
+    print("Ground truth:", y_test[:5])
+
+    # Converter para índice
+    output_labels = np.argmax(output, axis=1)
+    present_labels = sorted(np.unique(np.concatenate([y_test_labels, output_labels])))
+    target_names = [idx2label[i] for i in present_labels]
+
+    # Avaliação
+    print('\n####### Relatório de classificação #######')
+    print("Rótulos esperados (label2idx):", list(label2idx.keys()))
+    print("Rótulos realmente presentes:", target_names)
+    #cr = classification_report(y_test_labels, output_labels, target_names=list(label2idx.keys()))
+    #print(cr)
+    true_labels, pred_labels = [], []
+    i = 0
+    for sentence in test_sentences:
+        sentence_len = len(sentence)
+        true_seq = [idx2label[idx] for idx in y_test_labels[i:i + sentence_len]]
+        pred_seq = [idx2label[idx] for idx in output_labels[i:i + sentence_len]]
+        true_labels.append(true_seq)
+        pred_labels.append(pred_seq)
+        i += sentence_len
+
+    # Avaliação com seqeval
+    print("####### Relatório de classificação (seqeval) #######")
+    print(classification_report(true_labels, pred_labels))
+    df = pd.read_csv("dados/test_data.csv")
+    test_word = df['word']
+    label_word = df['label']
+    pred_labels_flat = list(chain.from_iterable(pred_labels))
+
+    # Exemplo de uso:
+    save_predictions_csv('ner_predictions.csv', test_word, label_word, pred_labels_flat)
+
+
 
 
 def label_output(output: List[float], label2idx: Dict[str, int], test_data_flat: List[Tuple[str, str]]):
