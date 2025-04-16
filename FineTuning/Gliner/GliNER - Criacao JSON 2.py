@@ -1,9 +1,9 @@
 import csv
 import json
 
-caminho_arquivo_csv = "Bases/test_data.csv"
+caminho_arquivo_csv = "Bases/train_data.csv"
 
-def csv_to_json_no_sentence_ids(file_path):
+def csv_to_json_filtered_ner(file_path):
     # Lista para armazenar cada sentença como um item separado
     sentences = []
     
@@ -34,8 +34,8 @@ def csv_to_json_no_sentence_ids(file_path):
             index = len(current_sentence["tokenized_text"])
             current_sentence["tokenized_text"].append(word)
             
-            # Adiciona cada palavra com um rótulo dinâmico ao ner
-            if label:  # Checa se há um rótulo
+            # Adiciona somente os rótulos relevantes ao ner
+            if label and label != "O":  # Filtra fora os rótulos "O"
                 current_sentence["ner"].append([index, index, label.upper()])
 
         # Adiciona a última sentença ao final do loop
@@ -43,19 +43,9 @@ def csv_to_json_no_sentence_ids(file_path):
             sentences.append(current_sentence)
 
     # Salva todas as sentenças em um único arquivo JSON
-    with open('Bases/test_data.json', 'w', encoding='utf-8') as json_file:
+    with open('train_data_1000.json', 'w', encoding='utf-8') as json_file:
         json.dump(sentences, json_file, ensure_ascii=False, indent=4)
     
     print("Arquivo JSON único gerado com sucesso!")
 
-
-
-
-csv_to_json_no_sentence_ids(caminho_arquivo_csv)
-#json_file = "Bases/train_data.json"
-
-# Salvar como JSON
-#with open('output.json', 'w', encoding='utf-8') as json_file:
-#    json.dump(output, json_file, ensure_ascii=False, indent=4)
-
-print("Arquivo JSON gerado com sucesso!")
+csv_to_json_filtered_ner(caminho_arquivo_csv)

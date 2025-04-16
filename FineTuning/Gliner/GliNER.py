@@ -9,8 +9,8 @@ from gliner.data_processing import WordsSplitter, GLiNERDataset
 import os
 import csv
 
-
-train_path = "resultado-teste.json"
+"""
+train_path = "train_data.json"
 
 with open(train_path, "r",encoding="utf-8") as f:
     data = json.load(f)
@@ -43,7 +43,8 @@ num_steps = 500
 batch_size = 8
 data_size = len(train_dataset)
 num_batches = data_size // batch_size
-num_epochs = max(1, num_steps // num_batches)
+#num_epochs = max(1, num_steps // num_batches)
+num_epochs = 200
 
 training_args = TrainingArguments(
     output_dir="models-adjust",
@@ -57,7 +58,7 @@ training_args = TrainingArguments(
     per_device_eval_batch_size=batch_size,
     num_train_epochs=num_epochs,
     evaluation_strategy="steps",
-    save_steps = 100,
+    save_steps = 10000,
     save_total_limit=10,
     dataloader_num_workers = 0,
     use_cpu = False,
@@ -73,12 +74,24 @@ trainer = Trainer(
     data_collator=data_collator,
 )
 
-trainer.train()
+trainer.train() 
 
-trained_model = GLiNER.from_pretrained("Models/checkpoint-593", load_tokenizer=True)
+"""
+
+import json
+import csv
+from gliner import GLiNER
+
+# Carregando modelo treinado
+trained_model = GLiNER.from_pretrained("models-adjust/checkpoint-78800", load_tokenizer=True)
+
+trained_model.data_processor.transformer_tokenizer.model_max_length = 1024  # Ajuste para o limite desejado
+
+print(f'Model max token length: {trained_model.data_processor.transformer_tokenizer.model_max_length}')
+
 
 # Lendo o arquivo JSON
-with open('resultado-teste.json', 'r', encoding='utf-8') as file:
+with open('Bases/test_data.json', 'r', encoding='utf-8') as file:
     data = json.load(file)
 
 # Função para reconstruir sentenças (sem destacar entidades)
@@ -90,26 +103,53 @@ def reconstruct_sentence(data_item):
 # Aplicando a função a cada item de data e armazenando as sentenças no array 'texts'
 texts2 = [reconstruct_sentence(item) for item in data]
 
-# Supondo que 'texts', 'trained_model', e 'labels' já estão definidos
+print(f"Total de sentenças: {len(texts2)}")
 
 # Nome do arquivo CSV
-csv_file = 'entities_output_Teste.csv'
-labels = ["person", "organization","location","object"]
+csv_file = 'Bases/entities_output_TOTAL_MD.csv'
+labels = ["B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC", "O"]
 
-# Abra o arquivo em modo de escrita
+# Lista para armazenar entidades reais do JSON
+real_entities = []
+
+# Extraindo entidades reais do JSON
+for item in data:
+    if "entities" in item:
+        for entity in item["entities"]:
+            real_entities.append({
+                "text": entity["text"],
+                "label": entity["label"]
+            })
+
+# Conjunto para armazenar entidades previstas
+predicted_entities = set()
+
+# Abrindo o arquivo CSV para escrita
 with open(csv_file, mode='w', newline='', encoding='utf-8') as file:
     writer = csv.writer(file)
     
-    # Escreva o cabeçalho do CSV
-    writer.writerow(['Entity', 'Label'])
+    # Escrevendo o cabeçalho
+    writer.writerow(['sentence_id', 'word', 'label'])
     
-    # Itera sobre os textos e faz a predição
-    for den in texts2:
-        # Faz a predição de entidades
-        entities = trained_model.predict_entities(den, labels, threshold=0.5)
+    # Iterando sobre os textos para fazer predições
+    for sentence_id, den in enumerate(texts2):
+        # Fazendo a predição de entidades
+        entities = trained_model.predict_entities(den, labels, threshold=0)
         
-        # Escreve cada entidade e seu rótulo no arquivo CSV
+        # Armazenando as entidades previstas e salvando no CSV
         for entity in entities:
-            writer.writerow([entity["text"], entity["label"]])
+            predicted_entities.add((sentence_id, entity["text"], entity["label"]))
+            writer.writerow([sentence_id, entity["text"], entity["label"]])
+
+# Identificando entidades reais que não foram previstas
+missed_entities = [
+    entity for entity in real_entities
+    if (entity["text"], entity["label"]) not in [(text, label) for _, text, label in predicted_entities]
+]
+
+# Exibindo entidades não previstas
+print(f"Entidades não previstas ({len(missed_entities)}):")
+for missed in missed_entities:
+    print(f"Texto: {missed['text']}, Rótulo: {missed['label']}")
 
 print(f'Dados salvos com sucesso no arquivo {csv_file}')
