@@ -14,22 +14,27 @@ Make sure you have the following prerequisites installed in your development env
 
 ## How to Run 🏃‍♀️
 
-Follow these simple steps to set up and run HANDY:
+Follow these simple steps to set up and run Word2Vec:
 
 1. **Clone the Repository**
 
    ```shell
-   git clone https://github.com/AIRGOLAB-CEFET-RJ/nerdd.git
+   git clone https://github.com/MLRG-CEFET-RJ/nerdd.git
+   cd nerdd
    ```
 
 2. **Install Dependencies**
 
    ```shell
-   cd nerdd
+   cd "word2vec - Leonidia"
    make
    ```
 
-   Now you should see the live camera window with hand detection and offensive gesture classification.
+   You can run the demo scripts in this folder, for example:
+
+   ```shell
+   bash demo-word.sh
+   ```
 
 ## Contribution 🤝
 
@@ -41,4 +46,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-We hope you enjoy vector recognition identification with **Word2vec - Leonidia**! If you have any questions or need help, feel free to contact the development team. 😊👋
+We hope you enjoy vector recognition identification with **Word2vec - Leonidia**! If you have any questions or need help, feel free to contact the development team.

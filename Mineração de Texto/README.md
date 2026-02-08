@@ -36,13 +36,13 @@ Follow these simple steps to set up and run Text Mining:
 1. **Clone the Repository**
 
    ```shell
-   git clone https://github.com/AIRGOLAB-CEFET-RJ/nerdd.git
+   git clone https://github.com/MLRG-CEFET-RJ/nerdd.git
    ```
 
 2. **Install Dependencies**
 
    ```shell
-   cd Mineração de Texto
+   cd "Mineração de Texto/Streamlit"
    pip install -r requirements.txt
    ```
 
@@ -51,6 +51,8 @@ Follow these simple steps to set up and run Text Mining:
    ```shell
    streamlit run index.py
    ```
+
+   If you have not generated the `.h5` models yet, run the notebooks in `Mineração de Texto/Notebooks` first.
 
 ## Results Codes 🧪
 
@@ -68,4 +70,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-We hope you enjoy offensive gesture detection with **TEXT MINING**! If you have any questions or need assistance, please feel free to reach out to the development team. 😊👋
+We hope you enjoy entity recognition with **TEXT MINING**! If you have any questions or need assistance, please feel free to reach out to the development team.

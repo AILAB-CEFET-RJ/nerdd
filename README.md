@@ -25,22 +25,30 @@ Este projeto é uma maneira interessante de explorar de detecção de entidades 
 
 Make sure you have the following prerequisites installed in your development environment:
 
-- Python 3.x
+- Git
+- Python 3.10+
 - Pip (Python package manager)
-- Spacy
-- Word2vec
-- LSTM
-- Pytorch
+- Optional: `venv` or `virtualenv`
+- For Word2Vec C code: a C compiler and `make` (gcc/clang + make)
+
+## Installation 🧩
+
+Each subproject has its own dependencies and entrypoint. See `docs/INSTALL.md` for the full, step-by-step instructions for each folder.
 
 ## How to Run 🏃‍♀️
 
-Follow these simple steps to set up and run NERDD:
+Follow these steps to start:
 
 1. **Clone the Repository**
 
    ```shell
    git clone https://github.com/MLRG-CEFET-RJ/nerdd.git
+   cd nerdd
    ```
+
+2. **Pick a subproject**
+
+   See `docs/INSTALL.md` for the correct folder, requirements file, and command to run.
 
 ## Contribution 🤝
 
@@ -52,4 +60,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-We hope you enjoy offensive gesture detection with **NERDD**! If you have any questions or need assistance, please feel free to reach out to the development team. 😊👋
+We hope you enjoy entity recognition with **NERDD**! If you have any questions or need assistance, please feel free to reach out to the development team.

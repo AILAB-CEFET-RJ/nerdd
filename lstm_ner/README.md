@@ -14,19 +14,23 @@ Make sure you have the following prerequisites installed in your development env
 
 ## How to Run 🏃‍♀️
 
-Follow these simple steps to set up and run HANDY:
+Follow these simple steps to set up and run LSTM NER:
 
 1. **Clone the Repository**
 
    ```shell
-   git clone https://github.com/AIRGOLAB-CEFET-RJ/nerdd.git
+   git clone https://github.com/MLRG-CEFET-RJ/nerdd.git
    ```
 
 2. **Install Dependencies**
 
    ```shell
-   cd lstn_ner
-   pip install -r requirements.txt
+   cd lstm_ner
+   # CPU-only
+   pip install -r requirements-cpu.txt
+
+   # GPU (CUDA)
+   # pip install -r requirements-gpu.txt
    ```
 
 3. **Run LSTM NER**
@@ -48,4 +52,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-We hope you enjoy entity recognitiion with **LSTM NER**! If you have any questions or need assistance, please feel free to reach out to the development team. 😊👋
+We hope you enjoy entity recognition with **LSTM NER**! If you have any questions or need assistance, please feel free to reach out to the development team.
