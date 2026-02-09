@@ -17,7 +17,7 @@ HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python3 train_nested_kfold.py \
   --weight-decay-values 0.01 \
   --thresholds 0.6 \
   --refit-val-size 0.5 \
-  --output-dir ./smoke_run_nested_tiny \
+  --output-dir ./artifacts/gliner_train/smoke/run_nested_tiny \
   --log-level INFO
 ```
 
@@ -35,23 +35,58 @@ python3 train_nested_kfold.py \
   --lr-values 1e-6,2e-6,5e-6,1e-5,2e-5,3e-5,5e-5,8e-5,1e-4,2e-4,3e-4 \
   --weight-decay-values 0.0,0.01,0.05 \
   --thresholds 0.5,0.6 \
-  --output-dir ./run_batch16 \
+  --output-dir ./artifacts/gliner_train/experiments/run_batch16 \
   --log-level INFO
 ```
 
 ## 3) Evaluation
 ```bash
 cd dd_ner_pipeline
-python3 evaluate_gliner.py \
-  --model-path ./run_batch16/best_overall_gliner_model \
+python3 gliner_train/evaluate_gliner.py \
+  --model-path ./artifacts/gliner_train/experiments/run_batch16/best_overall_gliner_model \
   --gt-jsonl ../data/dd_corpus_small_test_filtered.json \
-  --pred-jsonl ./eval/pred.jsonl \
-  --report-path ./eval/report.txt \
-  --calibrated-thresholds-json ./eval/thresholds.json \
+  --pred-jsonl ./artifacts/gliner_train/experiments/run_batch16/eval/pred.jsonl \
+  --report-path ./artifacts/gliner_train/experiments/run_batch16/eval/report.txt \
+  --calibrated-thresholds-json ./artifacts/gliner_train/experiments/run_batch16/eval/thresholds.json \
   --labels Person,Location,Organization \
   --chunk-size 128 \
   --batch-size 1 \
   --prediction-threshold 0.6 \
+  --log-level INFO
+```
+
+## 4) Large Corpus Prediction (inference-only)
+```bash
+cd dd_ner_pipeline
+python3 pseudolabelling/generate_corpus_predictions.py \
+  --model-path ./artifacts/gliner_train/experiments/run_batch16/best_overall_gliner_model \
+  --input-jsonl dd_corpus_large.json \
+  --output-jsonl ./artifacts/pseudolabelling/iter01/01_predictions.jsonl \
+  --stats-json ./artifacts/pseudolabelling/iter01/01_predictions_stats.json \
+  --labels Person,Location,Organization \
+  --text-fields assunto,relato,bairroLocal,logradouroLocal,cidadeLocal,pontodeReferenciaLocal \
+  --max-tokens 384 \
+  --batch-size 4 \
+  --score-threshold 0.0 \
+  --log-level INFO
+```
+
+## 5) Score Calibration (post-pseudolabelling)
+```bash
+cd dd_ner_pipeline
+python3 calibration/run_calibration.py \
+  --method temperature-per-class \
+  --input-jsonl ./artifacts/pseudolabelling/iter01/01_predictions.jsonl \
+  --output-jsonl ./artifacts/calibration/iter01/01_calibrated.jsonl \
+  --stats-json ./artifacts/calibration/iter01/01_calibration_stats.json \
+  --score-field score \
+  --output-score-field score_calibrated \
+  --preserve-original-score-field score_original \
+  --labels Person,Location,Organization \
+  --label-source calibration-csv \
+  --calibration-csv ../data/comparacao_calibracao.csv \
+  --csv-score-col Score \
+  --csv-label-col Validacao \
   --log-level INFO
 ```
 

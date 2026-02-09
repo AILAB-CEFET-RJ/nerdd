@@ -43,7 +43,7 @@ Dependencies live in `dd_ner_pipeline/requirements.txt`.
 cd dd_ner_pipeline
 pip install -r requirements.txt
 python3 train_nested_kfold.py --train-path ../data/dd_corpus_small_train.json
-python3 evaluate_gliner.py --model-path best_overall_gliner_model --gt-jsonl gliner_teste_sanidade.json
+python3 gliner_train/evaluate_gliner.py --model-path best_overall_gliner_model --gt-jsonl gliner_teste_sanidade.json
 ```
 
 Notes:
@@ -65,7 +65,7 @@ HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python3 train_nested_kfold.py \
   --weight-decay-values 0.01 \
   --thresholds 0.6 \
   --refit-val-size 0.5 \
-  --output-dir ./smoke_run_nested_tiny \
+  --output-dir ./artifacts/gliner_train/smoke/run_nested_tiny \
   --log-level INFO
 ```
 

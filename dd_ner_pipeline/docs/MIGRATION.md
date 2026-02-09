@@ -9,7 +9,19 @@ This document summarizes the refactor from legacy scripts to the current modular
   - New: `train_nested_kfold.py`
 - Evaluation:
   - Old: `GliNER - Resultado - v3.py`
-  - New: `evaluate_gliner.py`
+  - New: `gliner_train/evaluate_gliner.py`
+- Large corpus prediction (inference-only):
+  - Old: `GliNER - PseudoLabel v3.py`
+  - New: `pseudolabelling/generate_corpus_predictions.py` or `pseudolabelling/run_iterative_cycle.py`
+- Score calibration:
+  - Old:
+    - `GliNER -  Temperature Scaling.py`
+    - `GliNER -  Temperature Scaling - Classe.py`
+    - `GliNER - Isolation Regression.py`
+  - New: `calibration/run_calibration.py`
+- Sanity JSONL -> BIO CSV conversion:
+  - Old: `GliNER - Conversao Arquivo Sanidade.py`
+  - New: `tools/convert_sanity_jsonl_to_bio_csv.py`
 
 ## Key Behavioral Changes
 - Nested CV implementation was hardened:
@@ -32,7 +44,7 @@ This document summarizes the refactor from legacy scripts to the current modular
 - Current default training dataset: `../data/dd_corpus_small_train.json`.
 
 ## Migration Checklist
-1. Use only `train_nested_kfold.py` and `evaluate_gliner.py` for training/evaluation.
+1. Use only `train_nested_kfold.py` and `gliner_train/evaluate_gliner.py` for training/evaluation.
 2. Use `nested_cv_results.json` as source of truth for programmatic analysis.
 3. Keep smoke-test command for local sanity checks before server runs.
 4. For publications/reports, describe whether evaluation is nested-CV-only or includes a separate holdout.

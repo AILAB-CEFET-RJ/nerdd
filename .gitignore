@@ -161,8 +161,6 @@ cython_debug/
 data/
 .vscode/
 
-# dd_ner_pipeline runtime outputs (local smoke/debug runs)
-dd_ner_pipeline/smoke_run*/
-dd_ner_pipeline/*smoke_run*/
-dd_ner_pipeline/smoke_eval/
+# dd_ner_pipeline runtime outputs (local/debug/experiments)
+dd_ner_pipeline/artifacts/
 2602.04998v1.pdf
