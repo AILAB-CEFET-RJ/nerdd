@@ -24,6 +24,9 @@ This folder now contains multiple subpipelines with separate documentation.
 - Utility: `tools/convert_sanity_jsonl_to_bio_csv.py`
 - Utility: `tools/replace_label_in_jsonl.py`
 - Utility: `tools/list_distinct_labels.py`
+- Utility: `tools/render_ner_html.py`
+- Utility: `tools/build_annotation_editor.py`
+- Utility: `tools/clean_generic_spans.py`
 
 ## Artifact Convention
 
