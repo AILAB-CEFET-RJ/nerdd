@@ -1,63 +1,56 @@
-# NERDD  - Named Entity Recognition Disque Denúncia 🚫
+# NERDD
 
-**NERDD** is a tool that utilizes the pretrained **Word2vec**,**LSTM**, **Spacy** and **LLM**  model to detect the entity in the violence text. Additionally, it employs another pretrained model (which will be mentioned later) to perform classification and check for NER , specifically identify local, person and time or organization.
+NER pipeline for the Disque Denúncia context, organized into training, pseudolabelling, and calibration subpipelines.
 
-This repository is divided into four parts:
-- **Text Mining** which was a project developed for the matter where we have 1000 criminal reports and are compared between **Spacy**, **Chat GPT** and **NLTK** as well as a tool using Streamlit to identify the entities of recognition automatically.
-- **Word2vec - Leonidia** is the project based on student Leonidia's monograph using Word Embeddings to classify and identify recognition entities
-- **Lstm_ner** is the project based on student Leonidia's monograph using Word Embeddings, however it uses EarlyStopping to generate a graph with a plot of the information generated in each season
-- **Fine Tuning** are experiments using LLM to use SFT (Supervised Fine Tuning) to be used later in the Disque Denúncia database
+## Current Structure
 
-This project is an interesting way to explore entity detection in violent texts. We will help you configure and run NERDD in your environment.
+- `src/`: main source code.
+- `src/base_model_training/`: base training and evaluation with nested CV.
+- `src/pseudolabelling/`: pseudolabel generation, score-based split, and refit.
+- `src/calibration/`: score calibration.
+- `src/tools/`: auxiliary utilities.
+- `docs/`: operational and architectural documentation.
+- `data/`: training, test, and calibration datasets.
 
-----------------------------------------------------------------------------------------
-**NERDD** é uma ferramenta que utiliza os modelos pré-treinados **Word2vec**,**LSTM**, **Spacy** e **LLM** para detectar a entidade no texto de violência. Além disso, emprega outro modelo pré-treinado (que será mencionado posteriormente) para realizar a classificação e verificar o NER, identificando especificamente o local, a pessoa e o horário ou organização.
-
-Este repositório encontra-se dividido em quatro partes:
-
-- **Mineração de Texto** que foi um projeto desenvolvido para a matéria onde temos 1000 relatos criminais e estão comparados entre **Spacy**,**Chat GPT** e **NLTK** além de uma ferramenta utilizando o Streamlit para identificar as entidades de reconhecimento automaticamente.
-- **Word2vec - Leonidia** é o projeto baseado na monografia da aluna Leonidia utilizando Word Embeddings para fazer a classificação e identificação das entidades de reconhecimentos
-- **Lstm_ner** é o projeto baseado na monografia da aluna Leonidia utilizando Word Embeddings entretanto utiliza EarlyStopping para gerar um gráfico com plot das informações gerada em cada época
-- **Fine Tuning** são experimentos utilizando o LLM para utilizar o SFT (Supervisioned Fine Tuning) para ser utilizado posteriormente na base de dados do Disque Denúncia
-Este projeto é uma maneira interessante de explorar de detecção de entidades em textos de violencia. Vamos ajudá-lo a configurar e executar o NERDD em seu ambiente.
-
-## Prerequisites 📋
-
-Make sure you have the following prerequisites installed in your development environment:
+## Prerequisites
 
 - Git
-- Python 3.10+
-- Pip (Python package manager)
-- Optional: `venv` or `virtualenv`
-- For Word2Vec C code: a C compiler and `make` (gcc/clang + make)
+- Python 3.11+
+- pip
 
-## Installation 🧩
+## Quick Setup
 
-Each subproject has its own dependencies and entrypoint. See `docs/INSTALL.md` for the full, step-by-step instructions for each folder.
+```bash
+git clone https://github.com/MLRG-CEFET-RJ/nerdd.git
+cd nerdd
+cd src
+pip install -r requirements.txt
+```
 
-## How to Run 🏃‍♀️
+## Run (Summary)
 
-Follow these steps to start:
+Training:
 
-1. **Clone the Repository**
+```bash
+cd src
+python3 -m base_model_training.train_nested_kfold --train-path ../data/dd_corpus_small_train.json
+```
 
-   ```shell
-   git clone https://github.com/MLRG-CEFET-RJ/nerdd.git
-   cd nerdd
-   ```
+Evaluation:
 
-2. **Pick a subproject**
+```bash
+cd src
+python3 base_model_training/evaluate_gliner.py --model-path ./artifacts/base_model_training/experiments/run_batch16/best_overall_gliner_model --gt-jsonl ../data/dd_corpus_small_test_filtered.json
+```
 
-   See `docs/INSTALL.md` for the correct folder, requirements file, and command to run.
+## Documentation
 
-## Contribution 🤝
+- Detailed installation: `docs/INSTALL.md`
+- Runbook: `docs/RUNBOOK.md`
+- Pipeline overview: `docs/PIPELINE_OVERVIEW.md`
+- Architecture: `docs/ARCHITECTURE.md`
+- Migration: `docs/MIGRATION.md`
 
-If you want to contribute to the NERDD project, we would be happy to receive your contributions. Feel free to open issues or submit pull requests with improvements, bug fixes, or new features.
+## Contributing
 
-## License 📄
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-We hope you enjoy entity recognition with **NERDD**! If you have any questions or need assistance, please feel free to reach out to the development team.
+Open an issue or PR with fixes and improvements.

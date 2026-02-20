@@ -161,6 +161,6 @@ cython_debug/
 data/
 .vscode/
 
-# dd_ner_pipeline runtime outputs (local/debug/experiments)
-dd_ner_pipeline/artifacts/
+# runtime outputs (local/debug/experiments)
+src/artifacts/
 2602.04998v1.pdf
