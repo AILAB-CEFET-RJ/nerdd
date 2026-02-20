@@ -27,23 +27,7 @@ cd src
 pip install -r requirements.txt
 ```
 
-## Run (Summary)
-
-Training:
-
-```bash
-cd src
-python3 -m base_model_training.train_nested_kfold --train-path ../data/dd_corpus_small_train.json
-```
-
-Evaluation:
-
-```bash
-cd src
-python3 base_model_training/evaluate_gliner.py --model-path ./artifacts/base_model_training/experiments/run_batch16/best_overall_gliner_model --gt-jsonl ../data/dd_corpus_small_test_filtered.json
-```
-
-## Documentation
+## Next Steps
 
 - Detailed installation: `docs/INSTALL.md`
 - Runbook: `docs/RUNBOOK.md`
