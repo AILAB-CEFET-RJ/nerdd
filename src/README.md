@@ -41,5 +41,4 @@ This folder now contains multiple subpipelines with separate documentation.
 - `../docs/PIPELINE_OVERVIEW.md`
 - `../docs/RUNBOOK.md`
 - `../docs/ARCHITECTURE.md`
-- `../docs/EXPERIMENT_LOG_TEMPLATE.md`
 - `CHANGELOG.md`
