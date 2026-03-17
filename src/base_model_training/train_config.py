@@ -15,8 +15,10 @@ class TrainConfig:
     max_length: int = 384
     overlap: int = 100
     thresholds: list[float] = field(default_factory=lambda: [0.6])
-    lr_values: list[float] = field(default_factory=lambda: [3.38e-5])
+    backbone_lr_values: list[float] = field(default_factory=lambda: [1.0e-5])
+    ner_lr_values: list[float] = field(default_factory=lambda: [3.38e-5])
     weight_decay_values: list[float] = field(default_factory=lambda: [0.086619])
+    train_sampling: str = "weighted"
     refit_val_size: float = 0.2
     early_stopping_patience: int = 7
     early_stopping_threshold: float = 0.5

@@ -19,6 +19,7 @@ from torch.optim import AdamW
 from base_model_training.collator_factory import build_data_collator
 from base_model_training.data import (
     create_dataloader,
+    create_training_dataloader,
     load_dataset,
     split_long_sentences,
     token_spans_to_char_offsets,
@@ -223,15 +224,55 @@ def _build_group_splitter(dataset, groups, requested_splits, stage_name, seed):
     return _PrecomputedSplitWrapper(preview_splits, effective_splits)
 
 
-def _create_optimizer_scheduler(model, lr, weight_decay, num_epochs, train_loader_len):
-    optimizer = AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
+def _build_optimizer_param_groups(model, backbone_lr, ner_lr, weight_decay):
+    backbone_params = []
+    ner_params = []
+    backbone_count = 0
+    ner_count = 0
+
+    for name, parameter in model.named_parameters():
+        if not parameter.requires_grad:
+            continue
+        if name.startswith("model.token_rep_layer."):
+            backbone_params.append(parameter)
+            backbone_count += parameter.numel()
+        else:
+            ner_params.append(parameter)
+            ner_count += parameter.numel()
+
+    if not backbone_params or not ner_params:
+        LOGGER.error(
+            "Could not split trainable parameters into backbone and NER groups. "
+            "backbone_tensors=%s | backbone_params=%s | ner_tensors=%s | ner_params=%s",
+            len(backbone_params),
+            backbone_count,
+            len(ner_params),
+            ner_count,
+        )
+        raise ValueError("Model parameter grouping for backbone/NER learning rates failed.")
+
+    return [
+        {"params": backbone_params, "lr": backbone_lr, "weight_decay": weight_decay},
+        {"params": ner_params, "lr": ner_lr, "weight_decay": weight_decay},
+    ]
+
+
+def _create_optimizer_scheduler(model, backbone_lr, ner_lr, weight_decay, num_epochs, train_loader_len):
+    optimizer = AdamW(
+        _build_optimizer_param_groups(
+            model=model,
+            backbone_lr=backbone_lr,
+            ner_lr=ner_lr,
+            weight_decay=weight_decay,
+        )
+    )
     total_steps = num_epochs * train_loader_len
     if total_steps < 3:
         return optimizer, None
     try:
         scheduler = torch.optim.lr_scheduler.OneCycleLR(
             optimizer,
-            max_lr=lr,
+            max_lr=[backbone_lr, ner_lr],
             total_steps=total_steps,
             pct_start=0.1,
             anneal_strategy="linear",
@@ -342,8 +383,10 @@ def _run_single_training(
     val_data,
     batch_size,
     num_epochs,
-    lr,
+    backbone_lr,
+    ner_lr,
     weight_decay,
+    train_sampling,
     patience,
     thresholds,
     early_stopping_threshold,
@@ -355,7 +398,12 @@ def _run_single_training(
     model.to(device)
     data_collator = build_data_collator(model)
 
-    train_loader = create_dataloader(train_data, batch_size, data_collator, shuffle=True)
+    train_loader = create_training_dataloader(
+        train_data,
+        batch_size,
+        data_collator,
+        sampling=train_sampling,
+    )
     val_loader = create_dataloader(val_data, batch_size, data_collator, shuffle=False)
 
     if len(train_loader) == 0 or len(val_loader) == 0:
@@ -363,7 +411,8 @@ def _run_single_training(
 
     optimizer, scheduler = _create_optimizer_scheduler(
         model=model,
-        lr=lr,
+        backbone_lr=backbone_lr,
+        ner_lr=ner_lr,
         weight_decay=weight_decay,
         num_epochs=num_epochs,
         train_loader_len=len(train_loader),
@@ -429,17 +478,19 @@ def _run_inner_search(
         LOGGER.info("Random search selected %s trial candidates.", len(trial_candidates))
 
     best_score = -1.0
-    best_lr = None
+    best_backbone_lr = None
+    best_ner_lr = None
     best_wd = None
     best_threshold = None
     trial_reports = []
 
-    for trial_index, (lr, weight_decay) in enumerate(trial_candidates, start=1):
+    for trial_index, (backbone_lr, ner_lr, weight_decay) in enumerate(trial_candidates, start=1):
         LOGGER.info(
-            "[Trial %s/%s] LR=%.7f | WD=%.6f",
+            "[Trial %s/%s] BACKBONE_LR=%.7f | NER_LR=%.7f | WD=%.6f",
             trial_index,
             len(trial_candidates),
-            lr,
+            backbone_lr,
+            ner_lr,
             weight_decay,
         )
 
@@ -464,8 +515,10 @@ def _run_inner_search(
                 val_data=inner_val_data,
                 batch_size=config.batch_size,
                 num_epochs=config.num_epochs,
-                lr=lr,
+                backbone_lr=backbone_lr,
+                ner_lr=ner_lr,
                 weight_decay=weight_decay,
+                train_sampling=config.train_sampling,
                 patience=config.early_stopping_patience,
                 thresholds=config.thresholds,
                 early_stopping_threshold=config.early_stopping_threshold,
@@ -504,7 +557,8 @@ def _run_inner_search(
                 output_dir=output_dir,
                 fold=fold,
                 trial=f"t{trial_index}_inner{inner_fold}",
-                lr=lr,
+                backbone_lr=backbone_lr,
+                ner_lr=ner_lr,
                 weight_decay=weight_decay,
             )
 
@@ -521,7 +575,8 @@ def _run_inner_search(
 
         trial_report = {
             "trial": trial_index,
-            "lr": lr,
+            "backbone_lr": backbone_lr,
+            "ner_lr": ner_lr,
             "weight_decay": weight_decay,
             "mean_threshold_scores": threshold_means,
             "best_threshold": trial_best_threshold,
@@ -532,11 +587,12 @@ def _run_inner_search(
 
         if trial_score > best_score:
             best_score = trial_score
-            best_lr = lr
+            best_backbone_lr = backbone_lr
+            best_ner_lr = ner_lr
             best_wd = weight_decay
             best_threshold = trial_best_threshold
 
-    return best_lr, best_wd, best_threshold, best_score, trial_reports
+    return best_backbone_lr, best_ner_lr, best_wd, best_threshold, best_score, trial_reports
 
 
 def run_experiment(config, script_path):
@@ -621,7 +677,8 @@ def run_experiment(config, script_path):
         trainval_groups = groups[trainval_idx]
 
         (
-            best_lr,
+            best_backbone_lr,
+            best_ner_lr,
             best_wd,
             best_threshold,
             best_inner_score,
@@ -637,7 +694,7 @@ def run_experiment(config, script_path):
             output_dir=output_dir,
         )
 
-        if best_lr is None or best_wd is None or best_threshold is None:
+        if best_backbone_lr is None or best_ner_lr is None or best_wd is None or best_threshold is None:
             LOGGER.warning(
                 "No valid trial result was produced for outer fold %s.",
                 fold,
@@ -659,9 +716,10 @@ def run_experiment(config, script_path):
             continue
 
         LOGGER.info(
-            "Best params for outer fold %s: LR=%.7f | WD=%.6f | THRESH=%s | Inner Mean F1=%.4f",
+            "Best params for outer fold %s: BACKBONE_LR=%.7f | NER_LR=%.7f | WD=%.6f | THRESH=%s | Inner Mean F1=%.4f",
             fold,
-            best_lr,
+            best_backbone_lr,
+            best_ner_lr,
             best_wd,
             best_threshold,
             best_inner_score,
@@ -681,8 +739,10 @@ def run_experiment(config, script_path):
             val_data=refit_val_data,
             batch_size=config.batch_size,
             num_epochs=config.num_epochs,
-            lr=best_lr,
+            backbone_lr=best_backbone_lr,
+            ner_lr=best_ner_lr,
             weight_decay=best_wd,
+            train_sampling=config.train_sampling,
             patience=config.early_stopping_patience,
             thresholds=config.thresholds,
             early_stopping_threshold=config.early_stopping_threshold,
@@ -695,7 +755,11 @@ def run_experiment(config, script_path):
             outer_reports.append(
                 {
                     "outer_fold": fold,
-                    "best_params": {"lr": best_lr, "weight_decay": best_wd},
+                    "best_params": {
+                        "backbone_lr": best_backbone_lr,
+                        "ner_lr": best_ner_lr,
+                        "weight_decay": best_wd,
+                    },
                     "selected_threshold": best_threshold,
                     "inner_best_score": best_inner_score,
                     "test_f1": None,
@@ -713,7 +777,8 @@ def run_experiment(config, script_path):
             output_dir=output_dir,
             fold=fold,
             trial="refit",
-            lr=best_lr,
+            backbone_lr=best_backbone_lr,
+            ner_lr=best_ner_lr,
             weight_decay=best_wd,
         )
 
@@ -745,7 +810,10 @@ def run_experiment(config, script_path):
         with open(results_path, "a", encoding="utf-8") as handle:
             handle.write(f"Outer Fold {fold}\n")
             handle.write(
-                f"Best params (LR, WD): {format_param(best_lr, '.7f')}, {format_param(best_wd, '.6f')}\n"
+                "Best params (Backbone LR, NER LR, WD): "
+                f"{format_param(best_backbone_lr, '.7f')}, "
+                f"{format_param(best_ner_lr, '.7f')}, "
+                f"{format_param(best_wd, '.6f')}\n"
             )
             handle.write(f"Selected threshold: {best_threshold}\n")
             handle.write(f"Inner best score: {best_inner_score:.4f}\n")
@@ -768,7 +836,8 @@ def run_experiment(config, script_path):
                 )
                 handle.write(
                     f"  - Trial {trial['trial']}: "
-                    f"LR={format_param(trial['lr'], '.7f')}, "
+                    f"BACKBONE_LR={format_param(trial['backbone_lr'], '.7f')}, "
+                    f"NER_LR={format_param(trial['ner_lr'], '.7f')}, "
                     f"WD={format_param(trial['weight_decay'], '.6f')}, "
                     f"best_threshold={trial['best_threshold']}, "
                     f"best_score={format_param(trial['best_score'], '.4f')}, "
@@ -785,7 +854,11 @@ def run_experiment(config, script_path):
         outer_reports.append(
             {
                 "outer_fold": fold,
-                "best_params": {"lr": best_lr, "weight_decay": best_wd},
+                "best_params": {
+                    "backbone_lr": best_backbone_lr,
+                    "ner_lr": best_ner_lr,
+                    "weight_decay": best_wd,
+                },
                 "selected_threshold": best_threshold,
                 "inner_best_score": best_inner_score,
                 "test_f1": final_f1_test,
@@ -834,8 +907,10 @@ def run_experiment(config, script_path):
             "search_mode": config.search_mode,
             "num_trials": config.num_trials,
             "thresholds": config.thresholds,
-            "lr_values": config.lr_values,
+            "backbone_lr_values": config.backbone_lr_values,
+            "ner_lr_values": config.ner_lr_values,
             "weight_decay_values": config.weight_decay_values,
+            "train_sampling": config.train_sampling,
             "batch_size": config.batch_size,
             "num_epochs": config.num_epochs,
         },

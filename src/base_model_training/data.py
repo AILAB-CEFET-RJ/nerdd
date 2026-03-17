@@ -1,7 +1,8 @@
 import logging
 from collections import Counter
 
-from torch.utils.data import DataLoader
+import torch
+from torch.utils.data import DataLoader, WeightedRandomSampler
 
 from base_model_training.io_utils import load_jsonl
 
@@ -225,6 +226,39 @@ def split_long_sentences(dataset, max_length=384, overlap=50, tokenizer=None):
 def create_dataloader(dataset, batch_size, collator, shuffle=True):
     """Build a torch DataLoader with the GLiNER collator."""
     return DataLoader(dataset, batch_size=batch_size, collate_fn=collator, shuffle=shuffle)
+
+
+def _compute_sampling_weights(dataset):
+    label_counts = Counter()
+    for sample in dataset:
+        label_counts.update(label for _start, _end, label in sample.get("ner", []))
+
+    weights = []
+    for sample in dataset:
+        labels = {label for _start, _end, label in sample.get("ner", [])}
+        if labels:
+            weight = sum(1.0 / label_counts[label] for label in labels if label_counts[label] > 0)
+        else:
+            weight = 1.0
+        weights.append(max(weight, 1e-8))
+    return weights
+
+
+def create_training_dataloader(dataset, batch_size, collator, sampling="random"):
+    """Build the training DataLoader with configurable example sampling."""
+    if sampling == "random":
+        return DataLoader(dataset, batch_size=batch_size, collate_fn=collator, shuffle=True)
+
+    if sampling == "weighted":
+        weights = _compute_sampling_weights(dataset)
+        sampler = WeightedRandomSampler(
+            weights=torch.tensor(weights, dtype=torch.double),
+            num_samples=len(dataset),
+            replacement=True,
+        )
+        return DataLoader(dataset, batch_size=batch_size, collate_fn=collator, sampler=sampler)
+
+    raise ValueError(f"Unsupported train sampling mode: {sampling}")
 
 
 def token_spans_to_char_offsets(tokens, spans):

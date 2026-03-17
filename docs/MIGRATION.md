@@ -28,7 +28,7 @@ This document summarizes the refactor from legacy scripts to the current modular
   - outer and inner splits use group-aware splitting by `sample_id`.
   - avoids leakage between chunks from the same original report.
 - Hyperparameter search became explicit and configurable from CLI:
-  - `--search-mode`, `--num-trials`, `--lr-values`, `--weight-decay-values`.
+  - `--search-mode`, `--num-trials`, `--backbone-lr-values`, `--ner-lr-values`, `--weight-decay-values`.
 - Full run reporting improved:
   - human report: `nested_cv_results.txt`
   - structured report: `nested_cv_results.json`

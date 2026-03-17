@@ -42,10 +42,22 @@ def parse_args():
     parser.add_argument("--max-length", type=int, default=defaults.max_length)
     parser.add_argument("--overlap", type=int, default=defaults.overlap)
     parser.add_argument("--thresholds", default=",".join(str(value) for value in defaults.thresholds))
-    parser.add_argument("--lr-values", default=",".join(str(value) for value in defaults.lr_values))
+    parser.add_argument(
+        "--backbone-lr-values",
+        default=",".join(str(value) for value in defaults.backbone_lr_values),
+    )
+    parser.add_argument(
+        "--ner-lr-values",
+        default=",".join(str(value) for value in defaults.ner_lr_values),
+    )
     parser.add_argument(
         "--weight-decay-values",
         default=",".join(str(value) for value in defaults.weight_decay_values),
+    )
+    parser.add_argument(
+        "--train-sampling",
+        choices=["random", "weighted"],
+        default=defaults.train_sampling,
     )
     parser.add_argument("--refit-val-size", type=float, default=defaults.refit_val_size)
     parser.add_argument("--early-stopping-patience", type=int, default=defaults.early_stopping_patience)
@@ -73,8 +85,10 @@ def build_config(args):
         max_length=args.max_length,
         overlap=args.overlap,
         thresholds=parse_thresholds(args.thresholds),
-        lr_values=parse_float_list(args.lr_values),
+        backbone_lr_values=parse_float_list(args.backbone_lr_values),
+        ner_lr_values=parse_float_list(args.ner_lr_values),
         weight_decay_values=parse_float_list(args.weight_decay_values),
+        train_sampling=args.train_sampling,
         refit_val_size=args.refit_val_size,
         early_stopping_patience=args.early_stopping_patience,
         early_stopping_threshold=args.early_stopping_threshold,

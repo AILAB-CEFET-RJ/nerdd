@@ -156,3 +156,53 @@ Implication:
 
 - folds should now stay balanced both in size and in rare-label coverage more reliably than before
 - training diagnostics should be less likely to be distorted by a fold that is large enough but nearly devoid of one entity type
+
+### Split Learning Rates For Backbone And NER Layers
+
+The nested-CV training pipeline previously used a single global learning rate for every trainable parameter in GLiNER.
+
+That meant the transformer backbone and the task-specific NER layers were optimized with the same step size, which is a poor fit for fine-tuning in domain-specific NER runs.
+
+The fix was implemented in `src/base_model_training/cv.py`, `src/base_model_training/cli.py`, `src/base_model_training/search.py`, and `src/base_model_training/train_config.py`:
+
+- `--lr-values` was removed from the training CLI
+- the training entrypoint now requires `--backbone-lr-values` and `--ner-lr-values`
+- hyperparameter search now evaluates `(backbone_lr, ner_lr, weight_decay)` combinations
+- the optimizer now uses two parameter groups:
+  - `model.token_rep_layer.*` for the transformer backbone
+  - every other trainable parameter for the NER-specific layers
+- `OneCycleLR` now tracks the two learning rates separately
+
+The surrounding reporting was updated as well:
+
+- trial logs and best-parameter logs now print backbone LR and NER LR explicitly
+- text and JSON reports now store `backbone_lr` and `ner_lr` instead of a single `lr`
+- loss plots now include both learning rates in the title
+
+Implication:
+
+- the training search space now matches the common fine-tuning pattern of using a smaller LR for the pretrained backbone and a larger LR for task-specific layers
+- nested-CV runs should be able to tune stability and adaptation speed independently
+
+### Weighted Training Sampling For Rare Entity Labels
+
+Even after the fold splitter was corrected, the training `DataLoader` still used plain shuffled batches.
+
+That meant individual batches could remain heavily skewed toward the most common entity label, especially after long reports were chunked into smaller training examples.
+
+The training pipeline now supports two sampling modes in `base_model_training.train_nested_kfold`:
+
+- `random`: the previous behavior, using only shuffled batches
+- `weighted`: a label-aware sampler that increases the draw probability of examples containing rarer entity labels
+
+The weighted mode was implemented in `src/base_model_training/data.py` and wired into `src/base_model_training/cv.py`:
+
+- per-example sampling weights are derived from the rarity of the labels present in each example
+- `WeightedRandomSampler` is used only for the training loader
+- validation keeps deterministic sequential loading
+- the training CLI now exposes `--train-sampling`, defaulting to `weighted`
+
+Implication:
+
+- training epochs should expose the model to rare-label examples more consistently
+- this reduces the chance that a long run is dominated by batches containing mostly the majority entity class

@@ -2,8 +2,14 @@ import itertools
 
 
 def generate_trial_params(config, rng):
-    """Generate (lr, weight_decay) pairs according to configured search mode."""
-    candidates = list(itertools.product(config.lr_values, config.weight_decay_values))
+    """Generate (backbone_lr, ner_lr, weight_decay) tuples according to search mode."""
+    candidates = list(
+        itertools.product(
+            config.backbone_lr_values,
+            config.ner_lr_values,
+            config.weight_decay_values,
+        )
+    )
     if not candidates:
         raise ValueError("No hyperparameter candidates were generated.")
 

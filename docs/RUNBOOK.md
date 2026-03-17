@@ -8,6 +8,11 @@ Use this smoke test first to validate the training stack end-to-end on a tiny da
 
 If you are running on an NVIDIA Blackwell GPU such as an RTX 5090, confirm your environment uses PyTorch `cu128` or newer before starting.
 
+The training CLI now supports `--train-sampling`:
+
+- `weighted`: recommended default for training; oversamples examples containing rarer entity labels more often across an epoch
+- `random`: the legacy behavior; plain shuffled batches without any label-aware sampling
+
 ## 2) Local Smoke Test (CPU / low RAM)
 ```bash
 cd src
@@ -21,8 +26,10 @@ HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python3 -m base_model_training.train_nes
   --n-splits 2 \
   --n-inner-splits 2 \
   --search-mode grid \
-  --lr-values 3e-5 \
+  --backbone-lr-values 1e-5 \
+  --ner-lr-values 3e-5 \
   --weight-decay-values 0.01 \
+  --train-sampling weighted \
   --thresholds 0.6 \
   --refit-val-size 0.5 \
   --output-dir ./artifacts/base_model_training/smoke/run_nested_tiny \
@@ -73,8 +80,10 @@ python3 -m base_model_training.train_nested_kfold \
   --n-inner-splits 3 \
   --search-mode random \
   --num-trials 20 \
-  --lr-values 1e-6,2e-6,5e-6,1e-5,2e-5,3e-5,5e-5,8e-5,1e-4,2e-4,3e-4 \
+  --backbone-lr-values 1e-6,2e-6,5e-6,1e-5 \
+  --ner-lr-values 1e-5,2e-5,3e-5,5e-5,8e-5,1e-4,2e-4,3e-4 \
   --weight-decay-values 0.0,0.01,0.05 \
+  --train-sampling weighted \
   --thresholds 0.5,0.6 \
   --output-dir ./artifacts/base_model_training/experiments/run_batch16 \
   --log-level INFO

@@ -3,7 +3,16 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 
 
-def save_loss_plot(training_losses, validation_losses, output_dir, fold, trial, lr, weight_decay):
+def save_loss_plot(
+    training_losses,
+    validation_losses,
+    output_dir,
+    fold,
+    trial,
+    backbone_lr,
+    ner_lr,
+    weight_decay,
+):
     """Persist train/validation loss curve for a trial."""
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -17,7 +26,11 @@ def save_loss_plot(training_losses, validation_losses, output_dir, fold, trial, 
         plt.plot(epochs[: len(validation_losses)], validation_losses, marker="o", label="Validation Loss")
     plt.xlabel("Epoch")
     plt.ylabel("Loss")
-    plt.title(f"Fold {fold} - Trial {trial} - LR={lr:.7f}, WD={weight_decay:.6f}")
+    plt.title(
+        "Fold "
+        f"{fold} - Trial {trial} - Backbone LR={backbone_lr:.7f}, "
+        f"NER LR={ner_lr:.7f}, WD={weight_decay:.6f}"
+    )
     if epochs:
         plt.xticks(epochs)
         plt.xlim(0.8, epochs[-1] + 0.2)
