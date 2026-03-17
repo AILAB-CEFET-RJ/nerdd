@@ -50,12 +50,14 @@ def train_with_early_stopping(
     num_epochs,
     patience,
     metric_fn,
+    stage_label=None,
 ):
     """Train model with early stopping based on metric_fn output."""
     training_losses = []
     validation_losses = []
     best_metric = -1.0
     patience_counter = 0
+    stage_prefix = f"[{stage_label}] " if stage_label else ""
 
     for epoch_idx in range(num_epochs):
         epoch = epoch_idx + 1
@@ -66,23 +68,31 @@ def train_with_early_stopping(
         training_losses.append(train_loss)
         validation_losses.append(val_loss)
 
-        LOGGER.info(
-            "Epoch %s: Train Loss=%.4f | Val Loss=%.4f | F1-macro (Val)=%.4f | Patience =%s/%s",
-            epoch,
-            train_loss,
-            val_loss,
-            metric,
-            patience_counter + 1,
-            patience,
-        )
-
-        if metric > best_metric:
+        improved = metric > best_metric
+        if improved:
             best_metric = metric
             patience_counter = 0
         else:
             patience_counter += 1
+
+        LOGGER.info(
+            "%sEpoch %s: Train Loss=%.4f | Val Loss=%.4f | F1-macro (Val)=%.4f | Patience=%s/%s",
+            stage_prefix,
+            epoch,
+            train_loss,
+            val_loss,
+            metric,
+            patience_counter,
+            patience,
+        )
+
+        if not improved:
             if patience_counter >= patience:
-                LOGGER.info("Early stopping triggered at epoch %s based on F1 score.", epoch)
+                LOGGER.info(
+                    "%sEarly stopping triggered at epoch %s based on F1 score.",
+                    stage_prefix,
+                    epoch,
+                )
                 break
 
     return {

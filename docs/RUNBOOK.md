@@ -1,6 +1,14 @@
 # Runbook
 
-## 1) Local Smoke Test (CPU / low RAM)
+Assumes the environment from `docs/INSTALL.md` is already set up.
+
+## 1) First Run
+
+Use this smoke test first to validate the training stack end-to-end on a tiny dataset.
+
+If you are running on an NVIDIA Blackwell GPU such as an RTX 5090, confirm your environment uses PyTorch `cu128` or newer before starting.
+
+## 2) Local Smoke Test (CPU / low RAM)
 ```bash
 cd src
 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python3 -m base_model_training.train_nested_kfold \
@@ -21,7 +29,12 @@ HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python3 -m base_model_training.train_nes
   --log-level INFO
 ```
 
-## 2) Server Training (example with batch-size 16)
+Expected outputs:
+- `./artifacts/base_model_training/smoke/run_nested_tiny/nested_cv_results.txt`
+- `./artifacts/base_model_training/smoke/run_nested_tiny/nested_cv_results.json`
+- `./artifacts/base_model_training/smoke/run_nested_tiny/best_overall_gliner_model/`
+
+## 3) Server Training (example with batch-size 16)
 ```bash
 cd src
 python3 -m base_model_training.train_nested_kfold \
@@ -39,7 +52,7 @@ python3 -m base_model_training.train_nested_kfold \
   --log-level INFO
 ```
 
-## 3) Evaluation
+## 4) Evaluation
 ```bash
 cd src
 python3 base_model_training/evaluate_gliner.py \
@@ -55,7 +68,7 @@ python3 base_model_training/evaluate_gliner.py \
   --log-level INFO
 ```
 
-## 4) Large Corpus Prediction (inference-only)
+## 5) Large Corpus Prediction (inference-only)
 ```bash
 cd src
 python3 pseudolabelling/generate_corpus_predictions.py \
@@ -71,7 +84,7 @@ python3 pseudolabelling/generate_corpus_predictions.py \
   --log-level INFO
 ```
 
-## 5) Score Calibration (post-pseudolabelling)
+## 6) Score Calibration (post-pseudolabelling)
 ```bash
 cd src
 python3 calibration/run_calibration.py \

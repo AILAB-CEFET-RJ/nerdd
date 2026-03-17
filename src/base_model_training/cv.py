@@ -24,6 +24,7 @@ from base_model_training.data import (
     token_spans_to_char_offsets,
 )
 from base_model_training.engine import train_with_early_stopping
+from base_model_training.group_stratified import StratifiedGroupKFoldNER
 from base_model_training.metrics import compute_f1_by_threshold, f1_score_from_span_lists
 from base_model_training.paths import resolve_path
 from base_model_training.plots import save_loss_plot
@@ -176,6 +177,48 @@ def _effective_group_kfold(groups, requested_splits, stage_name):
     return GroupKFold(n_splits=effective_splits)
 
 
+def _build_group_splitter(dataset, groups, requested_splits, stage_name, seed):
+    unique_groups = len(set(groups.tolist()))
+    effective_splits = min(requested_splits, unique_groups)
+    if effective_splits < requested_splits:
+        LOGGER.warning(
+            "%s requested %s splits, but only %s unique groups are available. Using %s splits.",
+            stage_name,
+            requested_splits,
+            unique_groups,
+            effective_splits,
+        )
+    if effective_splits < 2:
+        raise ValueError(f"{stage_name} needs at least 2 unique groups; found {unique_groups}.")
+
+    splitter = StratifiedGroupKFoldNER(n_splits=effective_splits, seed=seed)
+    preview_splits = list(splitter.split(dataset, groups=groups))
+    summary = splitter.last_summary or {}
+    for fold_summary in summary.get("folds", []):
+        label_span_str = ", ".join(
+            f"{label}={count}" for label, count in sorted(fold_summary["label_spans"].items())
+        )
+        LOGGER.info(
+            "%s fold %s summary | groups=%s | examples=%s | spans=[%s]",
+            stage_name,
+            fold_summary["fold"],
+            fold_summary["group_count"],
+            fold_summary["example_count"],
+            label_span_str,
+        )
+
+    class _PrecomputedSplitWrapper:
+        def __init__(self, splits, n_splits):
+            self._splits = splits
+            self.n_splits = n_splits
+
+        def split(self, _dataset, groups=None):
+            del groups
+            yield from self._splits
+
+    return _PrecomputedSplitWrapper(preview_splits, effective_splits)
+
+
 def _create_optimizer_scheduler(model, lr, weight_decay, num_epochs, train_loader_len):
     optimizer = AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
     total_steps = num_epochs * train_loader_len
@@ -207,6 +250,12 @@ def _evaluate_thresholds(model, val_processed, thresholds, entity_labels):
         threshold: compute_f1_by_threshold(model, val_processed, threshold, entity_labels)
         for threshold in thresholds
     }
+
+
+def _best_validation_f1(model, val_processed, thresholds, entity_labels):
+    """Return the best validation F1 across the configured thresholds."""
+    threshold_metrics = _evaluate_thresholds(model, val_processed, thresholds, entity_labels)
+    return max(threshold_metrics.values()) if threshold_metrics else float("-inf")
 
 
 def _normalize_entity_surface(value):
@@ -292,9 +341,11 @@ def _run_single_training(
     lr,
     weight_decay,
     patience,
+    thresholds,
     early_stopping_threshold,
     entity_labels,
     device,
+    stage_label,
 ):
     model = copy.deepcopy(base_model)
     model.to(device)
@@ -324,12 +375,13 @@ def _run_single_training(
         device=device,
         num_epochs=num_epochs,
         patience=patience,
-        metric_fn=lambda current_model: compute_f1_by_threshold(
+        metric_fn=lambda current_model: _best_validation_f1(
             current_model,
             val_processed,
-            threshold=early_stopping_threshold,
+            thresholds=thresholds or [early_stopping_threshold],
             entity_labels=entity_labels,
         ),
+        stage_label=stage_label,
     )
     return model, history
 
@@ -359,10 +411,12 @@ def _run_inner_search(
     fold,
     output_dir,
 ):
-    splitter = _effective_group_kfold(
+    splitter = _build_group_splitter(
+        dataset=trainval_data,
         groups=trainval_groups,
         requested_splits=config.n_inner_splits,
         stage_name=f"Inner CV (outer fold {fold})",
+        seed=config.seed + fold,
     )
 
     rng = np.random.default_rng(config.seed + fold)
@@ -392,6 +446,11 @@ def _run_inner_search(
             splitter.split(trainval_data, groups=trainval_groups),
             start=1,
         ):
+            stage_label = (
+                f"outer {fold}/{config.n_splits} | trial {trial_index}/{len(trial_candidates)} "
+                f"| inner {inner_fold}/{splitter.n_splits}"
+            )
+            LOGGER.info("Starting training stage: %s", stage_label)
             inner_train_data = _subset_by_indices(trainval_data, inner_train_idx)
             inner_val_data = _subset_by_indices(trainval_data, inner_val_idx)
 
@@ -404,9 +463,11 @@ def _run_inner_search(
                 lr=lr,
                 weight_decay=weight_decay,
                 patience=config.early_stopping_patience,
+                thresholds=config.thresholds,
                 early_stopping_threshold=config.early_stopping_threshold,
                 entity_labels=entity_labels,
                 device=device,
+                stage_label=stage_label,
             )
             if model is None:
                 LOGGER.warning(
@@ -514,6 +575,7 @@ def run_experiment(config, script_path):
         filtered_data,
         max_length=config.max_length,
         overlap=config.overlap,
+        tokenizer=getattr(base_model.data_processor, "transformer_tokenizer", None),
     )
 
     if not dataset:
@@ -524,10 +586,12 @@ def run_experiment(config, script_path):
         raise ValueError("No entity labels found after preprocessing.")
 
     groups = _extract_groups(dataset)
-    outer_splitter = _effective_group_kfold(
+    outer_splitter = _build_group_splitter(
+        dataset=dataset,
         groups=groups,
         requested_splits=config.n_splits,
         stage_name="Outer CV",
+        seed=config.seed,
     )
 
     has_best_overall_model = False
@@ -605,6 +669,8 @@ def run_experiment(config, script_path):
             refit_val_size=config.refit_val_size,
             seed=config.seed + fold,
         )
+        refit_stage_label = f"outer {fold}/{outer_splitter.n_splits} | refit"
+        LOGGER.info("Starting training stage: %s", refit_stage_label)
         model, refit_history = _run_single_training(
             base_model=base_model,
             train_data=refit_train_data,
@@ -614,9 +680,11 @@ def run_experiment(config, script_path):
             lr=best_lr,
             weight_decay=best_wd,
             patience=config.early_stopping_patience,
+            thresholds=config.thresholds,
             early_stopping_threshold=config.early_stopping_threshold,
             entity_labels=entity_labels,
             device=device,
+            stage_label=refit_stage_label,
         )
         if model is None:
             LOGGER.warning("Refit stage produced an empty DataLoader for outer fold %s.", fold)
