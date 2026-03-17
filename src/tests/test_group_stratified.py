@@ -67,6 +67,28 @@ class StratifiedGroupKFoldNERTests(unittest.TestCase):
         group_counts = [fold["group_count"] for fold in summary["folds"]]
         self.assertLessEqual(max(group_counts) - min(group_counts), 1)
 
+    def test_distributes_rare_label_groups_across_folds(self):
+        dataset = [
+            {"sample_id": "g1", "ner": [[0, 0, "A"]], "tokenized_text": ["x"]},
+            {"sample_id": "g2", "ner": [[0, 0, "A"]], "tokenized_text": ["x"]},
+            {"sample_id": "g3", "ner": [[0, 0, "A"]], "tokenized_text": ["x"]},
+            {"sample_id": "g4", "ner": [[0, 0, "A"]], "tokenized_text": ["x"]},
+            {"sample_id": "g5", "ner": [[0, 0, "A"]], "tokenized_text": ["x"]},
+            {"sample_id": "g6", "ner": [[0, 0, "A"]], "tokenized_text": ["x"]},
+            {"sample_id": "g7", "ner": [[0, 0, "B"]] * 5, "tokenized_text": ["x"]},
+            {"sample_id": "g8", "ner": [[0, 0, "B"]] * 5, "tokenized_text": ["x"]},
+            {"sample_id": "g9", "ner": [[0, 0, "B"]] * 5, "tokenized_text": ["x"]},
+        ]
+        groups = [sample["sample_id"] for sample in dataset]
+
+        splitter = StratifiedGroupKFoldNER(n_splits=3, seed=42)
+        list(splitter.split(dataset, groups=groups))
+
+        summary = splitter.last_summary
+        self.assertIsNotNone(summary)
+        rare_label_spans = [fold["label_spans"]["B"] for fold in summary["folds"]]
+        self.assertTrue(all(span_count >= 5 for span_count in rare_label_spans))
+
 
 if __name__ == "__main__":
     unittest.main()

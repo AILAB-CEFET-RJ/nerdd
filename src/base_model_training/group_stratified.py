@@ -114,54 +114,14 @@ class StratifiedGroupKFoldNER:
         )
         return total_cost
 
-    def _fold_candidate_key(self, fold, profile, target_groups, target_examples, target_presence, target_spans):
-        projected_fold = {
-            "group_count": fold["group_count"] + 1,
-            "example_count": fold["example_count"] + profile["num_examples"],
-            "presence": fold["presence"] + profile["presence"],
-            "span_counts": fold["span_counts"] + profile["span_counts"],
-        }
-
-        group_cost = ((projected_fold["group_count"] - target_groups) / max(1.0, target_groups)) ** 2
-        example_cost = ((projected_fold["example_count"] - target_examples) / max(1.0, target_examples)) ** 2
-
-        if len(target_presence):
-            valid_presence = target_presence > 0
-            if np.any(valid_presence):
-                presence_cost = float(
-                    np.mean(
-                        (
-                            (projected_fold["presence"][valid_presence] - target_presence[valid_presence])
-                            / target_presence[valid_presence]
-                        )
-                        ** 2
-                    )
-                )
-                missing_label_penalty = float(np.sum(projected_fold["presence"][valid_presence] == 0.0))
-            else:
-                presence_cost = 0.0
-                missing_label_penalty = 0.0
-
-            valid_spans = target_spans > 0
-            if np.any(valid_spans):
-                span_cost = float(
-                    np.mean(
-                        (
-                            (projected_fold["span_counts"][valid_spans] - target_spans[valid_spans])
-                            / target_spans[valid_spans]
-                        )
-                        ** 2
-                    )
-                )
-            else:
-                span_cost = 0.0
-        else:
-            presence_cost = 0.0
-            span_cost = 0.0
-            missing_label_penalty = 0.0
-
-        total_cost = group_cost + example_cost + (3.0 * presence_cost) + (2.0 * span_cost) + (10.0 * missing_label_penalty)
-        return (total_cost, projected_fold["group_count"], projected_fold["example_count"])
+    def _assignment_cost(self, folds, fold_idx, profile, target_groups, target_examples, target_presence, target_spans):
+        fold = folds[fold_idx]
+        self._add_profile(fold, profile)
+        total_cost = self._cost_components(folds, target_groups, target_examples, target_presence, target_spans)
+        projected_group_count = fold["group_count"]
+        projected_example_count = fold["example_count"]
+        self._remove_profile(fold, profile)
+        return (total_cost, projected_group_count, projected_example_count)
 
     def _refine_folds(
         self,
@@ -331,8 +291,9 @@ class StratifiedGroupKFoldNER:
             best_fold_idx = min(
                 candidate_folds,
                 key=lambda fold_idx: (
-                    *self._fold_candidate_key(
-                        folds[fold_idx],
+                    *self._assignment_cost(
+                        folds,
+                        fold_idx,
                         profile,
                         target_groups,
                         target_examples,

@@ -127,3 +127,32 @@ Implication:
 
 - outer and inner CV should now always emit the requested number of non-empty folds
 - fold summaries should better reflect the dataset distribution without silently dropping a fold
+
+### Stratified Group Splitter Now Enforces Fold Capacity And Global Label Balance
+
+After the empty-fold fix, a second failure mode remained visible in nested-CV logs: fold sizes became balanced by group count, but some folds still received almost none of the rarer entity labels.
+
+That produced summaries shaped like:
+
+```text
+Outer CV fold 1 summary | groups=1222 | examples=1393 | spans=[Location=5515, Organization=2043, Person=3416]
+Outer CV fold 3 summary | groups=1221 | examples=1227 | spans=[Location=3220, Organization=42, Person=26]
+```
+
+This was better than an empty fold, but still not a faithful stratified split for NER.
+
+The splitter in `src/base_model_training/group_stratified.py` was tightened again:
+
+- each fold now has an explicit group-capacity limit derived from `n_groups / n_splits`
+- greedy placement can only assign to folds that still have remaining capacity
+- local-search moves also respect those fold-capacity constraints
+- candidate assignment quality is now evaluated using the global partition cost after a temporary assignment, instead of only a local fold-level estimate
+
+Validation:
+
+- `src/tests/test_group_stratified.py` now also includes a regression case asserting that rare-label groups are distributed across folds when the dataset makes that possible
+
+Implication:
+
+- folds should now stay balanced both in size and in rare-label coverage more reliably than before
+- training diagnostics should be less likely to be distorted by a fold that is large enough but nearly devoid of one entity type
