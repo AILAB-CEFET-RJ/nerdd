@@ -64,6 +64,8 @@ class StratifiedGroupKFoldNERTests(unittest.TestCase):
         self.assertIsNotNone(summary)
         self.assertTrue(all(fold["group_count"] > 0 for fold in summary["folds"]))
         self.assertTrue(all(fold["example_count"] > 0 for fold in summary["folds"]))
+        group_counts = [fold["group_count"] for fold in summary["folds"]]
+        self.assertLessEqual(max(group_counts) - min(group_counts), 1)
 
 
 if __name__ == "__main__":

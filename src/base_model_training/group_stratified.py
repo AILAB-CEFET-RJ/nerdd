@@ -40,6 +40,11 @@ class StratifiedGroupKFoldNER:
             "example_count": 0,
         }
 
+    def _group_capacity_limits(self, num_groups):
+        base = num_groups // self.n_splits
+        remainder = num_groups % self.n_splits
+        return [base + (1 if fold_idx < remainder else 0) for fold_idx in range(self.n_splits)]
+
     def _add_profile(self, fold, profile):
         fold["group_ids"].append(profile["group_id"])
         fold["indices"].extend(profile["indices"])
@@ -158,7 +163,16 @@ class StratifiedGroupKFoldNER:
         total_cost = group_cost + example_cost + (3.0 * presence_cost) + (2.0 * span_cost) + (10.0 * missing_label_penalty)
         return (total_cost, projected_fold["group_count"], projected_fold["example_count"])
 
-    def _refine_folds(self, folds, group_profiles, target_groups, target_examples, target_presence, target_spans):
+    def _refine_folds(
+        self,
+        folds,
+        group_profiles,
+        target_groups,
+        target_examples,
+        target_presence,
+        target_spans,
+        max_groups_per_fold,
+    ):
         profile_by_group = {profile["group_id"]: profile for profile in group_profiles}
         best_cost = self._cost_components(folds, target_groups, target_examples, target_presence, target_spans)
         max_passes = 8
@@ -175,6 +189,8 @@ class StratifiedGroupKFoldNER:
                     profile = profile_by_group[group_id]
                     for target_idx, target_fold in enumerate(folds):
                         if target_idx == source_idx:
+                            continue
+                        if target_fold["group_count"] >= max_groups_per_fold[target_idx]:
                             continue
 
                         self._remove_profile(source_fold, profile)
@@ -298,6 +314,7 @@ class StratifiedGroupKFoldNER:
         target_examples = sum(profile["num_examples"] for profile in group_profiles) / self.n_splits
         target_presence = global_presence / self.n_splits if num_labels else np.asarray([])
         target_spans = global_spans / self.n_splits if num_labels else np.asarray([])
+        max_groups_per_fold = self._group_capacity_limits(len(group_profiles))
 
         folds = [self._empty_fold(num_labels) for _ in range(self.n_splits)]
 
@@ -306,8 +323,13 @@ class StratifiedGroupKFoldNER:
 
         for profile_idx in order[self.n_splits :]:
             profile = group_profiles[profile_idx]
+            candidate_folds = [
+                fold_idx
+                for fold_idx in range(self.n_splits)
+                if folds[fold_idx]["group_count"] < max_groups_per_fold[fold_idx]
+            ]
             best_fold_idx = min(
-                range(self.n_splits),
+                candidate_folds,
                 key=lambda fold_idx: (
                     *self._fold_candidate_key(
                         folds[fold_idx],
@@ -322,7 +344,15 @@ class StratifiedGroupKFoldNER:
             )
             self._add_profile(folds[best_fold_idx], profile)
 
-        self._refine_folds(folds, group_profiles, target_groups, target_examples, target_presence, target_spans)
+        self._refine_folds(
+            folds,
+            group_profiles,
+            target_groups,
+            target_examples,
+            target_presence,
+            target_spans,
+            max_groups_per_fold,
+        )
 
         if any(fold["group_count"] == 0 for fold in folds):
             raise RuntimeError("Internal error: stratified group splitter produced an empty fold.")

@@ -34,10 +34,38 @@ Expected outputs:
 - `./artifacts/base_model_training/smoke/run_nested_tiny/nested_cv_results.json`
 - `./artifacts/base_model_training/smoke/run_nested_tiny/best_overall_gliner_model/`
 
-## 3) Server Training (example with batch-size 16)
+## 3) Choosing The GLiNER Base Model
+
+`base_model_training.train_nested_kfold` accepts the GLiNER base model through `--model-base`.
+
+Recommended options:
+
+- `urchade/gliner_small-v2.1`: best for smoke tests, CPU runs, and low-VRAM debugging
+- `urchade/gliner_medium-v2.1`: recommended default for real training when you want a stronger model with moderate cost
+- `urchade/gliner_large-v2.1`: recommended when the training machine has enough VRAM and you want to prioritize model quality over runtime
+- `urchade/gliner_multi-v2.1`: worth testing when the corpus is multilingual or primarily non-English
+
+Operational guidance:
+
+- use `small` to validate the pipeline end-to-end before launching a long run
+- use `medium` as the first serious baseline for nested CV
+- use `large` only after a short smoke run confirms your batch size and `max-length` fit in GPU memory
+- on an RTX 5090, `large` is a reasonable candidate, but a short run with a reduced batch size is still the safest first step
+
+Example substitutions:
+
+```bash
+--model-base urchade/gliner_small-v2.1
+--model-base urchade/gliner_medium-v2.1
+--model-base urchade/gliner_large-v2.1
+--model-base urchade/gliner_multi-v2.1
+```
+
+## 4) Server Training (example with batch-size 16)
 ```bash
 cd src
 python3 -m base_model_training.train_nested_kfold \
+  --model-base urchade/gliner_medium-v2.1 \
   --train-path ../data/dd_corpus_small_train.json \
   --batch-size 16 \
   --num-epochs 20 \
@@ -52,7 +80,7 @@ python3 -m base_model_training.train_nested_kfold \
   --log-level INFO
 ```
 
-## 4) Evaluation
+## 5) Evaluation
 ```bash
 cd src
 python3 base_model_training/evaluate_gliner.py \
@@ -68,7 +96,7 @@ python3 base_model_training/evaluate_gliner.py \
   --log-level INFO
 ```
 
-## 5) Large Corpus Prediction (inference-only)
+## 6) Large Corpus Prediction (inference-only)
 ```bash
 cd src
 python3 pseudolabelling/generate_corpus_predictions.py \
@@ -84,7 +112,7 @@ python3 pseudolabelling/generate_corpus_predictions.py \
   --log-level INFO
 ```
 
-## 6) Score Calibration (post-pseudolabelling)
+## 7) Score Calibration (post-pseudolabelling)
 ```bash
 cd src
 python3 calibration/run_calibration.py \
