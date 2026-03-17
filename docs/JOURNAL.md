@@ -96,3 +96,34 @@ The training loader now emits explicit logging about `sample_id` quality in the 
 - duplicated `sample_id` values in the raw input are warned about
 
 This matters because nested CV treats `sample_id` as the grouping key for leakage prevention and fold balancing.
+
+## 2026-03-17
+
+### Stratified Group Splitter No Longer Emits Empty Folds
+
+The first version of `StratifiedGroupKFoldNER` used a purely greedy assignment strategy. In some skewed datasets, that heuristic could place all groups into only a subset of folds and leave another fold empty.
+
+The failure mode appeared in nested-CV logs such as:
+
+```text
+Outer CV fold 3 summary | groups=0 | examples=0 | spans=[Location=0, Organization=0, Person=0]
+```
+
+That behavior is invalid for `n_splits=3` because the run is no longer performing a real 3-fold split. It also propagated to inner CV, where empty folds were later skipped.
+
+The fix was implemented in `src/base_model_training/group_stratified.py`:
+
+- fold construction now starts with mandatory seeding of one group per fold
+- the remaining groups are assigned greedily using the balancing objective
+- a local-search refinement step now tries beneficial group moves and swaps across folds
+- the global cost now penalizes empty folds, missing labels, group imbalance, example imbalance, and span imbalance
+- the splitter now raises if an empty fold somehow survives refinement
+
+Validation:
+
+- `src/tests/test_group_stratified.py` now includes a regression test asserting that all emitted folds are non-empty
+
+Implication:
+
+- outer and inner CV should now always emit the requested number of non-empty folds
+- fold summaries should better reflect the dataset distribution without silently dropping a fold

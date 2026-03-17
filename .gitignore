@@ -164,3 +164,4 @@ data/
 # runtime outputs (local/debug/experiments)
 src/artifacts/
 2602.04998v1.pdf
+dd_ner_pipeline/artifacts/annotation_editor.html

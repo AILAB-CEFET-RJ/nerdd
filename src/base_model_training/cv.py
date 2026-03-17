@@ -126,22 +126,26 @@ def _load_model(model_base, local_only):
             )
         return loaded_model
 
-    # Try modern kwargs first; gracefully fall back for older GLiNER/transformers versions.
-    try:
-        return _load_with_warning_capture(
-            lambda: GLiNER.from_pretrained(
-                model_base,
-                local_files_only=local_only,
-                fix_mistral_regex=True,
-            )
-        )
-    except TypeError:
+    # Preserve fix_mistral_regex across fallbacks whenever the installed GLiNER version supports it.
+    loader_attempts = [
+        lambda: GLiNER.from_pretrained(
+            model_base,
+            local_files_only=local_only,
+            fix_mistral_regex=True,
+        ),
+        lambda: GLiNER.from_pretrained(model_base, fix_mistral_regex=True),
+        lambda: GLiNER.from_pretrained(model_base, local_files_only=local_only),
+        lambda: GLiNER.from_pretrained(model_base),
+    ]
+
+    last_error = None
+    for loader_attempt in loader_attempts:
         try:
-            return _load_with_warning_capture(
-                lambda: GLiNER.from_pretrained(model_base, local_files_only=local_only)
-            )
-        except TypeError:
-            return _load_with_warning_capture(lambda: GLiNER.from_pretrained(model_base))
+            return _load_with_warning_capture(loader_attempt)
+        except TypeError as exc:
+            last_error = exc
+
+    raise last_error
 
 
 def _subset_by_indices(dataset, indices):

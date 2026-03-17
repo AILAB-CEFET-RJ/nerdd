@@ -43,6 +43,28 @@ class StratifiedGroupKFoldNERTests(unittest.TestCase):
         example_counts = [fold["example_count"] for fold in summary["folds"]]
         self.assertLessEqual(max(example_counts) - min(example_counts), 1)
 
+    def test_never_emits_empty_fold(self):
+        dataset = [
+            {"sample_id": "g1", "ner": [[0, 0, "Location"]] * 10, "tokenized_text": ["x"]},
+            {"sample_id": "g2", "ner": [[0, 0, "Location"]] * 8, "tokenized_text": ["x"]},
+            {"sample_id": "g3", "ner": [[0, 0, "Location"]] * 6, "tokenized_text": ["x"]},
+            {"sample_id": "g4", "ner": [[0, 0, "Organization"]] * 4, "tokenized_text": ["x"]},
+            {"sample_id": "g5", "ner": [[0, 0, "Organization"]] * 2, "tokenized_text": ["x"]},
+            {"sample_id": "g6", "ner": [[0, 0, "Person"]], "tokenized_text": ["x"]},
+        ]
+        groups = [sample["sample_id"] for sample in dataset]
+
+        splitter = StratifiedGroupKFoldNER(n_splits=3, seed=42)
+        splits = list(splitter.split(dataset, groups=groups))
+
+        self.assertEqual(len(splits), 3)
+        self.assertTrue(all(len(test_idx) > 0 for _train_idx, test_idx in splits))
+
+        summary = splitter.last_summary
+        self.assertIsNotNone(summary)
+        self.assertTrue(all(fold["group_count"] > 0 for fold in summary["folds"]))
+        self.assertTrue(all(fold["example_count"] > 0 for fold in summary["folds"]))
+
 
 if __name__ == "__main__":
     unittest.main()
