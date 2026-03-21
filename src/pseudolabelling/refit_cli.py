@@ -14,6 +14,8 @@ class RefitConfig:
     epochs: int = 10
     patience: int = 3
     batch_size: int = 8
+    max_length: int = 384
+    overlap: int = 100
     lr: float = 3e-5
     weight_decay: float = 0.01
     val_jsonl: str = ""
@@ -49,6 +51,8 @@ def parse_args():
     parser.add_argument("--epochs", type=int, default=defaults.epochs)
     parser.add_argument("--patience", type=int, default=defaults.patience)
     parser.add_argument("--batch-size", type=int, default=defaults.batch_size)
+    parser.add_argument("--max-length", type=int, default=defaults.max_length)
+    parser.add_argument("--overlap", type=int, default=defaults.overlap)
     parser.add_argument("--lr", type=float, default=defaults.lr)
     parser.add_argument("--weight-decay", type=float, default=defaults.weight_decay)
     parser.add_argument("--val-jsonl", default=defaults.val_jsonl, help="Optional external validation JSONL")
@@ -74,6 +78,8 @@ def build_config(args):
         epochs=args.epochs,
         patience=args.patience,
         batch_size=args.batch_size,
+        max_length=args.max_length,
+        overlap=args.overlap,
         lr=args.lr,
         weight_decay=args.weight_decay,
         val_jsonl=args.val_jsonl,

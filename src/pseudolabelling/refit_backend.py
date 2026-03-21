@@ -106,21 +106,46 @@ def _f1_from_span_lists(predicted_spans: List[List[Dict[str, Any]]], gold_spans:
 
 
 def _make_spanlabel_dataset(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    dataset = []
-    for record in records:
+    return _make_spanlabel_dataset_chunked(records, max_length=384, overlap=100, tokenizer=None)
+
+
+def _make_spanlabel_dataset_chunked(
+    records: List[Dict[str, Any]],
+    *,
+    max_length: int,
+    overlap: int,
+    tokenizer: Any,
+) -> List[Dict[str, Any]]:
+    from base_model_training.data import process_sample, split_long_sentences
+
+    base_dataset = []
+    for index, record in enumerate(records):
         text = _get_text(record)
         if not text:
             continue
-        entities = record.get("entities") or record.get("ner") or []
-        tokenized_text, ner = _char_to_token_spans(text, entities)
-        if ner:
-            dataset.append({"tokenized_text": tokenized_text, "ner": ner})
-    return dataset
+        entities = record.get("entities") or record.get("ner") or record.get("spans") or []
+        sample = {
+            "text": text,
+            "spans": entities,
+            "sample_id": record.get("sample_id", f"refit_{index}"),
+        }
+        processed = process_sample(sample)
+        if processed.get("ner"):
+            base_dataset.append(processed)
+
+    return split_long_sentences(
+        base_dataset,
+        max_length=max_length,
+        overlap=overlap,
+        tokenizer=tokenizer,
+    )
 
 
 @dataclass
 class _TrainConf:
     batch_size: int = 8
+    max_length: int = 384
+    overlap: int = 100
     lr: float = 3e-5
     wd: float = 0.01
     max_epochs: int = 10
@@ -138,8 +163,23 @@ def _train_gliner_spanlabel(model: Any, train_recs: List[Dict[str, Any]], val_re
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
 
-    ds_train = _make_spanlabel_dataset(train_recs)
-    ds_val = _make_spanlabel_dataset(val_recs) if val_recs else []
+    transformer_tokenizer = getattr(model.data_processor, "transformer_tokenizer", None)
+    ds_train = _make_spanlabel_dataset_chunked(
+        train_recs,
+        max_length=conf.max_length,
+        overlap=conf.overlap,
+        tokenizer=transformer_tokenizer,
+    )
+    ds_val = (
+        _make_spanlabel_dataset_chunked(
+            val_recs,
+            max_length=conf.max_length,
+            overlap=conf.overlap,
+            tokenizer=transformer_tokenizer,
+        )
+        if val_recs
+        else []
+    )
     if not ds_train:
         print("[refit] no trainable examples after span conversion")
         return
@@ -273,6 +313,8 @@ def treinar_gliner(
 
     conf = _TrainConf(
         batch_size=int(batch_size),
+        max_length=int(kwargs.get("max_length", 384)),
+        overlap=int(kwargs.get("overlap", 100)),
         lr=float(lr),
         wd=float(wd),
         max_epochs=int(num_epochs),

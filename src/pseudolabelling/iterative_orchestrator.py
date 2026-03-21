@@ -141,6 +141,8 @@ class IterativeCycleConfig:
     refit_epochs: int = 10
     refit_patience: int = 3
     refit_batch_size: int = 8
+    refit_max_length: int = 384
+    refit_overlap: int = 100
     refit_lr: float = 3e-5
     refit_weight_decay: float = 0.01
     refit_val_ratio: float = 0.1
@@ -300,6 +302,8 @@ def run_iterative_cycle(config: IterativeCycleConfig, script_path: str):
         epochs=config.refit_epochs,
         patience=config.refit_patience,
         batch_size=config.refit_batch_size,
+        max_length=config.refit_max_length,
+        overlap=config.refit_overlap,
         lr=config.refit_lr,
         weight_decay=config.refit_weight_decay,
         val_ratio=config.refit_val_ratio,
@@ -477,6 +481,8 @@ def parse_args():
     parser.add_argument("--refit-epochs", type=int, default=defaults.refit_epochs)
     parser.add_argument("--refit-patience", type=int, default=defaults.refit_patience)
     parser.add_argument("--refit-batch-size", type=int, default=defaults.refit_batch_size)
+    parser.add_argument("--refit-max-length", type=int, default=defaults.refit_max_length)
+    parser.add_argument("--refit-overlap", type=int, default=defaults.refit_overlap)
     parser.add_argument("--refit-lr", type=float, default=defaults.refit_lr)
     parser.add_argument("--refit-weight-decay", type=float, default=defaults.refit_weight_decay)
     parser.add_argument("--refit-val-ratio", type=float, default=defaults.refit_val_ratio)
@@ -537,6 +543,8 @@ def build_config(args):
         refit_epochs=args.refit_epochs,
         refit_patience=args.refit_patience,
         refit_batch_size=args.refit_batch_size,
+        refit_max_length=args.refit_max_length,
+        refit_overlap=args.refit_overlap,
         refit_lr=args.refit_lr,
         refit_weight_decay=args.refit_weight_decay,
         refit_val_ratio=args.refit_val_ratio,
