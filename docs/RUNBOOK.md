@@ -143,7 +143,27 @@ python3 pseudolabelling/generate_corpus_predictions.py \
   --log-level INFO
 ```
 
-## 10) Controlled Refit Comparison For Dissertation Experiments
+## 10) Sample A Reproducible Fraction Of The Large Corpus
+
+Before running expensive pseudolabelling experiments on the full large corpus, create a fixed sample to study the score distribution and choose a threshold budget more safely.
+
+```bash
+cd .
+python3 src/tools/sample_large_corpus.py \
+  --input data/dd_corpus_large.json \
+  --output-jsonl data/dd_corpus_large_sample_10k.jsonl \
+  --sample-size 10000 \
+  --seed 42 \
+  --summary-json data/dd_corpus_large_sample_10k_summary.json
+```
+
+Recommended use:
+
+- run prediction, context boost, and record scoring on `data/dd_corpus_large_sample_10k.jsonl`
+- inspect the resulting score distribution
+- choose the kept/discarded threshold based on the observed volume of candidate reports
+
+## 11) Controlled Refit Comparison For Dissertation Experiments
 
 Use the same final holdout `../data/dd_corpus_small_test_filtered.json` for both runs below.
 
