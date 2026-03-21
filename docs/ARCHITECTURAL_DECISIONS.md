@@ -102,7 +102,7 @@ The dissertation can state that:
 - a global temperature-scaling baseline was adopted first
 - improvements were verified on held-out data, not only on the fitting subset
 
-## 2026-03-21 - Current Refit Stage Does Not Yet Match The Main Dissertation Hypothesis
+## 2026-03-21 - Refit Must Combine Supervised Data Plus Kept Pseudolabels
 
 ### Context
 
@@ -110,68 +110,58 @@ The main hypothesis under discussion is:
 
 > incorporating new examples obtained through pseudolabelling into fine-tuning produces NER models that are better than the originally trained base model
 
-However, the current refit implementation in `src/pseudolabelling/` does not merge pseudolabelled examples with the original supervised training set.
+The earlier refit implementation in `src/pseudolabelling/` trained only on kept pseudolabel records. That design did not match the hypothesis above.
 
 ### Decision
 
-This mismatch must be treated as an explicit architectural limitation of the current codebase.
+Refit now combines:
 
-At present, the implemented experiment is closer to:
+- the original supervised training set
+- the selected kept pseudolabel records
 
-- start from the base model weights
-- refit using selected pseudolabelled records only
+The merged training set is the canonical input to `src/pseudolabelling/refit_model.py`.
 
-It is not yet the stronger design:
-
-- original labeled training set plus selected pseudolabelled records
+When duplicate texts are present, the supervised example is preferred by default.
 
 ### Rationale
 
-Training only on pseudolabelled records changes the question being tested.
+Training only on pseudolabelled records changes the question being tested and weakens the connection between implementation and claim.
 
-It risks:
+The merged design keeps the highest-quality human supervision as an anchor while still testing whether pseudolabel augmentation helps.
 
-- discarding the highest-quality supervised signal
+It also reduces the risk of:
+
 - reinforcing model-generated errors
-- weakening the direct connection between implementation and the dissertation claim
+- drifting toward a pseudolabel-only regime that no longer reflects the main experimental question
 
 ### Implications For Experimentation
 
-Results from the current refit flow should be interpreted as self-training or pseudolabel-only refit, not as supervised-plus-pseudolabel augmentation.
+Refit experiments should now be interpreted as supervised-plus-pseudolabel augmentation experiments, not pseudolabel-only self-training.
 
-If the dissertation claims dataset augmentation, the code should be updated so refit consumes:
+Each run should record:
 
-- original labeled data
-- kept pseudolabelled records
-
-and ideally accumulates pseudolabelled data across iterations.
+- how many rows came from supervised data
+- how many rows came from pseudolabels
+- whether duplicate texts were discarded in favor of supervised rows
 
 ### Implications For Dissertation Wording
 
-Until the code is changed, the dissertation should not overclaim that the implemented pipeline already performs cumulative augmentation of the original training set.
+The dissertation can now describe the refit stage as fine-tuning on:
 
-It should either:
+- the original labeled training set
+- plus a selected set of pseudolabelled examples
 
-- describe the current method honestly as pseudolabel-only refit from a pretrained base model
-
-or
-
-- update the implementation before finalizing the dissertation text
+It should still avoid claiming cumulative multi-iteration augmentation unless that part is implemented explicitly.
 
 ## 2026-03-21 - Base Versus Refit Comparison Must Be Explicit
 
 ### Context
 
-The current pseudolabelling flow can evaluate a refit model, but it does not automatically produce a paired comparison between:
-
-- the original base model
-- the refit model
-
-on the same holdout set.
+The project hypothesis depends on comparing the original base model with the pseudolabelling-refit model on the same holdout set.
 
 ### Decision
 
-The project should treat direct base-versus-refit evaluation on the same holdout as a required comparison for hypothesis testing.
+Direct base-versus-refit evaluation on the same holdout is a required comparison for hypothesis testing, and the iterative orchestrator now writes it automatically when `--evaluate-refit` is enabled.
 
 ### Rationale
 
@@ -184,6 +174,12 @@ Every refit experiment intended to support the dissertation hypothesis should re
 - base model metrics on the holdout
 - refit model metrics on the same holdout
 - the delta between them
+
+Canonical artifacts now include:
+
+- `07_eval_base/metrics.json`
+- `08_eval_refit/metrics.json`
+- `09_base_vs_refit_comparison.json`
 
 ### Implications For Dissertation Wording
 

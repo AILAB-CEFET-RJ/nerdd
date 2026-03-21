@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 @dataclass
 class RefitConfig:
     input_path: str = "./pseudolabel_split"
+    supervised_train_path: str = ""
     output_model_dir: str = "./refit_model"
     stats_json: str = "./refit_stats.json"
     train_manifest_jsonl: str = "./train_manifest.jsonl"
@@ -20,6 +21,8 @@ class RefitConfig:
     seed: int = 42
     allowed_labels: list[str] = field(default_factory=lambda: ["Person", "Location", "Organization"])
     num_workers: int = 2
+    include_supervised_train: bool = True
+    deduplicate_by_text: bool = True
 
 
 def _parse_csv_list(raw_value):
@@ -33,6 +36,11 @@ def parse_args():
     defaults = RefitConfig()
     parser = argparse.ArgumentParser(description="Refit GLiNER model on kept pseudolabel records")
     parser.add_argument("--input-path", default=defaults.input_path, help="JSONL file or split directory with kept.jsonl")
+    parser.add_argument(
+        "--supervised-train-path",
+        default=defaults.supervised_train_path,
+        help="Optional labeled supervised training dataset to merge with kept pseudolabels.",
+    )
     parser.add_argument("--output-model-dir", default=defaults.output_model_dir)
     parser.add_argument("--stats-json", default=defaults.stats_json)
     parser.add_argument("--train-manifest-jsonl", default=defaults.train_manifest_jsonl)
@@ -48,6 +56,8 @@ def parse_args():
     parser.add_argument("--seed", type=int, default=defaults.seed)
     parser.add_argument("--allowed-labels", default=",".join(defaults.allowed_labels))
     parser.add_argument("--num-workers", type=int, default=defaults.num_workers)
+    parser.add_argument("--exclude-supervised-train", action="store_true")
+    parser.add_argument("--disable-deduplicate-by-text", action="store_true")
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     return parser.parse_args()
 
@@ -55,6 +65,7 @@ def parse_args():
 def build_config(args):
     return RefitConfig(
         input_path=args.input_path,
+        supervised_train_path=args.supervised_train_path,
         output_model_dir=args.output_model_dir,
         stats_json=args.stats_json,
         train_manifest_jsonl=args.train_manifest_jsonl,
@@ -70,4 +81,6 @@ def build_config(args):
         seed=args.seed,
         allowed_labels=_parse_csv_list(args.allowed_labels),
         num_workers=args.num_workers,
+        include_supervised_train=(not args.exclude_supervised_train),
+        deduplicate_by_text=(not args.disable_deduplicate_by_text),
     )

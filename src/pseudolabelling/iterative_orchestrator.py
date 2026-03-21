@@ -32,6 +32,54 @@ def _format_duration(seconds):
     return f"{hours:02d}:{mins:02d}:{secs:02d}"
 
 
+def _load_metrics_json(metrics_path: Path):
+    return json.loads(metrics_path.read_text(encoding="utf-8"))
+
+
+def _build_base_vs_refit_comparison(base_metrics, refit_metrics):
+    comparison = {
+        "micro_f1": {
+            "base": base_metrics["micro"]["f1"],
+            "refit": refit_metrics["micro"]["f1"],
+            "delta": refit_metrics["micro"]["f1"] - base_metrics["micro"]["f1"],
+        },
+        "macro_f1": {
+            "base": base_metrics["macro_f1"],
+            "refit": refit_metrics["macro_f1"],
+            "delta": refit_metrics["macro_f1"] - base_metrics["macro_f1"],
+        },
+        "per_label": {},
+    }
+
+    labels = sorted(set(base_metrics.get("labels", [])) | set(refit_metrics.get("labels", [])))
+    for label in labels:
+        base_row = base_metrics.get("per_label", {}).get(label, {})
+        refit_row = refit_metrics.get("per_label", {}).get(label, {})
+        comparison["per_label"][label] = {
+            "precision": {
+                "base": base_row.get("precision"),
+                "refit": refit_row.get("precision"),
+                "delta": (refit_row.get("precision", 0.0) - base_row.get("precision", 0.0)),
+            },
+            "recall": {
+                "base": base_row.get("recall"),
+                "refit": refit_row.get("recall"),
+                "delta": (refit_row.get("recall", 0.0) - base_row.get("recall", 0.0)),
+            },
+            "f1": {
+                "base": base_row.get("f1"),
+                "refit": refit_row.get("f1"),
+                "delta": (refit_row.get("f1", 0.0) - base_row.get("f1", 0.0)),
+            },
+            "support": {
+                "base": base_row.get("support"),
+                "refit": refit_row.get("support"),
+            },
+        }
+
+    return comparison
+
+
 def _run_corpus_prediction(config, script_path):
     from pseudolabelling.pipeline import run_corpus_prediction
 
@@ -89,6 +137,7 @@ class IterativeCycleConfig:
 
     refit_output_model_dir: str = ""
     refit_base_model: str = ""
+    refit_supervised_train_path: str = ""
     refit_epochs: int = 10
     refit_patience: int = 3
     refit_batch_size: int = 8
@@ -97,6 +146,8 @@ class IterativeCycleConfig:
     refit_val_ratio: float = 0.1
     refit_seed: int = 42
     refit_num_workers: int = 2
+    refit_include_supervised_train: bool = True
+    refit_deduplicate_by_text: bool = True
 
     evaluate_refit: bool = False
     eval_gt_jsonl: str = ""
@@ -240,6 +291,7 @@ def run_iterative_cycle(config: IterativeCycleConfig, script_path: str):
     val_manifest = run_dir / "06_val_manifest.jsonl"
     refit_cfg = RefitConfig(
         input_path=str(split_dir),
+        supervised_train_path=config.refit_supervised_train_path,
         output_model_dir=str(refit_model_dir),
         stats_json=str(refit_stats),
         train_manifest_jsonl=str(train_manifest),
@@ -254,26 +306,50 @@ def run_iterative_cycle(config: IterativeCycleConfig, script_path: str):
         seed=config.refit_seed,
         allowed_labels=config.labels,
         num_workers=config.refit_num_workers,
+        include_supervised_train=config.refit_include_supervised_train,
+        deduplicate_by_text=config.refit_deduplicate_by_text,
     )
     run_refit(refit_cfg, script_path=script_path)
 
-    eval_dir = None
+    base_eval_dir = None
+    refit_eval_dir = None
+    comparison_path = None
     if config.evaluate_refit:
         if not config.eval_gt_jsonl:
             raise ValueError("--eval-gt-jsonl is required when --evaluate-refit is enabled.")
-        LOGGER.info("Step 7/7: Evaluate refit model")
-        eval_dir = run_dir / "07_eval_refit"
-        eval_cfg = {
-            "model_path": str(refit_model_dir),
+        LOGGER.info("Step 7/7: Evaluate base and refit models on shared holdout")
+        base_eval_dir = run_dir / "07_eval_base"
+        base_eval_cfg = {
+            "model_path": config.model_path,
             "gt_jsonl": config.eval_gt_jsonl,
-            "out_dir": str(eval_dir),
+            "out_dir": str(base_eval_dir),
             "labels": config.labels,
             "prediction_threshold": config.eval_prediction_threshold,
             "batch_size": config.eval_batch_size,
             "max_tokens": config.eval_max_tokens,
             "match_mode": "exact",
         }
-        run_evaluate_refit(eval_cfg, script_path=script_path)
+        run_evaluate_refit(base_eval_cfg, script_path=script_path)
+
+        refit_eval_dir = run_dir / "08_eval_refit"
+        refit_eval_cfg = {
+            "model_path": str(refit_model_dir),
+            "gt_jsonl": config.eval_gt_jsonl,
+            "out_dir": str(refit_eval_dir),
+            "labels": config.labels,
+            "prediction_threshold": config.eval_prediction_threshold,
+            "batch_size": config.eval_batch_size,
+            "max_tokens": config.eval_max_tokens,
+            "match_mode": "exact",
+        }
+        run_evaluate_refit(refit_eval_cfg, script_path=script_path)
+
+        base_metrics = _load_metrics_json(base_eval_dir / "metrics.json")
+        refit_metrics = _load_metrics_json(refit_eval_dir / "metrics.json")
+        comparison = _build_base_vs_refit_comparison(base_metrics, refit_metrics)
+        comparison_path = run_dir / "09_base_vs_refit_comparison.json"
+        comparison_path.write_text(json.dumps(comparison, indent=2, ensure_ascii=False), encoding="utf-8")
+        LOGGER.info("Saved base-vs-refit comparison: %s", comparison_path)
 
     next_iter_stats = None
     if config.prepare_next_iteration:
@@ -322,7 +398,9 @@ def run_iterative_cycle(config: IterativeCycleConfig, script_path: str):
             "split_dir": str(split_dir.resolve()),
             "refit_model_dir": str(refit_model_dir.resolve()),
             "refit_stats": str(refit_stats.resolve()),
-            "eval_dir": str(eval_dir.resolve()) if eval_dir else None,
+            "base_eval_dir": str(base_eval_dir.resolve()) if base_eval_dir else None,
+            "refit_eval_dir": str(refit_eval_dir.resolve()) if refit_eval_dir else None,
+            "base_vs_refit_comparison": str(comparison_path.resolve()) if comparison_path else None,
             "next_iteration_stats": str(next_iter_stats.resolve()) if next_iter_stats else None,
         },
     }
@@ -395,6 +473,7 @@ def parse_args():
 
     parser.add_argument("--refit-output-model-dir", default=defaults.refit_output_model_dir)
     parser.add_argument("--refit-base-model", default=defaults.refit_base_model)
+    parser.add_argument("--refit-supervised-train-path", default=defaults.refit_supervised_train_path)
     parser.add_argument("--refit-epochs", type=int, default=defaults.refit_epochs)
     parser.add_argument("--refit-patience", type=int, default=defaults.refit_patience)
     parser.add_argument("--refit-batch-size", type=int, default=defaults.refit_batch_size)
@@ -403,6 +482,8 @@ def parse_args():
     parser.add_argument("--refit-val-ratio", type=float, default=defaults.refit_val_ratio)
     parser.add_argument("--refit-seed", type=int, default=defaults.refit_seed)
     parser.add_argument("--refit-num-workers", type=int, default=defaults.refit_num_workers)
+    parser.add_argument("--refit-exclude-supervised-train", action="store_true")
+    parser.add_argument("--refit-disable-deduplicate-by-text", action="store_true")
 
     parser.add_argument("--evaluate-refit", action="store_true")
     parser.add_argument("--eval-gt-jsonl", default=defaults.eval_gt_jsonl)
@@ -452,6 +533,7 @@ def build_config(args):
         split_fallback_score_field=args.split_fallback_score_field,
         refit_output_model_dir=args.refit_output_model_dir,
         refit_base_model=args.refit_base_model,
+        refit_supervised_train_path=args.refit_supervised_train_path,
         refit_epochs=args.refit_epochs,
         refit_patience=args.refit_patience,
         refit_batch_size=args.refit_batch_size,
@@ -460,6 +542,8 @@ def build_config(args):
         refit_val_ratio=args.refit_val_ratio,
         refit_seed=args.refit_seed,
         refit_num_workers=args.refit_num_workers,
+        refit_include_supervised_train=(not args.refit_exclude_supervised_train),
+        refit_deduplicate_by_text=(not args.refit_disable_deduplicate_by_text),
         evaluate_refit=args.evaluate_refit,
         eval_gt_jsonl=args.eval_gt_jsonl,
         eval_prediction_threshold=args.eval_prediction_threshold,

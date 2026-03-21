@@ -74,7 +74,7 @@ def normalize_entities(record, allowed_labels):
     return normalized, source, counters
 
 
-def prepare_training_records(rows, allowed_labels, text_keys=DEFAULT_TEXT_KEYS):
+def prepare_training_records(rows, allowed_labels, text_keys=DEFAULT_TEXT_KEYS, source_name="unknown"):
     prepared = []
     counters = Counter()
     for row in rows:
@@ -90,7 +90,11 @@ def prepare_training_records(rows, allowed_labels, text_keys=DEFAULT_TEXT_KEYS):
         enriched = deepcopy(row)
         enriched["text"] = text_value
         enriched["entities"] = entities
-        enriched["_refit_input_meta"] = {"text_source": text_source, "entity_source": entity_source}
+        enriched["_refit_input_meta"] = {
+            "text_source": text_source,
+            "entity_source": entity_source,
+            "training_source": source_name,
+        }
         prepared.append(enriched)
         counters["kept_records"] += 1
     counters["input_records"] = len(rows)
@@ -130,6 +134,49 @@ def _pick_input_jsonl(input_path):
     )
 
 
+def _load_json_or_jsonl(path):
+    source = Path(path)
+    text = source.read_text(encoding="utf-8")
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return load_jsonl(str(source))
+
+    if isinstance(parsed, list):
+        return parsed
+    if isinstance(parsed, dict):
+        return [parsed]
+    raise ValueError(f"Unsupported JSON content in {source}")
+
+
+def _normalize_text_key(value):
+    if not isinstance(value, str):
+        return ""
+    return " ".join(value.split()).strip().casefold()
+
+
+def merge_training_sources(supervised_rows, pseudolabel_rows, *, deduplicate_by_text):
+    merged = []
+    counters = Counter()
+    seen_texts = set()
+
+    def _append_rows(rows, source_name):
+        for row in rows:
+            dedup_key = _normalize_text_key(row.get("text", "")) if deduplicate_by_text else ""
+            if deduplicate_by_text and dedup_key:
+                if dedup_key in seen_texts:
+                    counters[f"dropped_duplicate_{source_name}"] += 1
+                    continue
+                seen_texts.add(dedup_key)
+            merged.append(row)
+            counters[f"kept_{source_name}"] += 1
+
+    _append_rows(supervised_rows, "supervised")
+    _append_rows(pseudolabel_rows, "pseudolabel")
+    counters["merged_total"] = len(merged)
+    return merged, counters
+
+
 def run_refit(config, script_path):
     started_at = datetime.now(timezone.utc).isoformat()
     timer = perf_counter()
@@ -146,6 +193,12 @@ def run_refit(config, script_path):
     if not input_jsonl.exists():
         raise FileNotFoundError(f"Input JSONL not found: {input_jsonl}")
 
+    supervised_json = None
+    if config.supervised_train_path:
+        supervised_json = resolve_path(script_dir, config.supervised_train_path)
+        if not supervised_json.exists():
+            raise FileNotFoundError(f"Supervised training dataset not found: {supervised_json}")
+
     val_jsonl = None
     if config.val_jsonl:
         val_jsonl = resolve_path(script_dir, config.val_jsonl)
@@ -157,19 +210,41 @@ def run_refit(config, script_path):
     train_manifest_jsonl.parent.mkdir(parents=True, exist_ok=True)
     val_manifest_jsonl.parent.mkdir(parents=True, exist_ok=True)
 
-    raw_rows = load_jsonl(str(input_jsonl))
-    prepared_rows, prepare_counts = prepare_training_records(
-        raw_rows,
+    raw_pseudolabel_rows = load_jsonl(str(input_jsonl))
+    prepared_pseudolabel_rows, pseudolabel_prepare_counts = prepare_training_records(
+        raw_pseudolabel_rows,
         allowed_labels=set(config.allowed_labels),
+        source_name="pseudolabel",
+    )
+
+    prepared_supervised_rows = []
+    supervised_prepare_counts = Counter()
+    if config.include_supervised_train:
+        if supervised_json is None:
+            raise RuntimeError("include_supervised_train=True but no supervised_train_path was provided.")
+        raw_supervised_rows = _load_json_or_jsonl(supervised_json)
+        prepared_supervised_rows, supervised_prepare_counts = prepare_training_records(
+            raw_supervised_rows,
+            allowed_labels=set(config.allowed_labels),
+            source_name="supervised",
+        )
+        if not prepared_supervised_rows:
+            raise RuntimeError("Supervised training dataset provided, but no valid records were found.")
+
+    prepared_rows, merge_counts = merge_training_sources(
+        prepared_supervised_rows,
+        prepared_pseudolabel_rows,
+        deduplicate_by_text=config.deduplicate_by_text,
     )
     if not prepared_rows:
-        raise RuntimeError("No valid training records after preprocessing.")
+        raise RuntimeError("No valid training records remained after merging supervised and pseudolabel data.")
 
     if val_jsonl:
-        raw_val_rows = load_jsonl(str(val_jsonl))
+        raw_val_rows = _load_json_or_jsonl(val_jsonl)
         val_rows, val_prepare_counts = prepare_training_records(
             raw_val_rows,
             allowed_labels=set(config.allowed_labels),
+            source_name="validation",
         )
         if not val_rows:
             raise RuntimeError("Validation file provided, but no valid validation records were found.")
@@ -230,7 +305,9 @@ def run_refit(config, script_path):
         "runtime_hms": _format_duration(runtime_seconds),
         "config": {
             "input_path": config.input_path,
+            "supervised_train_path": config.supervised_train_path,
             "input_jsonl_resolved": str(input_jsonl.resolve()),
+            "supervised_train_resolved": str(supervised_json.resolve()) if supervised_json else None,
             "output_model_dir": config.output_model_dir,
             "base_model": base_model,
             "epochs": config.epochs,
@@ -243,12 +320,22 @@ def run_refit(config, script_path):
             "seed": config.seed,
             "allowed_labels": config.allowed_labels,
             "num_workers": config.num_workers,
+            "include_supervised_train": config.include_supervised_train,
+            "deduplicate_by_text": config.deduplicate_by_text,
         },
         "data_summary": {
-            "prepare_counts_train_source": dict(prepare_counts),
+            "prepare_counts_pseudolabel_source": dict(pseudolabel_prepare_counts),
+            "prepare_counts_supervised_source": dict(supervised_prepare_counts),
             "prepare_counts_val_source": dict(val_prepare_counts),
+            "merge_counts": dict(merge_counts),
             "train_size": len(train_rows),
             "val_size": len(val_rows),
+            "train_source_breakdown": dict(
+                Counter(row.get("_refit_input_meta", {}).get("training_source", "unknown") for row in train_rows)
+            ),
+            "val_source_breakdown": dict(
+                Counter(row.get("_refit_input_meta", {}).get("training_source", "unknown") for row in val_rows)
+            ),
         },
         "artifacts": {
             "model_dir": str(output_model_dir.resolve()),

@@ -18,12 +18,12 @@ Inference-only pipeline to label a large unlabeled corpus using a trained model.
 1. Train model with nested CV in the training subpipeline.
 2. Optionally fit a reusable score calibrator on a labeled holdout subset.
 3. Use best model snapshot for large-corpus prediction, optionally applying the calibrator artifact.
-3. Optionally apply metadata-aware confidence boost before threshold filtering.
-4. Compute record-level score from entity-level confidence.
-5. Split records into kept/discarded sets using a record-level score threshold.
-6. Refit the model on kept pseudolabel records.
-7. Evaluate refit model on labeled sanity/test JSONL.
-8. Prepare discarded rows for the next pseudolabelling iteration.
+4. Optionally apply metadata-aware confidence boost before threshold filtering.
+5. Compute record-level score from entity-level confidence.
+6. Split records into kept/discarded sets using a record-level score threshold.
+7. Refit the model on the original supervised training set plus kept pseudolabel records.
+8. Evaluate both base and refit models on the same labeled holdout and write an explicit comparison artifact.
+9. Prepare discarded rows for the next pseudolabelling iteration.
 
 ## Command Example
 
@@ -45,7 +45,7 @@ python3 pseudolabelling/generate_corpus_predictions.py \
 
 ## Unified Orchestrator (Recommended)
 
-Run the full iterative cycle (prediction -> optional legacy calibration step -> context boost -> scoring -> split -> refit -> optional evaluation -> optional next-iteration prep):
+Run the full iterative cycle (prediction -> optional legacy calibration step -> context boost -> scoring -> split -> refit -> paired base/refit evaluation -> optional next-iteration prep):
 
 ```bash
 cd src
@@ -62,6 +62,7 @@ python3 pseudolabelling/run_iterative_cycle.py \
   --record-score-field score_context_boosted \
   --split-threshold 0.80 \
   --refit-base-model ./best_overall_gliner_model \
+  --refit-supervised-train-path ../data/dd_corpus_small_train.json \
   --refit-epochs 10 \
   --refit-batch-size 8 \
   --evaluate-refit \
@@ -128,6 +129,7 @@ python3 pseudolabelling/refit_model.py \
   --input-path ./artifacts/pseudolabelling/iter01/04_split \
   --output-model-dir ./artifacts/pseudolabelling/iter01/05_refit_model \
   --base-model ./artifacts/base_model_training/experiments/run_batch16/best_overall_gliner_model \
+  --supervised-train-path ../data/dd_corpus_small_train.json \
   --epochs 10 \
   --patience 3 \
   --batch-size 8 \
@@ -137,6 +139,13 @@ python3 pseudolabelling/refit_model.py \
   --allowed-labels Person,Location,Organization \
   --log-level INFO
 ```
+
+Refit behavior:
+
+- supervised examples are loaded first from `--supervised-train-path`
+- kept pseudolabel records are appended afterward
+- if `--disable-deduplicate-by-text` is not used, duplicate texts are dropped with preference for the supervised row
+- `refit_stats.json` records how many rows came from each source
 
 ## Evaluate Refit Example
 
@@ -173,6 +182,12 @@ python3 pseudolabelling/prepare_next_iteration.py \
 
 Write pseudolabelling outputs under:
 - `src/artifacts/pseudolabelling/`
+
+When `--evaluate-refit` is enabled in the orchestrator, expect:
+
+- `07_eval_base/`
+- `08_eval_refit/`
+- `09_base_vs_refit_comparison.json`
 
 ## `text-fields` Profiles
 

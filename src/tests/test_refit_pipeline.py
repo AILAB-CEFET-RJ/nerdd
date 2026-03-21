@@ -6,6 +6,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from pseudolabelling.refit_pipeline import (
     extract_text,
+    merge_training_sources,
     normalize_entities,
     prepare_training_records,
     split_train_val,
@@ -48,6 +49,12 @@ class RefitPipelineTests(unittest.TestCase):
         self.assertEqual(counters["missing_text"], 1)
         self.assertEqual(counters["dropped_no_entities"], 1)
         self.assertEqual(counters["kept_records"], 1)
+        self.assertEqual(prepared[0]["_refit_input_meta"]["training_source"], "unknown")
+
+    def test_prepare_training_records_tracks_source(self):
+        rows = [{"relato": "abc", "entities": [{"start": 0, "end": 3, "label": "Person"}]}]
+        prepared, _counters = prepare_training_records(rows, allowed_labels={"Person"}, source_name="supervised")
+        self.assertEqual(prepared[0]["_refit_input_meta"]["training_source"], "supervised")
 
     def test_split_train_val(self):
         records = [{"id": i} for i in range(10)]
@@ -57,6 +64,42 @@ class RefitPipelineTests(unittest.TestCase):
         train2, val2 = split_train_val(records, val_ratio=0.2, seed=42)
         self.assertEqual(train, train2)
         self.assertEqual(val, val2)
+
+    def test_merge_training_sources_prefers_supervised_on_duplicate_text(self):
+        supervised = [
+            {
+                "text": "same report",
+                "entities": [{"start": 0, "end": 4, "label": "Person"}],
+                "_refit_input_meta": {"training_source": "supervised"},
+            }
+        ]
+        pseudolabel = [
+            {
+                "text": "same report",
+                "entities": [{"start": 0, "end": 4, "label": "Person"}],
+                "_refit_input_meta": {"training_source": "pseudolabel"},
+            },
+            {
+                "text": "new report",
+                "entities": [{"start": 0, "end": 3, "label": "Location"}],
+                "_refit_input_meta": {"training_source": "pseudolabel"},
+            },
+        ]
+
+        merged, counters = merge_training_sources(supervised, pseudolabel, deduplicate_by_text=True)
+        self.assertEqual(len(merged), 2)
+        self.assertEqual(counters["kept_supervised"], 1)
+        self.assertEqual(counters["kept_pseudolabel"], 1)
+        self.assertEqual(counters["dropped_duplicate_pseudolabel"], 1)
+        self.assertEqual(merged[0]["_refit_input_meta"]["training_source"], "supervised")
+
+    def test_merge_training_sources_can_skip_deduplication(self):
+        supervised = [{"text": "same report", "_refit_input_meta": {"training_source": "supervised"}}]
+        pseudolabel = [{"text": "same report", "_refit_input_meta": {"training_source": "pseudolabel"}}]
+        merged, counters = merge_training_sources(supervised, pseudolabel, deduplicate_by_text=False)
+        self.assertEqual(len(merged), 2)
+        self.assertEqual(counters["kept_supervised"], 1)
+        self.assertEqual(counters["kept_pseudolabel"], 1)
 
 
 if __name__ == "__main__":

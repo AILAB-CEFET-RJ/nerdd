@@ -9,10 +9,10 @@
 - Primary output: trained model directory (`best_overall_gliner_model/`) and training/evaluation reports.
 
 2. **Pseudolabelling Subpipeline**
-- Scope: large-corpus entity prediction plus metadata-aware context boost.
+- Scope: large-corpus entity prediction, score-based pseudolabel selection, refit, and paired base-vs-refit evaluation.
 - Entrypoints: `pseudolabelling/run_iterative_cycle.py` (orchestrator), `pseudolabelling/generate_corpus_predictions.py`, `pseudolabelling/apply_context_boost.py`, `pseudolabelling/compute_record_scores.py`, `pseudolabelling/split_pseudolabels.py`, `pseudolabelling/refit_model.py`, `pseudolabelling/evaluate_refit.py`, `pseudolabelling/prepare_next_iteration.py`.
 - Main package: `pseudolabelling/`.
-- Primary outputs: predicted-entities JSONL, context-boosted JSONL, record-scored JSONL, split kept/discarded JSONL, refit model directory, evaluation artifacts, and next-iteration input JSONL.
+- Primary outputs: predicted-entities JSONL, context-boosted JSONL, record-scored JSONL, split kept/discarded JSONL, refit model directory, base/refit evaluation artifacts, comparison JSON, and next-iteration input JSONL.
 
 3. **Calibration Subpipeline**
 - Scope: fit and apply reusable probability calibrators for entity confidence scores.
@@ -75,10 +75,12 @@
 
 ## Refit Flow (`pseudolabelling/refit_model.py`)
 1. Read kept pseudolabel JSONL from split output.
-2. Normalize and validate training records (text + entity spans + labels).
-3. Build train/validation split (or use external validation JSONL).
-4. Load base model and run iterative refit training.
-5. Save refit model plus run manifests/stats.
+2. Optionally read the original supervised training set (`JSON` array or `JSONL`).
+3. Normalize and validate both sources into a shared training format.
+4. Merge supervised rows plus pseudolabel rows, preferring supervised rows on duplicate text when deduplication is enabled.
+5. Build train/validation split (or use external validation JSONL).
+6. Load base model and run iterative refit training.
+7. Save refit model plus run manifests/stats, including source breakdown.
 
 ## Refit Evaluation Flow (`pseudolabelling/evaluate_refit.py`)
 1. Read labeled ground-truth JSONL (`text` + `spans`).
@@ -86,6 +88,22 @@
 3. Compare predicted spans to gold spans using exact match.
 4. Compute per-label metrics plus micro/macro F1.
 5. Save predictions, report, metrics, and run stats.
+
+## Base-vs-Refit Comparison In The Orchestrator
+When `--evaluate-refit` is enabled in `pseudolabelling/run_iterative_cycle.py`, the orchestrator now:
+
+1. evaluates the original base model on the configured holdout
+2. evaluates the refit model on the same holdout
+3. writes:
+   - `07_eval_base/`
+   - `08_eval_refit/`
+   - `09_base_vs_refit_comparison.json`
+
+The comparison JSON reports base, refit, and delta for:
+
+- micro F1
+- macro F1
+- per-label precision/recall/F1/support
 
 ## Next Iteration Prep Flow (`pseudolabelling/prepare_next_iteration.py`)
 1. Read discarded JSONL files (single file or glob batch mode).
@@ -114,6 +132,9 @@ Examples:
 - `artifacts/pseudolabelling/iter01/01_predictions.jsonl`
 - `artifacts/pseudolabelling/iter01/04_split/kept.jsonl`
 - `artifacts/pseudolabelling/iter01/05_refit_model/`
+- `artifacts/pseudolabelling/iter01/07_eval_base/metrics.json`
+- `artifacts/pseudolabelling/iter01/08_eval_refit/metrics.json`
+- `artifacts/pseudolabelling/iter01/09_base_vs_refit_comparison.json`
 - `artifacts/calibration/base_model/calibrator.json`
 - `artifacts/calibration/iter01/01_calibrated.jsonl`
 - `artifacts/calibration/base_model/fit_stats.json`
