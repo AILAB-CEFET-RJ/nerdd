@@ -239,3 +239,49 @@ It should distinguish:
 
 - gains from additional supervised refit
 - gains from adding pseudolabelled examples on top of that supervised refit baseline
+
+## 2026-03-21 - Pseudolabelling Selection Happens At Record Level, Not Entity Level
+
+### Context
+
+The training grain of this project is the report (`relato`), not an isolated entity mention.
+
+That means pseudolabelling selection cannot literally choose "entities as examples" for refit. The natural training unit remains the full report.
+
+However, there are still two distinct selection layers that can exist in a report-level pipeline:
+
+- keep or discard the report
+- keep or discard individual predicted entities inside a kept report
+
+### Decision
+
+The current pipeline performs selection only at the report level.
+
+It does this by:
+
+- computing an aggregated `record_score` from entity scores
+- splitting reports into `kept` and `discarded`
+- sending every predicted entity from each kept report into refit
+
+It does **not** currently filter low-confidence entities inside a kept report.
+
+### Rationale
+
+This is the simplest semisupervised design compatible with report-level NER training.
+
+It keeps the training grain aligned with the original supervised dataset, where each example is a full report containing zero or more spans.
+
+### Implications For Experimentation
+
+Current refit experiments should be interpreted as:
+
+- report-level pseudolabel selection
+- with entity sets inherited wholesale from each kept report
+
+This means some noisy low-confidence entities can still enter refit if they belong to a report whose aggregate score passes the threshold.
+
+### Implications For Dissertation Wording
+
+The dissertation should describe the current method as selecting pseudolabelled **reports**, not isolated entity spans.
+
+If a later version adds span-level filtering inside kept reports, that should be described as a refinement on top of the current report-level selection strategy, not as something already present.

@@ -73,6 +73,12 @@
 4. Route each record to `kept` or `discarded`, with per-record split trace.
 5. Write split outputs and summary JSON.
 
+Important:
+
+- selection happens at the record/report level
+- a kept report currently carries all of its predicted entities into refit
+- there is no additional entity-level score filter inside a kept report
+
 ## Refit Flow (`pseudolabelling/refit_model.py`)
 1. Read kept pseudolabel JSONL from split output.
 2. Optionally read the original supervised training set (`JSON` array or `JSONL`).

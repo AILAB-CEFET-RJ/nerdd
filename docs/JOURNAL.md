@@ -154,3 +154,17 @@ Implication:
 
 - refit now handles long reports more consistently with the main training pipeline
 - large silent truncation during refit should be reduced substantially
+
+### Report-Level Selection Versus Entity-Level Filtering
+
+The pseudolabelling split logic currently selects at the report level:
+
+- compute a `record_score`
+- keep or discard the full report
+
+Once a report is kept, all predicted entities from that report enter refit. There is no second-stage filtering that drops low-confidence entities inside a kept report.
+
+Implication:
+
+- the current pseudolabelling experiments are report-selection experiments
+- they are not yet span-filtering experiments
