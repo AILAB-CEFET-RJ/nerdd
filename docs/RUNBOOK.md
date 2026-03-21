@@ -224,6 +224,27 @@ Interpretation:
   - `(supervised_plus_pseudolabels) - (supervised_only)`
 - do not attribute all improvement over the base model to pseudolabelling
 
+Observed controlled result for `t020`:
+
+- base:
+  - `micro_f1=0.4440`
+  - `macro_f1=0.4362`
+- supervised-only refit:
+  - `micro_f1=0.4952`
+  - `macro_f1=0.4772`
+- supervised-plus-pseudolabels refit:
+  - `micro_f1=0.5260`
+  - `macro_f1=0.5097`
+
+Interpretation of the `t020` result:
+
+- extra supervised refit gain over base:
+  - `micro_f1 +0.0512`
+  - `macro_f1 +0.0411`
+- additional pseudolabelling gain over supervised-only:
+  - `micro_f1 +0.0308`
+  - `macro_f1 +0.0324`
+
 ## Troubleshooting
 - `Killed`: reduce `batch-size`, `max-length`, number of folds/trials.
 - HF timeout/network instability: run after cache warmup with offline env vars.

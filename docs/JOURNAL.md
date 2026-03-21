@@ -168,3 +168,32 @@ Implication:
 
 - the current pseudolabelling experiments are report-selection experiments
 - they are not yet span-filtering experiments
+
+### First Controlled Pseudolabelling Result (`t020`)
+
+The first controlled pair of runs that cleanly separated supervised refit from pseudolabel augmentation used `split-threshold=0.20`.
+
+Observed counts:
+
+- kept reports: `12`
+- supervised-plus-pseudolabels training mix:
+  - `3031` supervised examples
+  - `11` pseudolabel examples in train
+  - `1` pseudolabel example in validation
+
+Observed holdout metrics on `data/dd_corpus_small_test_filtered.json`:
+
+- base:
+  - `micro_f1=0.4440`
+  - `macro_f1=0.4362`
+- supervised-only refit:
+  - `micro_f1=0.4952`
+  - `macro_f1=0.4772`
+- supervised-plus-pseudolabels refit:
+  - `micro_f1=0.5260`
+  - `macro_f1=0.5097`
+
+Implication:
+
+- additional supervised refit explains part of the gain
+- pseudolabel augmentation explains an additional positive margin beyond that supervised-only baseline

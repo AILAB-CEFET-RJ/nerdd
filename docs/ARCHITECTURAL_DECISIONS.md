@@ -240,6 +240,25 @@ It should distinguish:
 - gains from additional supervised refit
 - gains from adding pseudolabelled examples on top of that supervised refit baseline
 
+### First Controlled Result
+
+On the shared holdout `data/dd_corpus_small_test_filtered.json`, a controlled pair of `t020` runs produced:
+
+- base: `micro_f1=0.4440`, `macro_f1=0.4362`
+- supervised-only refit: `micro_f1=0.4952`, `macro_f1=0.4772`
+- supervised-plus-pseudolabels refit: `micro_f1=0.5260`, `macro_f1=0.5097`
+
+Interpretation:
+
+- supervised-only refit gain over base:
+  - `micro_f1 +0.0512`
+  - `macro_f1 +0.0411`
+- additional gain from pseudolabelling over the supervised-only control:
+  - `micro_f1 +0.0308`
+  - `macro_f1 +0.0324`
+
+This is the first controlled result in the project where the marginal contribution of pseudolabelled examples was separated from the gain of an additional supervised refit.
+
 ## 2026-03-21 - Pseudolabelling Selection Happens At Record Level, Not Entity Level
 
 ### Context
