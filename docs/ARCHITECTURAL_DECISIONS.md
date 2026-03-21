@@ -184,3 +184,58 @@ Canonical artifacts now include:
 ### Implications For Dissertation Wording
 
 The dissertation should frame improvements only in terms of direct holdout comparison between the original base model and the pseudolabelling-refit model.
+
+## 2026-03-21 - Pseudolabelling Effect Must Be Measured Against A Supervised-Only Refit Baseline
+
+### Context
+
+Once refit was corrected to support supervised data plus kept pseudolabels, an immediate experimental risk remained:
+
+- improvements from an additional supervised refit could be mistaken for improvements from pseudolabel augmentation
+
+This is not hypothetical. A controlled run with `refit_mode=supervised_only` already improved over the base model on `data/dd_corpus_small_test_filtered.json`.
+
+### Decision
+
+Pseudolabelling experiments must use an explicit three-condition interpretation:
+
+- base model
+- supervised-only refit
+- supervised-plus-pseudolabels refit
+
+The primary hypothesis test is:
+
+- `(supervised_plus_pseudolabels) - (supervised_only)`
+
+not merely:
+
+- `(supervised_plus_pseudolabels) - (base)`
+
+The pipeline now exposes `refit_mode` explicitly with:
+
+- `supervised_only`
+- `supervised_plus_pseudolabels`
+- `pseudolabel_only`
+
+### Rationale
+
+Without the supervised-only control, the effect of pseudolabelling is confounded with the effect of simply continuing supervised fine-tuning from the base checkpoint.
+
+### Implications For Experimentation
+
+Every pseudolabelling experiment intended to support the main dissertation hypothesis should report:
+
+- base vs supervised-only refit
+- base vs supervised-plus-pseudolabels refit
+- supervised-only refit vs supervised-plus-pseudolabels refit
+
+The third comparison is the clean estimate of the marginal contribution of pseudolabelled examples.
+
+### Implications For Dissertation Wording
+
+The dissertation should not attribute all post-refit gains to pseudolabelling.
+
+It should distinguish:
+
+- gains from additional supervised refit
+- gains from adding pseudolabelled examples on top of that supervised refit baseline

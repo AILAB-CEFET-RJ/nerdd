@@ -115,3 +115,42 @@ Implication:
 - calibration is now aligned with the original goal of correcting base-model confidence estimates
 - the calibrator becomes a reusable artifact that can be versioned together with the model
 - large-corpus prediction no longer needs to refit calibration ad hoc on each run
+
+## 2026-03-21
+
+### Pseudolabelling Refit Modes And Experimental Separation
+
+The pseudolabelling refit flow now exposes an explicit `refit_mode` to prevent a methodological ambiguity that surfaced during validation:
+
+- `supervised_only`
+- `supervised_plus_pseudolabels`
+- `pseudolabel_only`
+
+This was necessary because a supervised-only refit from the base checkpoint already improved holdout performance, which means any later gain from pseudolabelling must be measured against that supervised-only baseline, not only against the base model.
+
+Implication:
+
+- the marginal contribution of pseudolabelling should be interpreted as:
+  - `(supervised_plus_pseudolabels) - (supervised_only)`
+- not merely as:
+  - `(supervised_plus_pseudolabels) - (base)`
+
+### Refit Backend Now Chunks Long Examples Before GLiNER Collation
+
+The pseudolabelling refit backend previously sent long examples straight into the GLiNER processor, which produced warnings like:
+
+```text
+Sentence of length 777 has been truncated to 384
+```
+
+The fix was implemented in `src/pseudolabelling/refit_backend.py` by reusing the same preprocessing path as base-model training:
+
+- `process_sample`
+- `split_long_sentences`
+
+with configurable `max_length` and `overlap`.
+
+Implication:
+
+- refit now handles long reports more consistently with the main training pipeline
+- large silent truncation during refit should be reduced substantially

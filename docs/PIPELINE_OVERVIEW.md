@@ -77,10 +77,14 @@
 1. Read kept pseudolabel JSONL from split output.
 2. Optionally read the original supervised training set (`JSON` array or `JSONL`).
 3. Normalize and validate both sources into a shared training format.
-4. Merge supervised rows plus pseudolabel rows, preferring supervised rows on duplicate text when deduplication is enabled.
-5. Build train/validation split (or use external validation JSONL).
-6. Load base model and run iterative refit training.
-7. Save refit model plus run manifests/stats, including source breakdown.
+4. Resolve `refit_mode`:
+   - `supervised_only`
+   - `supervised_plus_pseudolabels`
+   - `pseudolabel_only`
+5. Merge the enabled sources, preferring supervised rows on duplicate text when deduplication is enabled.
+6. Build train/validation split (or use external validation JSONL).
+7. Load base model and run iterative refit training.
+8. Save refit model plus run manifests/stats, including source breakdown and the effective source mix used by the selected refit mode.
 
 ## Refit Evaluation Flow (`pseudolabelling/evaluate_refit.py`)
 1. Read labeled ground-truth JSONL (`text` + `spans`).
@@ -104,6 +108,12 @@ The comparison JSON reports base, refit, and delta for:
 - micro F1
 - macro F1
 - per-label precision/recall/F1/support
+
+Recommended interpretation for dissertation experiments:
+
+- `base -> supervised_only`: effect of extra supervised refit
+- `base -> supervised_plus_pseudolabels`: total effect of the full semisupervised recipe
+- `supervised_only -> supervised_plus_pseudolabels`: marginal effect of pseudolabelling
 
 ## Next Iteration Prep Flow (`pseudolabelling/prepare_next_iteration.py`)
 1. Read discarded JSONL files (single file or glob batch mode).

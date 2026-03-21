@@ -143,6 +143,87 @@ python3 pseudolabelling/generate_corpus_predictions.py \
   --log-level INFO
 ```
 
+## 10) Controlled Refit Comparison For Dissertation Experiments
+
+Use the same final holdout `../data/dd_corpus_small_test_filtered.json` for both runs below.
+
+First, measure the gain from additional supervised refit only:
+
+```bash
+cd src
+python3 -m pseudolabelling.run_iterative_cycle \
+  --run-dir ./artifacts/pseudolabelling/iter_cycle_supervised_only_t050 \
+  --model-path ./artifacts/base_model_training/experiments/baseline_real_bs16_ml512/best_overall_gliner_model \
+  --prediction-calibrator-path ./artifacts/calibration/base_model/calibrator.json \
+  --input-jsonl ../data/dd_corpus_small_test_calibration.jsonl \
+  --labels Person,Location,Organization \
+  --text-fields text \
+  --prediction-batch-size 16 \
+  --prediction-max-tokens 512 \
+  --prediction-threshold 0.0 \
+  --record-score-field score_context_boosted \
+  --split-threshold 0.50 \
+  --refit-mode supervised_only \
+  --refit-base-model ./artifacts/base_model_training/experiments/baseline_real_bs16_ml512/best_overall_gliner_model \
+  --refit-supervised-train-path ../data/dd_corpus_small_train.json \
+  --refit-epochs 3 \
+  --refit-patience 2 \
+  --refit-batch-size 16 \
+  --refit-max-length 512 \
+  --refit-overlap 128 \
+  --refit-lr 1e-5 \
+  --refit-weight-decay 0.01 \
+  --evaluate-refit \
+  --eval-gt-jsonl ../data/dd_corpus_small_test_filtered.json \
+  --eval-prediction-threshold 0.05 \
+  --eval-batch-size 16 \
+  --eval-max-tokens 512 \
+  --prepare-next-iteration \
+  --log-level INFO
+```
+
+Then, measure the full semisupervised recipe:
+
+```bash
+cd src
+python3 -m pseudolabelling.run_iterative_cycle \
+  --run-dir ./artifacts/pseudolabelling/iter_cycle_supervised_plus_pseudolabels_t050 \
+  --model-path ./artifacts/base_model_training/experiments/baseline_real_bs16_ml512/best_overall_gliner_model \
+  --prediction-calibrator-path ./artifacts/calibration/base_model/calibrator.json \
+  --input-jsonl ../data/dd_corpus_small_test_calibration.jsonl \
+  --labels Person,Location,Organization \
+  --text-fields text \
+  --prediction-batch-size 16 \
+  --prediction-max-tokens 512 \
+  --prediction-threshold 0.0 \
+  --record-score-field score_context_boosted \
+  --split-threshold 0.50 \
+  --refit-mode supervised_plus_pseudolabels \
+  --refit-base-model ./artifacts/base_model_training/experiments/baseline_real_bs16_ml512/best_overall_gliner_model \
+  --refit-supervised-train-path ../data/dd_corpus_small_train.json \
+  --refit-epochs 3 \
+  --refit-patience 2 \
+  --refit-batch-size 16 \
+  --refit-max-length 512 \
+  --refit-overlap 128 \
+  --refit-lr 1e-5 \
+  --refit-weight-decay 0.01 \
+  --evaluate-refit \
+  --eval-gt-jsonl ../data/dd_corpus_small_test_filtered.json \
+  --eval-prediction-threshold 0.05 \
+  --eval-batch-size 16 \
+  --eval-max-tokens 512 \
+  --prepare-next-iteration \
+  --log-level INFO
+```
+
+Interpretation:
+
+- compare `09_base_vs_refit_comparison.json` from the two runs
+- the marginal effect of pseudolabelling is:
+  - `(supervised_plus_pseudolabels) - (supervised_only)`
+- do not attribute all improvement over the base model to pseudolabelling
+
 ## Troubleshooting
 - `Killed`: reduce `batch-size`, `max-length`, number of folds/trials.
 - HF timeout/network instability: run after cache warmup with offline env vars.
