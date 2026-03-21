@@ -49,6 +49,9 @@ def normalize_entities(record, allowed_labels):
         source = "ner"
         entities = record.get("ner")
     if not isinstance(entities, list):
+        source = "spans"
+        entities = record.get("spans")
+    if not isinstance(entities, list):
         return [], source, Counter({"missing_entity_list": 1})
 
     counters = Counter()
