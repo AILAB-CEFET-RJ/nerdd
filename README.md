@@ -33,6 +33,7 @@ pip install -r requirements.txt
 - Runbook: `docs/RUNBOOK.md`
 - Pipeline overview: `docs/PIPELINE_OVERVIEW.md`
 - Architecture: `docs/ARCHITECTURE.md`
+- Architectural decisions: `docs/ARCHITECTURAL_DECISIONS.md`
 - Migration: `docs/MIGRATION.md`
 
 ## Canonical Flow
