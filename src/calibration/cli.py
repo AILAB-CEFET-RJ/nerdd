@@ -1,6 +1,9 @@
 import argparse
 
-from config import CalibrationConfig
+try:
+    from calibration.config import CalibrationConfig
+except ImportError:  # pragma: no cover
+    from config import CalibrationConfig
 
 
 def _parse_csv_list(raw_value):

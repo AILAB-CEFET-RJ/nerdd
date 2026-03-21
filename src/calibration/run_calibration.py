@@ -1,6 +1,11 @@
 import logging
 
-from cli import build_config, parse_args
+try:
+    from calibration.cli import build_config, parse_args
+    from calibration.pipeline import run_calibration
+except ImportError:  # pragma: no cover
+    from cli import build_config, parse_args
+    from pipeline import run_calibration
 
 
 def main():
@@ -10,8 +15,6 @@ def main():
         format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
     )
     config = build_config(args)
-    from pipeline import run_calibration
-
     run_calibration(config, script_path=__file__)
 
 

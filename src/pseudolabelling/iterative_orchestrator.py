@@ -42,6 +42,7 @@ def _run_corpus_prediction(config, script_path):
 class IterativeCycleConfig:
     run_dir: str = "./iterative_cycle_run"
     model_path: str = "best_overall_gliner_model"
+    prediction_calibrator_path: str = ""
     input_jsonl: str = "dd_corpus_large.json"
     labels: list[str] = field(default_factory=lambda: ["Person", "Location", "Organization"])
     text_fields: list[str] = field(
@@ -57,6 +58,8 @@ class IterativeCycleConfig:
     prediction_batch_size: int = 4
     prediction_max_tokens: int = 384
     prediction_threshold: float = 0.0
+    prediction_output_score_field: str = "score_calibrated"
+    prediction_preserve_original_score_field: str = "score_original"
 
     use_calibration: bool = False
     calibration_method: str = "temperature"
@@ -131,6 +134,7 @@ def run_iterative_cycle(config: IterativeCycleConfig, script_path: str):
     LOGGER.info("Step 1/7: Predict entities on large corpus")
     prediction_cfg = CorpusPredictConfig(
         model_path=config.model_path,
+        calibrator_path=config.prediction_calibrator_path,
         input_jsonl=config.input_jsonl,
         output_jsonl=str(predictions_jsonl),
         stats_json=str(predictions_stats),
@@ -139,6 +143,8 @@ def run_iterative_cycle(config: IterativeCycleConfig, script_path: str):
         batch_size=config.prediction_batch_size,
         max_tokens=config.prediction_max_tokens,
         score_threshold=config.prediction_threshold,
+        output_score_field=config.prediction_output_score_field,
+        preserve_original_score_field=config.prediction_preserve_original_score_field,
         keep_inference_text=False,
     )
     _run_corpus_prediction(prediction_cfg, script_path=script_path)
@@ -177,11 +183,16 @@ def run_iterative_cycle(config: IterativeCycleConfig, script_path: str):
         LOGGER.info("Step 3/7: Apply metadata-aware context boost")
         context_jsonl = run_dir / "03_context_boosted.jsonl"
         context_stats = run_dir / "03_context_boost_stats.json"
+        context_base_score_field = config.context_base_score_field
+        if config.prediction_calibrator_path and context_base_score_field == "score":
+            context_base_score_field = config.prediction_output_score_field
+        elif config.use_calibration and context_base_score_field == "score":
+            context_base_score_field = config.calibration_output_score_field
         context_cfg = ContextBoostConfig(
             input_jsonl=str(context_input),
             output_jsonl=str(context_jsonl),
             stats_json=str(context_stats),
-            base_score_field=config.context_base_score_field,
+            base_score_field=context_base_score_field,
             output_score_field=config.context_output_score_field,
             output_record_score_field=config.context_output_record_score_field,
             boost_factor=config.context_boost_factor,
@@ -328,12 +339,15 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Run the full pseudolabelling iterative cycle in one command")
     parser.add_argument("--run-dir", default=defaults.run_dir)
     parser.add_argument("--model-path", default=defaults.model_path)
+    parser.add_argument("--prediction-calibrator-path", default=defaults.prediction_calibrator_path)
     parser.add_argument("--input-jsonl", default=defaults.input_jsonl)
     parser.add_argument("--labels", default=",".join(defaults.labels))
     parser.add_argument("--text-fields", default=",".join(defaults.text_fields))
     parser.add_argument("--prediction-batch-size", type=int, default=defaults.prediction_batch_size)
     parser.add_argument("--prediction-max-tokens", type=int, default=defaults.prediction_max_tokens)
     parser.add_argument("--prediction-threshold", type=float, default=defaults.prediction_threshold)
+    parser.add_argument("--prediction-output-score-field", default=defaults.prediction_output_score_field)
+    parser.add_argument("--prediction-preserve-original-score-field", default=defaults.prediction_preserve_original_score_field)
 
     parser.add_argument("--use-calibration", action="store_true")
     parser.add_argument(
@@ -409,12 +423,15 @@ def build_config(args):
     return IterativeCycleConfig(
         run_dir=args.run_dir,
         model_path=args.model_path,
+        prediction_calibrator_path=args.prediction_calibrator_path,
         input_jsonl=args.input_jsonl,
         labels=_csv_list(args.labels),
         text_fields=_csv_list(args.text_fields),
         prediction_batch_size=args.prediction_batch_size,
         prediction_max_tokens=args.prediction_max_tokens,
         prediction_threshold=args.prediction_threshold,
+        prediction_output_score_field=args.prediction_output_score_field,
+        prediction_preserve_original_score_field=args.prediction_preserve_original_score_field,
         use_calibration=args.use_calibration,
         calibration_method=args.calibration_method,
         calibration_label_source=args.calibration_label_source,

@@ -8,11 +8,6 @@ Use this smoke test first to validate the training stack end-to-end on a tiny da
 
 If you are running on an NVIDIA Blackwell GPU such as an RTX 5090, confirm your environment uses PyTorch `cu128` or newer before starting.
 
-The training CLI now supports `--train-sampling`:
-
-- `weighted`: recommended default for training; oversamples examples containing rarer entity labels more often across an epoch
-- `random`: the legacy behavior; plain shuffled batches without any label-aware sampling
-
 ## 2) Local Smoke Test (CPU / low RAM)
 ```bash
 cd src
@@ -26,10 +21,8 @@ HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python3 -m base_model_training.train_nes
   --n-splits 2 \
   --n-inner-splits 2 \
   --search-mode grid \
-  --backbone-lr-values 1e-5 \
-  --ner-lr-values 3e-5 \
+  --lr-values 3e-5 \
   --weight-decay-values 0.01 \
-  --train-sampling weighted \
   --thresholds 0.6 \
   --refit-val-size 0.5 \
   --output-dir ./artifacts/base_model_training/smoke/run_nested_tiny \
@@ -41,38 +34,10 @@ Expected outputs:
 - `./artifacts/base_model_training/smoke/run_nested_tiny/nested_cv_results.json`
 - `./artifacts/base_model_training/smoke/run_nested_tiny/best_overall_gliner_model/`
 
-## 3) Choosing The GLiNER Base Model
-
-`base_model_training.train_nested_kfold` accepts the GLiNER base model through `--model-base`.
-
-Recommended options:
-
-- `urchade/gliner_small-v2.1`: best for smoke tests, CPU runs, and low-VRAM debugging
-- `urchade/gliner_medium-v2.1`: recommended default for real training when you want a stronger model with moderate cost
-- `urchade/gliner_large-v2.1`: recommended when the training machine has enough VRAM and you want to prioritize model quality over runtime
-- `urchade/gliner_multi-v2.1`: worth testing when the corpus is multilingual or primarily non-English
-
-Operational guidance:
-
-- use `small` to validate the pipeline end-to-end before launching a long run
-- use `medium` as the first serious baseline for nested CV
-- use `large` only after a short smoke run confirms your batch size and `max-length` fit in GPU memory
-- on an RTX 5090, `large` is a reasonable candidate, but a short run with a reduced batch size is still the safest first step
-
-Example substitutions:
-
-```bash
---model-base urchade/gliner_small-v2.1
---model-base urchade/gliner_medium-v2.1
---model-base urchade/gliner_large-v2.1
---model-base urchade/gliner_multi-v2.1
-```
-
-## 4) Server Training (example with batch-size 16)
+## 3) Server Training (example with batch-size 16)
 ```bash
 cd src
 python3 -m base_model_training.train_nested_kfold \
-  --model-base urchade/gliner_medium-v2.1 \
   --train-path ../data/dd_corpus_small_train.json \
   --batch-size 16 \
   --num-epochs 20 \
@@ -80,16 +45,14 @@ python3 -m base_model_training.train_nested_kfold \
   --n-inner-splits 3 \
   --search-mode random \
   --num-trials 20 \
-  --backbone-lr-values 1e-6,2e-6,5e-6,1e-5 \
-  --ner-lr-values 1e-5,2e-5,3e-5,5e-5,8e-5,1e-4,2e-4,3e-4 \
+  --lr-values 1e-6,2e-6,5e-6,1e-5,2e-5,3e-5,5e-5,8e-5,1e-4,2e-4,3e-4 \
   --weight-decay-values 0.0,0.01,0.05 \
-  --train-sampling weighted \
   --thresholds 0.5,0.6 \
   --output-dir ./artifacts/base_model_training/experiments/run_batch16 \
   --log-level INFO
 ```
 
-## 5) Evaluation
+## 4) Evaluation
 ```bash
 cd src
 python3 base_model_training/evaluate_gliner.py \
@@ -105,7 +68,7 @@ python3 base_model_training/evaluate_gliner.py \
   --log-level INFO
 ```
 
-## 6) Large Corpus Prediction (inference-only)
+## 5) Large Corpus Prediction (inference-only)
 ```bash
 cd src
 python3 pseudolabelling/generate_corpus_predictions.py \
@@ -121,22 +84,62 @@ python3 pseudolabelling/generate_corpus_predictions.py \
   --log-level INFO
 ```
 
-## 7) Score Calibration (post-pseudolabelling)
+## 6) Split Holdout For Calibration
 ```bash
 cd src
-python3 calibration/run_calibration.py \
-  --method temperature-per-class \
-  --input-jsonl ./artifacts/pseudolabelling/iter01/01_predictions.jsonl \
-  --output-jsonl ./artifacts/calibration/iter01/01_calibrated.jsonl \
-  --stats-json ./artifacts/calibration/iter01/01_calibration_stats.json \
-  --score-field score \
-  --output-score-field score_calibrated \
-  --preserve-original-score-field score_original \
+python3 tools/split_dataset_for_calibration.py \
+  --input ../data/dd_corpus_small_test.json \
+  --calibration-output ../data/dd_corpus_small_test_calibration.json \
+  --final-test-output ../data/dd_corpus_small_test_final.json \
+  --summary-json ../data/dd_corpus_small_test_split_summary.json \
+  --calibration-ratio 0.2 \
+  --seed 42 \
+  --mode random
+```
+
+## 7) Build Calibration CSV From Labeled Holdout
+```bash
+cd src
+python3 tools/build_calibration_dataset.py \
+  --model-path ./artifacts/base_model_training/experiments/run_batch16/best_overall_gliner_model \
+  --input ../data/dd_corpus_small_test_calibration.json \
+  --output-csv ../data/dd_corpus_small_test_calibration_predictions.csv \
+  --output-predictions-jsonl ./artifacts/calibration/base_model/calibration_predictions.jsonl \
   --labels Person,Location,Organization \
-  --label-source calibration-csv \
-  --calibration-csv ../data/comparacao_calibracao.csv \
-  --csv-score-col Score \
-  --csv-label-col Validacao \
+  --batch-size 4 \
+  --max-tokens 384 \
+  --threshold 0.0
+```
+
+## 8) Fit Calibrator Artifact
+```bash
+cd src
+python3 calibration/fit_calibrator.py \
+  --method temperature-per-class \
+  --calibration-csv ../data/dd_corpus_small_test_calibration_predictions.csv \
+  --output-calibrator ./artifacts/calibration/base_model/calibrator.json \
+  --stats-json ./artifacts/calibration/base_model/fit_stats.json \
+  --score-col Score \
+  --label-col Validacao \
+  --class-col Label \
+  --labels Person,Location,Organization \
+  --log-level INFO
+```
+
+## 9) Large Corpus Prediction With Calibrator
+```bash
+cd src
+python3 pseudolabelling/generate_corpus_predictions.py \
+  --model-path ./artifacts/base_model_training/experiments/run_batch16/best_overall_gliner_model \
+  --calibrator-path ./artifacts/calibration/base_model/calibrator.json \
+  --input-jsonl ../data/dd_corpus_large.json \
+  --output-jsonl ./artifacts/pseudolabelling/iter01/01_predictions.jsonl \
+  --stats-json ./artifacts/pseudolabelling/iter01/01_predictions_stats.json \
+  --labels Person,Location,Organization \
+  --text-fields assunto,relato,bairroLocal,logradouroLocal,cidadeLocal,pontodeReferenciaLocal \
+  --max-tokens 384 \
+  --batch-size 4 \
+  --score-threshold 0.0 \
   --log-level INFO
 ```
 

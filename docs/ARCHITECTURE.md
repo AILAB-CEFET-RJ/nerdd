@@ -4,7 +4,8 @@
 - `python3 -m base_model_training.train_nested_kfold`: training CLI entrypoint.
 - `base_model_training/evaluate_gliner.py`: evaluation CLI entrypoint.
 - `pseudolabelling/generate_corpus_predictions.py`: inference-only large-corpus entity prediction.
-- `calibration/run_calibration.py`: score calibration over pseudolabelled outputs.
+- `calibration/fit_calibrator.py`: fit a reusable calibration artifact from labeled holdout predictions.
+- `calibration/apply_calibrator.py`: apply a saved calibration artifact to entity-score JSONL.
 
 ## Training Package (`base_model_training/`)
 - `cli.py`: training CLI parsing.
@@ -30,9 +31,12 @@
 - `config.py`: defaults for large-corpus prediction.
 
 ## Calibration Package (`calibration/`)
-- `pipeline.py`: calibration orchestration and report generation.
-- `cli.py`: calibration CLI parsing.
-- `config.py`: calibration defaults.
+- `fit_calibrator.py`: fit and persist calibrator artifacts.
+- `apply_calibrator.py`: apply calibrator artifacts to prediction JSONL.
+- `serialization.py`: calibrator JSON serialization and score application.
+- `pipeline.py`: legacy fit+apply orchestration path.
+- `cli.py`: legacy calibration CLI parsing.
+- `config.py`: legacy calibration defaults.
 - `methods/temperature.py`: global/per-class temperature scaling helpers.
 - `methods/isotonic.py`: isotonic regression helpers.
 

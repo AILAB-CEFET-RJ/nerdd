@@ -11,6 +11,7 @@ from tqdm import tqdm
 
 from base_model_training.io_utils import load_jsonl, save_jsonl
 from base_model_training.paths import resolve_path
+from calibration.serialization import apply_calibrator_to_score, load_calibrator
 
 LOGGER = logging.getLogger(__name__)
 VALID_ENTITY_TEXT_PATTERN = re.compile(r"^[\wÀ-ÿ\s\-\.']+$")
@@ -120,6 +121,7 @@ def _build_stats_payload(config, total_samples, failed_samples, total_entities, 
         "runtime_hms": _format_duration(runtime_seconds),
         "config": {
             "model_path": config.model_path,
+            "calibrator_path": config.calibrator_path,
             "input_jsonl": config.input_jsonl,
             "output_jsonl": config.output_jsonl,
             "labels": config.labels,
@@ -127,6 +129,7 @@ def _build_stats_payload(config, total_samples, failed_samples, total_entities, 
             "batch_size": config.batch_size,
             "max_tokens": config.max_tokens,
             "score_threshold": config.score_threshold,
+            "output_score_field": config.output_score_field,
         },
         "summary": {
             "total_samples": total_samples,
@@ -156,6 +159,13 @@ def run_corpus_prediction(config, script_path):
 
     model_path_candidate = resolve_path(script_dir, config.model_path)
     model_path = str(model_path_candidate) if model_path_candidate.exists() else config.model_path
+    calibrator = None
+    if config.calibrator_path:
+        calibrator_path = resolve_path(script_dir, config.calibrator_path)
+        if not calibrator_path.exists():
+            raise FileNotFoundError(f"Calibrator artifact not found: {calibrator_path}")
+        calibrator = load_calibrator(calibrator_path)
+        LOGGER.info("Loaded calibrator from: %s", calibrator_path)
 
     if not input_jsonl.exists():
         raise FileNotFoundError(f"Input JSONL not found: {input_jsonl}")
@@ -207,6 +217,17 @@ def run_corpus_prediction(config, script_path):
             failed_samples += 1
             LOGGER.exception("Failed to process sample %s: %s", index, exc)
             entities = []
+
+        if calibrator is not None:
+            for entity in entities:
+                raw_score = entity.get("score", 1.0)
+                if config.preserve_original_score_field and config.preserve_original_score_field not in entity:
+                    entity[config.preserve_original_score_field] = raw_score
+                entity[config.output_score_field] = apply_calibrator_to_score(
+                    raw_score,
+                    str(entity.get("label", "")),
+                    calibrator,
+                )
 
         for entity in entities:
             label_counts[entity.get("label", "UNKNOWN")] += 1

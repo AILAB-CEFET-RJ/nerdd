@@ -18,7 +18,9 @@ This document summarizes the refactor from legacy scripts to the current modular
     - `GliNER -  Temperature Scaling.py`
     - `GliNER -  Temperature Scaling - Classe.py`
     - `GliNER - Isolation Regression.py`
-  - New: `calibration/run_calibration.py`
+  - New:
+    - `calibration/fit_calibrator.py`
+    - `calibration/apply_calibrator.py`
 - Sanity JSONL -> BIO CSV conversion:
   - Old: `GliNER - Conversao Arquivo Sanidade.py`
   - New: `tools/convert_sanity_jsonl_to_bio_csv.py`
@@ -38,6 +40,10 @@ This document summarizes the refactor from legacy scripts to the current modular
   - one plot per inner trial/fold
   - one plot for each refit stage.
 - Model loading/caching was adjusted for more stable offline/repeated runs.
+- Calibration is now treated as a reusable artifact attached to the base model:
+  - fit on labeled holdout predictions
+  - persist a calibrator JSON
+  - reuse it during large-corpus prediction
 
 ## Dataset Convention
 - Dataset is JSONL (one JSON object per line), even when extension is `.json`.
@@ -46,5 +52,6 @@ This document summarizes the refactor from legacy scripts to the current modular
 ## Migration Checklist
 1. Use only `python3 -m base_model_training.train_nested_kfold` and `base_model_training/evaluate_gliner.py` for training/evaluation.
 2. Use `nested_cv_results.json` as source of truth for programmatic analysis.
-3. Keep smoke-test command for local sanity checks before server runs.
-4. For publications/reports, describe whether evaluation is nested-CV-only or includes a separate holdout.
+3. Fit calibration from a labeled holdout subset, not from unlabeled pseudolabelling outputs.
+4. Keep smoke-test command for local sanity checks before server runs.
+5. For publications/reports, describe whether evaluation is nested-CV-only or includes a separate holdout.

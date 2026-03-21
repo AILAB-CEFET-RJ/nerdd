@@ -1,13 +1,13 @@
 # NERDD
 
-NER pipeline for the Disque Denúncia context, organized into training, pseudolabelling, and calibration subpipelines.
+NER pipeline for the Disque Denúncia context, organized into training, calibration, and pseudolabelling subpipelines.
 
 ## Current Structure
 
 - `src/`: main source code.
 - `src/base_model_training/`: base training and evaluation with nested CV.
 - `src/pseudolabelling/`: pseudolabel generation, score-based split, and refit.
-- `src/calibration/`: score calibration.
+- `src/calibration/`: fit/apply reusable probability calibrators for the base model scores.
 - `src/tools/`: auxiliary utilities.
 - `docs/`: operational and architectural documentation.
 - `data/`: training, test, and calibration datasets.
@@ -34,6 +34,12 @@ pip install -r requirements.txt
 - Pipeline overview: `docs/PIPELINE_OVERVIEW.md`
 - Architecture: `docs/ARCHITECTURE.md`
 - Migration: `docs/MIGRATION.md`
+
+## Canonical Flow
+
+1. Train the base model in `src/base_model_training/`.
+2. Build a labeled calibration subset and fit a reusable calibrator artifact in `src/calibration/`.
+3. Run large-corpus prediction in `src/pseudolabelling/`, optionally applying the calibrator during inference.
 
 ## Contributing
 

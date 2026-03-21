@@ -14,6 +14,7 @@ def parse_args():
     defaults = CorpusPredictConfig()
     parser = argparse.ArgumentParser(description="Generate entity predictions over a large JSONL corpus")
     parser.add_argument("--model-path", default=defaults.model_path)
+    parser.add_argument("--calibrator-path", default=defaults.calibrator_path)
     parser.add_argument("--input-jsonl", default=defaults.input_jsonl)
     parser.add_argument("--output-jsonl", default=defaults.output_jsonl)
     parser.add_argument("--stats-json", default=defaults.stats_json)
@@ -23,6 +24,8 @@ def parse_args():
     parser.add_argument("--batch-size", type=int, default=defaults.batch_size)
     parser.add_argument("--max-tokens", type=int, default=defaults.max_tokens)
     parser.add_argument("--score-threshold", type=float, default=defaults.score_threshold)
+    parser.add_argument("--output-score-field", default=defaults.output_score_field)
+    parser.add_argument("--preserve-original-score-field", default=defaults.preserve_original_score_field)
     parser.add_argument("--keep-inference-text", action="store_true")
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     return parser.parse_args()
@@ -31,6 +34,7 @@ def parse_args():
 def build_config(args):
     return CorpusPredictConfig(
         model_path=args.model_path,
+        calibrator_path=args.calibrator_path,
         input_jsonl=args.input_jsonl,
         output_jsonl=args.output_jsonl,
         stats_json=args.stats_json,
@@ -40,5 +44,7 @@ def build_config(args):
         batch_size=args.batch_size,
         max_tokens=args.max_tokens,
         score_threshold=args.score_threshold,
+        output_score_field=args.output_score_field,
+        preserve_original_score_field=args.preserve_original_score_field,
         keep_inference_text=args.keep_inference_text,
     )

@@ -10,20 +10,23 @@ This folder now contains multiple subpipelines with separate documentation.
 - Entrypoints: `python3 -m base_model_training.train_nested_kfold`, `base_model_training/evaluate_gliner.py`
 
 2. `pseudolabelling/`
-- Purpose: large-corpus entity prediction plus metadata-aware context boost.
+- Purpose: large-corpus entity prediction plus metadata-aware context boost, optionally consuming a fitted calibrator artifact.
 - Docs: `pseudolabelling/README.md`
 - Entrypoints: `pseudolabelling/run_iterative_cycle.py`, `pseudolabelling/generate_corpus_predictions.py`, `pseudolabelling/apply_context_boost.py`, `pseudolabelling/compute_record_scores.py`, `pseudolabelling/split_pseudolabels.py`, `pseudolabelling/refit_model.py`, `pseudolabelling/evaluate_refit.py`, `pseudolabelling/prepare_next_iteration.py`
 
 3. `calibration/`
-- Purpose: confidence score calibration over pseudolabelled outputs.
+- Purpose: fit and apply reusable probability calibrators for base-model entity scores.
 - Docs: `calibration/README.md`
-- Entrypoint: `calibration/run_calibration.py`
+- Entrypoints: `calibration/fit_calibrator.py`, `calibration/apply_calibrator.py`
 
 4. `tools/`
 - Purpose: auxiliary scripts not part of core train/pseudolabelling/calibration execution.
 - Utility: `tools/convert_sanity_jsonl_to_bio_csv.py`
 - Utility: `tools/replace_label_in_jsonl.py`
 - Utility: `tools/list_distinct_labels.py`
+- Utility: `tools/count_dataset_entities.py`
+- Utility: `tools/split_dataset_for_calibration.py`
+- Utility: `tools/build_calibration_dataset.py`
 - Utility: `tools/render_ner_html.py`
 - Utility: `tools/build_annotation_editor.py`
 - Utility: `tools/clean_generic_spans.py`

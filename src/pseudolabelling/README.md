@@ -16,7 +16,8 @@ Inference-only pipeline to label a large unlabeled corpus using a trained model.
 ## Typical Flow
 
 1. Train model with nested CV in the training subpipeline.
-2. Use best model snapshot for large-corpus prediction.
+2. Optionally fit a reusable score calibrator on a labeled holdout subset.
+3. Use best model snapshot for large-corpus prediction, optionally applying the calibrator artifact.
 3. Optionally apply metadata-aware confidence boost before threshold filtering.
 4. Compute record-level score from entity-level confidence.
 5. Split records into kept/discarded sets using a record-level score threshold.
@@ -30,6 +31,7 @@ Inference-only pipeline to label a large unlabeled corpus using a trained model.
 cd src
 python3 pseudolabelling/generate_corpus_predictions.py \
   --model-path ./artifacts/base_model_training/smoke/run_nested_tiny/best_overall_gliner_model \
+  --calibrator-path ./artifacts/calibration/base_model/calibrator.json \
   --input-jsonl dd_corpus_large.json \
   --output-jsonl ./artifacts/pseudolabelling/iter01/01_predictions.jsonl \
   --stats-json ./artifacts/pseudolabelling/iter01/01_predictions_stats.json \
@@ -43,24 +45,20 @@ python3 pseudolabelling/generate_corpus_predictions.py \
 
 ## Unified Orchestrator (Recommended)
 
-Run the full iterative cycle (prediction -> optional calibration -> context boost -> scoring -> split -> refit -> optional evaluation -> optional next-iteration prep):
+Run the full iterative cycle (prediction -> optional legacy calibration step -> context boost -> scoring -> split -> refit -> optional evaluation -> optional next-iteration prep):
 
 ```bash
 cd src
 python3 pseudolabelling/run_iterative_cycle.py \
   --run-dir ./artifacts/pseudolabelling/iter_cycle_01 \
   --model-path ./artifacts/base_model_training/experiments/run_batch16/best_overall_gliner_model \
+  --prediction-calibrator-path ./artifacts/calibration/base_model/calibrator.json \
   --input-jsonl dd_corpus_large.json \
   --labels Person,Location,Organization \
   --text-fields assunto,relato,bairroLocal,logradouroLocal,cidadeLocal,pontodeReferenciaLocal \
   --prediction-batch-size 4 \
   --prediction-max-tokens 384 \
   --prediction-threshold 0.0 \
-  --use-calibration \
-  --calibration-method isotonic \
-  --calibration-label-source calibration-csv \
-  --calibration-csv ../data/comparacao_calibracao.csv \
-  --context-base-score-field score_calibrated \
   --record-score-field score_context_boosted \
   --split-threshold 0.80 \
   --refit-base-model ./best_overall_gliner_model \

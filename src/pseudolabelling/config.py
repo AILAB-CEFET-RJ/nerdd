@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 @dataclass
 class CorpusPredictConfig:
     model_path: str = "best_overall_gliner_model"
+    calibrator_path: str = ""
     input_jsonl: str = "dd_corpus_large.json"
     output_jsonl: str = "dd_corpus_large_predicted_entities.jsonl"
     stats_json: str = "corpus_prediction_stats.json"
@@ -22,6 +23,8 @@ class CorpusPredictConfig:
     batch_size: int = 4
     max_tokens: int = 384
     score_threshold: float = 0.0
+    output_score_field: str = "score_calibrated"
+    preserve_original_score_field: str = "score_original"
     keep_inference_text: bool = False
 
 

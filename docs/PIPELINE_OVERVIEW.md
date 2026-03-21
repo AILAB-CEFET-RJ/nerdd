@@ -15,10 +15,10 @@
 - Primary outputs: predicted-entities JSONL, context-boosted JSONL, record-scored JSONL, split kept/discarded JSONL, refit model directory, evaluation artifacts, and next-iteration input JSONL.
 
 3. **Calibration Subpipeline**
-- Scope: post-process and calibrate confidence scores from pseudolabel outputs.
-- Entrypoint: `calibration/run_calibration.py`.
+- Scope: fit and apply reusable probability calibrators for entity confidence scores.
+- Entrypoints: `calibration/fit_calibrator.py`, `calibration/apply_calibrator.py` (`calibration/run_calibration.py` remains as a legacy fit+apply path).
 - Main package: `calibration/`.
-- Primary output: calibrated JSONL + calibration stats JSON.
+- Primary outputs: calibrator artifact JSON, calibrated JSONL, and calibration stats JSON.
 
 ## Training Flow (`python3 -m base_model_training.train_nested_kfold`)
 1. Parse CLI args into `TrainConfig`.
@@ -42,11 +42,13 @@
 
 ## Pseudolabelling Flow (`pseudolabelling/generate_corpus_predictions.py`)
 1. Load trained model from nested-CV output.
-2. Read large input corpus (JSONL).
-3. Build inference text from configured source fields.
-4. Chunk long texts by tokenizer length and run entity prediction.
-5. Merge chunk-level offsets into full-text offsets.
-6. Save predicted entities JSONL and execution stats JSON.
+2. Optionally load a persisted calibrator artifact.
+3. Read large input corpus (JSONL).
+4. Build inference text from configured source fields.
+5. Chunk long texts by tokenizer length and run entity prediction.
+6. Merge chunk-level offsets into full-text offsets.
+7. Optionally write calibrated score fields alongside raw scores.
+8. Save predicted entities JSONL and execution stats JSON.
 
 ## Context Boost Flow (`pseudolabelling/apply_context_boost.py`)
 1. Read predicted-entities JSONL.
@@ -92,12 +94,12 @@
 4. Write cleaned next-iteration JSONL outputs.
 5. Save per-file mapping and drop-reason stats.
 
-## Calibration Flow (`calibration/run_calibration.py`)
-1. Load pseudolabel JSONL with entity scores.
-2. Build pseudo-targets for calibration fit (score-threshold or quantile-bands).
-3. Fit selected method (`temperature`, `temperature-per-class`, `isotonic`).
-4. Apply calibrated scores to all entities and persist output JSONL.
-5. Save calibration diagnostics and method parameters to stats JSON.
+## Calibration Flow
+1. Run the base model on a labeled calibration subset.
+2. Build a calibration CSV with raw `Score`, binary correctness target, and ideally entity `Label`.
+3. Fit a selected method (`temperature`, `temperature-per-class`, `isotonic`) using `calibration/fit_calibrator.py`.
+4. Persist a reusable calibrator artifact JSON.
+5. Apply that artifact either during large-corpus prediction or later with `calibration/apply_calibrator.py`.
 
 ## Main Artifacts
 - Artifact root (recommended): `src/artifacts/`
@@ -112,8 +114,9 @@ Examples:
 - `artifacts/pseudolabelling/iter01/01_predictions.jsonl`
 - `artifacts/pseudolabelling/iter01/04_split/kept.jsonl`
 - `artifacts/pseudolabelling/iter01/05_refit_model/`
+- `artifacts/calibration/base_model/calibrator.json`
 - `artifacts/calibration/iter01/01_calibrated.jsonl`
-- `artifacts/calibration/iter01/01_calibration_stats.json`
+- `artifacts/calibration/base_model/fit_stats.json`
 
 ## Metrics Added for Audit
 - `seen_entity_test_f1`: fold test F1 on entity mentions seen during fold training.

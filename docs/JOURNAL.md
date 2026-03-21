@@ -97,112 +97,21 @@ The training loader now emits explicit logging about `sample_id` quality in the 
 
 This matters because nested CV treats `sample_id` as the grouping key for leakage prevention and fold balancing.
 
-## 2026-03-17
+### Calibration Redesign
 
-### Stratified Group Splitter No Longer Emits Empty Folds
+The original calibration flow had two conceptual problems:
 
-The first version of `StratifiedGroupKFoldNER` used a purely greedy assignment strategy. In some skewed datasets, that heuristic could place all groups into only a subset of folds and leave another fold empty.
+- it was wired as a pseudolabelling substep instead of an artifact attached to the base model
+- the iterative pipeline could run calibration and still continue using the raw `score` field downstream unless manually overridden
 
-The failure mode appeared in nested-CV logs such as:
+The redesign introduces an explicit fit/apply split:
 
-```text
-Outer CV fold 3 summary | groups=0 | examples=0 | spans=[Location=0, Organization=0, Person=0]
-```
-
-That behavior is invalid for `n_splits=3` because the run is no longer performing a real 3-fold split. It also propagated to inner CV, where empty folds were later skipped.
-
-The fix was implemented in `src/base_model_training/group_stratified.py`:
-
-- fold construction now starts with mandatory seeding of one group per fold
-- the remaining groups are assigned greedily using the balancing objective
-- a local-search refinement step now tries beneficial group moves and swaps across folds
-- the global cost now penalizes empty folds, missing labels, group imbalance, example imbalance, and span imbalance
-- the splitter now raises if an empty fold somehow survives refinement
-
-Validation:
-
-- `src/tests/test_group_stratified.py` now includes a regression test asserting that all emitted folds are non-empty
+- `src/calibration/fit_calibrator.py` fits a reusable calibrator artifact from a labeled calibration CSV
+- `src/calibration/apply_calibrator.py` applies that artifact to a JSONL corpus with entity scores
+- `src/pseudolabelling/pipeline.py` can now load a calibrator artifact during prediction and write `score_calibrated` alongside the raw score
 
 Implication:
 
-- outer and inner CV should now always emit the requested number of non-empty folds
-- fold summaries should better reflect the dataset distribution without silently dropping a fold
-
-### Stratified Group Splitter Now Enforces Fold Capacity And Global Label Balance
-
-After the empty-fold fix, a second failure mode remained visible in nested-CV logs: fold sizes became balanced by group count, but some folds still received almost none of the rarer entity labels.
-
-That produced summaries shaped like:
-
-```text
-Outer CV fold 1 summary | groups=1222 | examples=1393 | spans=[Location=5515, Organization=2043, Person=3416]
-Outer CV fold 3 summary | groups=1221 | examples=1227 | spans=[Location=3220, Organization=42, Person=26]
-```
-
-This was better than an empty fold, but still not a faithful stratified split for NER.
-
-The splitter in `src/base_model_training/group_stratified.py` was tightened again:
-
-- each fold now has an explicit group-capacity limit derived from `n_groups / n_splits`
-- greedy placement can only assign to folds that still have remaining capacity
-- local-search moves also respect those fold-capacity constraints
-- candidate assignment quality is now evaluated using the global partition cost after a temporary assignment, instead of only a local fold-level estimate
-
-Validation:
-
-- `src/tests/test_group_stratified.py` now also includes a regression case asserting that rare-label groups are distributed across folds when the dataset makes that possible
-
-Implication:
-
-- folds should now stay balanced both in size and in rare-label coverage more reliably than before
-- training diagnostics should be less likely to be distorted by a fold that is large enough but nearly devoid of one entity type
-
-### Split Learning Rates For Backbone And NER Layers
-
-The nested-CV training pipeline previously used a single global learning rate for every trainable parameter in GLiNER.
-
-That meant the transformer backbone and the task-specific NER layers were optimized with the same step size, which is a poor fit for fine-tuning in domain-specific NER runs.
-
-The fix was implemented in `src/base_model_training/cv.py`, `src/base_model_training/cli.py`, `src/base_model_training/search.py`, and `src/base_model_training/train_config.py`:
-
-- `--lr-values` was removed from the training CLI
-- the training entrypoint now requires `--backbone-lr-values` and `--ner-lr-values`
-- hyperparameter search now evaluates `(backbone_lr, ner_lr, weight_decay)` combinations
-- the optimizer now uses two parameter groups:
-  - `model.token_rep_layer.*` for the transformer backbone
-  - every other trainable parameter for the NER-specific layers
-- `OneCycleLR` now tracks the two learning rates separately
-
-The surrounding reporting was updated as well:
-
-- trial logs and best-parameter logs now print backbone LR and NER LR explicitly
-- text and JSON reports now store `backbone_lr` and `ner_lr` instead of a single `lr`
-- loss plots now include both learning rates in the title
-
-Implication:
-
-- the training search space now matches the common fine-tuning pattern of using a smaller LR for the pretrained backbone and a larger LR for task-specific layers
-- nested-CV runs should be able to tune stability and adaptation speed independently
-
-### Weighted Training Sampling For Rare Entity Labels
-
-Even after the fold splitter was corrected, the training `DataLoader` still used plain shuffled batches.
-
-That meant individual batches could remain heavily skewed toward the most common entity label, especially after long reports were chunked into smaller training examples.
-
-The training pipeline now supports two sampling modes in `base_model_training.train_nested_kfold`:
-
-- `random`: the previous behavior, using only shuffled batches
-- `weighted`: a label-aware sampler that increases the draw probability of examples containing rarer entity labels
-
-The weighted mode was implemented in `src/base_model_training/data.py` and wired into `src/base_model_training/cv.py`:
-
-- per-example sampling weights are derived from the rarity of the labels present in each example
-- `WeightedRandomSampler` is used only for the training loader
-- validation keeps deterministic sequential loading
-- the training CLI now exposes `--train-sampling`, defaulting to `weighted`
-
-Implication:
-
-- training epochs should expose the model to rare-label examples more consistently
-- this reduces the chance that a long run is dominated by batches containing mostly the majority entity class
+- calibration is now aligned with the original goal of correcting base-model confidence estimates
+- the calibrator becomes a reusable artifact that can be versioned together with the model
+- large-corpus prediction no longer needs to refit calibration ad hoc on each run
