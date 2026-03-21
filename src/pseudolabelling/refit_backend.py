@@ -130,10 +130,10 @@ class _TrainConf:
 
 
 def _train_gliner_spanlabel(model: Any, train_recs: List[Dict[str, Any]], val_recs: List[Dict[str, Any]], out_dir: str, conf: _TrainConf):
-    from gliner.data_processing.collator import DataCollator
     import torch
     from torch.optim import AdamW
     from torch.utils.data import DataLoader
+    from base_model_training.collator_factory import build_data_collator
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
@@ -145,7 +145,7 @@ def _train_gliner_spanlabel(model: Any, train_recs: List[Dict[str, Any]], val_re
         return
 
     labels = sorted({label for example in ds_train for _, _, label in example["ner"]})
-    collate = DataCollator(model.config, data_processor=model.data_processor, prepare_labels=True)
+    collate = build_data_collator(model)
     train_loader = DataLoader(
         ds_train,
         batch_size=conf.batch_size,
