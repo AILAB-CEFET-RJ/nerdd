@@ -5,6 +5,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from pseudolabelling.refit_pipeline import (
+    _resolve_refit_sources,
     extract_text,
     merge_training_sources,
     normalize_entities,
@@ -100,6 +101,16 @@ class RefitPipelineTests(unittest.TestCase):
         self.assertEqual(len(merged), 2)
         self.assertEqual(counters["kept_supervised"], 1)
         self.assertEqual(counters["kept_pseudolabel"], 1)
+
+    def test_resolve_refit_sources(self):
+        class Dummy:
+            refit_mode = "supervised_only"
+
+        self.assertEqual(_resolve_refit_sources(Dummy()), (True, False))
+        Dummy.refit_mode = "supervised_plus_pseudolabels"
+        self.assertEqual(_resolve_refit_sources(Dummy()), (True, True))
+        Dummy.refit_mode = "pseudolabel_only"
+        self.assertEqual(_resolve_refit_sources(Dummy()), (False, True))
 
 
 if __name__ == "__main__":

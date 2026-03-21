@@ -16,6 +16,7 @@ class IterativeOrchestratorTests(unittest.TestCase):
             run_dir = Path(tmpdir) / "iter_run"
             config = IterativeCycleConfig(
                 run_dir=str(run_dir),
+                refit_mode="supervised_only",
                 use_calibration=False,
                 evaluate_refit=True,
                 eval_gt_jsonl="../data/dd_corpus_small_test_filtered.json",
@@ -68,10 +69,12 @@ class IterativeOrchestratorTests(unittest.TestCase):
             self.assertEqual(p_refit.call_count, 1)
             self.assertEqual(p_eval.call_count, 2)
             self.assertEqual(p_prepare.call_count, 1)
+            self.assertEqual(p_refit.call_args.args[0].refit_mode, "supervised_only")
 
             summary_path = run_dir / "cycle_summary.json"
             self.assertTrue(summary_path.exists())
             payload = json.loads(summary_path.read_text(encoding="utf-8"))
+            self.assertEqual(payload["config"]["refit_mode"], "supervised_only")
             self.assertEqual(payload["config"]["use_calibration"], False)
             self.assertEqual(payload["config"]["evaluate_refit"], True)
             self.assertEqual(payload["config"]["prepare_next_iteration"], True)

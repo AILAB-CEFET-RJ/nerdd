@@ -180,6 +180,17 @@ def merge_training_sources(supervised_rows, pseudolabel_rows, *, deduplicate_by_
     return merged, counters
 
 
+def _resolve_refit_sources(config):
+    mode = getattr(config, "refit_mode", "supervised_plus_pseudolabels")
+    if mode == "supervised_only":
+        return True, False
+    if mode == "supervised_plus_pseudolabels":
+        return True, True
+    if mode == "pseudolabel_only":
+        return False, True
+    raise ValueError(f"Unsupported refit_mode: {mode}")
+
+
 def run_refit(config, script_path):
     started_at = datetime.now(timezone.utc).isoformat()
     timer = perf_counter()
@@ -220,11 +231,15 @@ def run_refit(config, script_path):
         source_name="pseudolabel",
     )
 
+    include_supervised_train, include_pseudolabel_train = _resolve_refit_sources(config)
+
     prepared_supervised_rows = []
     supervised_prepare_counts = Counter()
-    if config.include_supervised_train:
+    if include_supervised_train:
         if supervised_json is None:
-            raise RuntimeError("include_supervised_train=True but no supervised_train_path was provided.")
+            raise RuntimeError(
+                "Refit mode requires supervised data, but no supervised_train_path was provided."
+            )
         raw_supervised_rows = _load_json_or_jsonl(supervised_json)
         prepared_supervised_rows, supervised_prepare_counts = prepare_training_records(
             raw_supervised_rows,
@@ -233,6 +248,10 @@ def run_refit(config, script_path):
         )
         if not prepared_supervised_rows:
             raise RuntimeError("Supervised training dataset provided, but no valid records were found.")
+
+    if not include_pseudolabel_train:
+        prepared_pseudolabel_rows = []
+        pseudolabel_prepare_counts = Counter({"skipped_by_refit_mode": 1, "input_records": len(raw_pseudolabel_rows)})
 
     prepared_rows, merge_counts = merge_training_sources(
         prepared_supervised_rows,
@@ -311,6 +330,7 @@ def run_refit(config, script_path):
         "config": {
             "input_path": config.input_path,
             "supervised_train_path": config.supervised_train_path,
+            "refit_mode": config.refit_mode,
             "input_jsonl_resolved": str(input_jsonl.resolve()),
             "supervised_train_resolved": str(supervised_json.resolve()) if supervised_json else None,
             "output_model_dir": config.output_model_dir,
@@ -329,6 +349,8 @@ def run_refit(config, script_path):
             "num_workers": config.num_workers,
             "include_supervised_train": config.include_supervised_train,
             "deduplicate_by_text": config.deduplicate_by_text,
+            "effective_include_supervised_train": include_supervised_train,
+            "effective_include_pseudolabel_train": include_pseudolabel_train,
         },
         "data_summary": {
             "prepare_counts_pseudolabel_source": dict(pseudolabel_prepare_counts),

@@ -138,6 +138,7 @@ class IterativeCycleConfig:
     refit_output_model_dir: str = ""
     refit_base_model: str = ""
     refit_supervised_train_path: str = ""
+    refit_mode: str = "supervised_plus_pseudolabels"
     refit_epochs: int = 10
     refit_patience: int = 3
     refit_batch_size: int = 8
@@ -294,6 +295,7 @@ def run_iterative_cycle(config: IterativeCycleConfig, script_path: str):
     refit_cfg = RefitConfig(
         input_path=str(split_dir),
         supervised_train_path=config.refit_supervised_train_path,
+        refit_mode=config.refit_mode,
         output_model_dir=str(refit_model_dir),
         stats_json=str(refit_stats),
         train_manifest_jsonl=str(train_manifest),
@@ -389,6 +391,7 @@ def run_iterative_cycle(config: IterativeCycleConfig, script_path: str):
             "model_path": config.model_path,
             "input_jsonl": config.input_jsonl,
             "labels": config.labels,
+            "refit_mode": config.refit_mode,
             "use_calibration": config.use_calibration,
             "evaluate_refit": config.evaluate_refit,
             "prepare_next_iteration": config.prepare_next_iteration,
@@ -478,6 +481,11 @@ def parse_args():
     parser.add_argument("--refit-output-model-dir", default=defaults.refit_output_model_dir)
     parser.add_argument("--refit-base-model", default=defaults.refit_base_model)
     parser.add_argument("--refit-supervised-train-path", default=defaults.refit_supervised_train_path)
+    parser.add_argument(
+        "--refit-mode",
+        choices=["supervised_only", "supervised_plus_pseudolabels", "pseudolabel_only"],
+        default=defaults.refit_mode,
+    )
     parser.add_argument("--refit-epochs", type=int, default=defaults.refit_epochs)
     parser.add_argument("--refit-patience", type=int, default=defaults.refit_patience)
     parser.add_argument("--refit-batch-size", type=int, default=defaults.refit_batch_size)
@@ -540,6 +548,7 @@ def build_config(args):
         refit_output_model_dir=args.refit_output_model_dir,
         refit_base_model=args.refit_base_model,
         refit_supervised_train_path=args.refit_supervised_train_path,
+        refit_mode=args.refit_mode,
         refit_epochs=args.refit_epochs,
         refit_patience=args.refit_patience,
         refit_batch_size=args.refit_batch_size,

@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 class RefitConfig:
     input_path: str = "./pseudolabel_split"
     supervised_train_path: str = ""
+    refit_mode: str = "supervised_plus_pseudolabels"
     output_model_dir: str = "./refit_model"
     stats_json: str = "./refit_stats.json"
     train_manifest_jsonl: str = "./train_manifest.jsonl"
@@ -43,6 +44,12 @@ def parse_args():
         default=defaults.supervised_train_path,
         help="Optional labeled supervised training dataset to merge with kept pseudolabels.",
     )
+    parser.add_argument(
+        "--refit-mode",
+        choices=["supervised_only", "supervised_plus_pseudolabels", "pseudolabel_only"],
+        default=defaults.refit_mode,
+        help="Explicitly choose which data sources feed refit.",
+    )
     parser.add_argument("--output-model-dir", default=defaults.output_model_dir)
     parser.add_argument("--stats-json", default=defaults.stats_json)
     parser.add_argument("--train-manifest-jsonl", default=defaults.train_manifest_jsonl)
@@ -70,6 +77,7 @@ def build_config(args):
     return RefitConfig(
         input_path=args.input_path,
         supervised_train_path=args.supervised_train_path,
+        refit_mode=args.refit_mode,
         output_model_dir=args.output_model_dir,
         stats_json=args.stats_json,
         train_manifest_jsonl=args.train_manifest_jsonl,
