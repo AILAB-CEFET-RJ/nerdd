@@ -96,6 +96,9 @@ Single-shot versus iterative consequence:
    - `pseudolabel_only`
 5. Merge the enabled sources, preferring supervised rows on duplicate text when deduplication is enabled.
 6. Build train/validation split (or use external validation JSONL).
+   - if supervised data exists and no external validation file is provided, the supervised dataset is split first
+   - pseudolabel examples are then appended only to the training side
+   - the internal validation set therefore remains supervised-only
 7. Load base model and run iterative refit training.
 8. Save refit model plus run manifests/stats, including source breakdown and the effective source mix used by the selected refit mode.
 

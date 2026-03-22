@@ -158,6 +158,7 @@ Refit behavior:
 - supervised examples are loaded first from `--supervised-train-path`
 - pseudolabel records are loaded from `--pseudolabel-path` when provided, otherwise from `--input-path`
 - kept pseudolabel records are appended afterward
+- when no external validation file is provided and supervised data exists, the supervised dataset is split first and validation remains supervised-only
 - if `--disable-deduplicate-by-text` is not used, duplicate texts are dropped with preference for the supervised row
 - `refit_stats.json` records how many rows came from each source
 - iterative experiments can therefore refit on an accumulated pseudolabel JSONL artifact instead of only the current run's `kept.jsonl`

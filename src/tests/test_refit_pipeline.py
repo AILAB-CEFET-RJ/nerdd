@@ -7,6 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from pseudolabelling.refit_pipeline import (
     _resolve_refit_sources,
+    build_refit_splits,
     extract_text,
     merge_training_sources,
     normalize_entities,
@@ -129,6 +130,72 @@ class RefitPipelineTests(unittest.TestCase):
 
             resolved = resolve_pseudolabel_input(root, Dummy())
             self.assertEqual(resolved, explicit)
+
+    def test_build_refit_splits_keeps_validation_supervised_only(self):
+        supervised_rows = [
+            {"text": f"sup-{i}", "_refit_input_meta": {"training_source": "supervised"}}
+            for i in range(10)
+        ]
+        pseudolabel_rows = [
+            {"text": f"pseudo-{i}", "_refit_input_meta": {"training_source": "pseudolabel"}}
+            for i in range(3)
+        ]
+
+        train_rows, val_rows, _merge_counts, _val_counts = build_refit_splits(
+            supervised_rows,
+            pseudolabel_rows,
+            include_supervised_train=True,
+            include_pseudolabel_train=True,
+            val_ratio=0.2,
+            seed=42,
+            deduplicate_by_text=True,
+        )
+
+        self.assertTrue(train_rows)
+        self.assertTrue(val_rows)
+        self.assertTrue(all(row["_refit_input_meta"]["training_source"] == "supervised" for row in val_rows))
+        self.assertEqual(
+            sum(1 for row in train_rows if row["_refit_input_meta"]["training_source"] == "pseudolabel"),
+            3,
+        )
+
+    def test_build_refit_splits_preserves_supervised_split_across_modes(self):
+        supervised_rows = [
+            {"text": f"sup-{i}", "_refit_input_meta": {"training_source": "supervised"}}
+            for i in range(10)
+        ]
+        pseudolabel_rows = [
+            {"text": f"pseudo-{i}", "_refit_input_meta": {"training_source": "pseudolabel"}}
+            for i in range(3)
+        ]
+
+        train_sup_only, val_sup_only, _merge_a, _val_a = build_refit_splits(
+            supervised_rows,
+            pseudolabel_rows,
+            include_supervised_train=True,
+            include_pseudolabel_train=False,
+            val_ratio=0.2,
+            seed=42,
+            deduplicate_by_text=True,
+        )
+        train_sup_plus, val_sup_plus, _merge_b, _val_b = build_refit_splits(
+            supervised_rows,
+            pseudolabel_rows,
+            include_supervised_train=True,
+            include_pseudolabel_train=True,
+            val_ratio=0.2,
+            seed=42,
+            deduplicate_by_text=True,
+        )
+
+        sup_only_train_texts = {
+            row["text"] for row in train_sup_only if row["_refit_input_meta"]["training_source"] == "supervised"
+        }
+        sup_plus_train_texts = {
+            row["text"] for row in train_sup_plus if row["_refit_input_meta"]["training_source"] == "supervised"
+        }
+        self.assertEqual(sup_only_train_texts, sup_plus_train_texts)
+        self.assertEqual({row["text"] for row in val_sup_only}, {row["text"] for row in val_sup_plus})
 
 
 if __name__ == "__main__":

@@ -268,3 +268,23 @@ Expected artifact layering for future iterative runs:
   - `kept_acc_03.jsonl`
 
 The code now supports that layering explicitly.
+
+### Refit Validation Is Now Forced To Stay Supervised When Supervised Data Exists
+
+The first full-corpus `supervised_plus_pseudolabels_t030_full` run exposed a methodological bug:
+
+- pseudolabels entered the internal validation split
+- the supervised train/validation split changed relative to `supervised_only`
+
+The empirical symptom was severe holdout collapse, but the deeper issue was experimental validity rather than only model quality.
+
+The refit pipeline was corrected so that:
+
+- supervised rows are split into train and validation first
+- the validation side remains supervised-only
+- pseudolabel rows are appended only to the training side
+
+Implication:
+
+- future `supervised_only` vs `supervised_plus_pseudolabels` comparisons are now aligned on the same supervised validation partition
+- the failed pre-fix full-corpus semisupervised run should be interpreted as a diagnostic run from an invalid selection setup, not as a clean final comparison

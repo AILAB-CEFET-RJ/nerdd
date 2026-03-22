@@ -117,6 +117,36 @@ def split_train_val(records, val_ratio, seed):
     return train_records, val_records
 
 
+def build_refit_splits(
+    supervised_rows,
+    pseudolabel_rows,
+    *,
+    include_supervised_train,
+    include_pseudolabel_train,
+    val_ratio,
+    seed,
+    deduplicate_by_text,
+):
+    if include_supervised_train and supervised_rows:
+        train_supervised_rows, val_rows = split_train_val(supervised_rows, val_ratio=val_ratio, seed=seed)
+        train_pseudolabel_rows = pseudolabel_rows if include_pseudolabel_train else []
+        train_rows, merge_counts = merge_training_sources(
+            train_supervised_rows,
+            train_pseudolabel_rows,
+            deduplicate_by_text=deduplicate_by_text,
+        )
+        val_prepare_counts = Counter({"input_records": len(val_rows), "kept_records": len(val_rows)})
+        return train_rows, val_rows, merge_counts, val_prepare_counts
+
+    if include_pseudolabel_train:
+        train_rows, val_rows = split_train_val(pseudolabel_rows, val_ratio=val_ratio, seed=seed)
+        merge_counts = Counter({"kept_pseudolabel": len(train_rows) + len(val_rows), "merged_total": len(train_rows) + len(val_rows)})
+        val_prepare_counts = Counter({"input_records": len(val_rows), "kept_records": len(val_rows)})
+        return train_rows, val_rows, merge_counts, val_prepare_counts
+
+    raise RuntimeError("No enabled training source is available to build train/validation splits.")
+
+
 def _format_duration(seconds):
     total = int(round(seconds))
     hours, rem = divmod(total, 3600)
@@ -265,14 +295,6 @@ def run_refit(config, script_path):
         prepared_pseudolabel_rows = []
         pseudolabel_prepare_counts = Counter({"skipped_by_refit_mode": 1, "input_records": len(raw_pseudolabel_rows)})
 
-    prepared_rows, merge_counts = merge_training_sources(
-        prepared_supervised_rows,
-        prepared_pseudolabel_rows,
-        deduplicate_by_text=config.deduplicate_by_text,
-    )
-    if not prepared_rows:
-        raise RuntimeError("No valid training records remained after merging supervised and pseudolabel data.")
-
     if val_jsonl:
         raw_val_rows = _load_json_or_jsonl(val_jsonl)
         val_rows, val_prepare_counts = prepare_training_records(
@@ -282,10 +304,21 @@ def run_refit(config, script_path):
         )
         if not val_rows:
             raise RuntimeError("Validation file provided, but no valid validation records were found.")
-        train_rows = prepared_rows
+        train_rows, merge_counts = merge_training_sources(
+            prepared_supervised_rows,
+            prepared_pseudolabel_rows,
+            deduplicate_by_text=config.deduplicate_by_text,
+        )
     else:
-        train_rows, val_rows = split_train_val(prepared_rows, val_ratio=config.val_ratio, seed=config.seed)
-        val_prepare_counts = Counter({"input_records": len(val_rows), "kept_records": len(val_rows)})
+        train_rows, val_rows, merge_counts, val_prepare_counts = build_refit_splits(
+            prepared_supervised_rows,
+            prepared_pseudolabel_rows,
+            include_supervised_train=include_supervised_train,
+            include_pseudolabel_train=include_pseudolabel_train,
+            val_ratio=config.val_ratio,
+            seed=config.seed,
+            deduplicate_by_text=config.deduplicate_by_text,
+        )
 
     if not train_rows:
         raise RuntimeError("No training records available for refit.")

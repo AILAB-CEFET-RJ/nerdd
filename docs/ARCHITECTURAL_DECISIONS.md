@@ -281,6 +281,27 @@ Rationale:
 - `0.40` is likely too conservative for a first real semisupervised run
 - `0.30` is a better first operating point for balancing pseudolabel volume and expected noise
 
+### Validation Set Must Remain Supervised In Semisupervised Refit
+
+During the first full-corpus `supervised_plus_pseudolabels` run at `threshold=0.30`, the refit stage allowed pseudolabelled examples to enter the internal validation split. The supervised train/validation partition also shifted relative to the `supervised_only` control.
+
+That made the comparison methodologically unsound for two reasons:
+
+- early stopping and checkpoint choice were influenced by noisy pseudolabel validation examples
+- the supervised control split was no longer held constant across regimes
+
+Decision:
+
+- when no external `val_jsonl` is supplied and supervised data is available, the supervised dataset must be split first
+- that supervised split becomes the fixed validation set
+- pseudolabelled examples may be appended only to the training side
+
+Implications:
+
+- `supervised_only` and `supervised_plus_pseudolabels` now share the same supervised train/validation partition for a given seed
+- the marginal effect of pseudolabelling is no longer confounded by validation contamination
+- earlier full-corpus results produced before this correction should be treated as diagnostic, not as final evidence
+
 ## Iterative Pseudolabelling Requires Explicit Chunk Inputs And Explicit Accumulated Pseudolabel Inputs
 
 ### Context
