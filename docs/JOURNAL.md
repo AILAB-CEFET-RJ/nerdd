@@ -229,3 +229,42 @@ Implication:
 - the large corpus behaves very differently from the small calibration subset
 - threshold selection for full pseudolabelling must be based on the large-corpus score distribution, not reused directly from the small-set pilot
 - `0.30` emerged as the pragmatic first threshold for a full-corpus overnight run because it balances volume and conservatism better than `0.20` or `0.40`
+
+### Iterative Experiment Infrastructure
+
+To prepare a fair comparison between `single shot` and `iterative` semisupervised training, the pipeline now has the minimum infrastructure required for chunk-based runs:
+
+- `src/tools/split_large_corpus_into_chunks.py`
+  - splits `data/dd_corpus_large.json` into fixed JSONL chunks
+  - writes an explicit chunk summary artifact
+- `refit_model.py` now accepts an explicit pseudolabel dataset path
+- `run_iterative_cycle.py` now propagates that explicit pseudolabel path into the refit stage
+
+This matters because iterative experiments should refit on an accumulated pseudolabel artifact such as:
+
+- `kept_acc_01.jsonl`
+- `kept_acc_02.jsonl`
+- `kept_acc_03.jsonl`
+
+rather than being forced to consume only the current run's `05_split/kept.jsonl`.
+
+Operationally, this closes a concrete gap in the previous design:
+
+- before this change, iterative runs would still compute `kept.jsonl` for the current chunk, but refit could only consume that current artifact
+- after this change, iterative runs can keep producing the current chunk's `kept.jsonl` for traceability while refit consumes a separately curated accumulated artifact
+
+This separation is important because the current run directory and the accumulated pseudolabel state are not the same thing in an iterative experiment.
+
+Expected artifact layering for future iterative runs:
+
+- chunk-local artifacts:
+  - predictions
+  - context boost output
+  - scored JSONL
+  - `05_split/kept.jsonl`
+- cross-iteration artifacts:
+  - `kept_acc_01.jsonl`
+  - `kept_acc_02.jsonl`
+  - `kept_acc_03.jsonl`
+
+The code now supports that layering explicitly.

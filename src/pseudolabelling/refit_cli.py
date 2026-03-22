@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 @dataclass
 class RefitConfig:
     input_path: str = "./pseudolabel_split"
+    pseudolabel_path: str = ""
     supervised_train_path: str = ""
     refit_mode: str = "supervised_plus_pseudolabels"
     output_model_dir: str = "./refit_model"
@@ -39,6 +40,11 @@ def parse_args():
     defaults = RefitConfig()
     parser = argparse.ArgumentParser(description="Refit GLiNER model on kept pseudolabel records")
     parser.add_argument("--input-path", default=defaults.input_path, help="JSONL file or split directory with kept.jsonl")
+    parser.add_argument(
+        "--pseudolabel-path",
+        default=defaults.pseudolabel_path,
+        help="Optional explicit pseudolabel JSON/JSONL path. Overrides kept.jsonl resolution from --input-path.",
+    )
     parser.add_argument(
         "--supervised-train-path",
         default=defaults.supervised_train_path,
@@ -76,6 +82,7 @@ def parse_args():
 def build_config(args):
     return RefitConfig(
         input_path=args.input_path,
+        pseudolabel_path=args.pseudolabel_path,
         supervised_train_path=args.supervised_train_path,
         refit_mode=args.refit_mode,
         output_model_dir=args.output_model_dir,

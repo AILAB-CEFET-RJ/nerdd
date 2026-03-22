@@ -281,6 +281,67 @@ Rationale:
 - `0.40` is likely too conservative for a first real semisupervised run
 - `0.30` is a better first operating point for balancing pseudolabel volume and expected noise
 
+## Iterative Pseudolabelling Requires Explicit Chunk Inputs And Explicit Accumulated Pseudolabel Inputs
+
+### Context
+
+The original single-shot pseudolabelling flow assumes that refit consumes the `kept.jsonl` produced by the current run.
+
+That assumption is too restrictive for iterative semisupervised experiments, where refit should consume:
+
+- the fixed supervised dataset
+- plus an explicitly accumulated pseudolabel dataset assembled across previous chunks
+
+### Decision
+
+- keep the current split-directory flow as the default
+- add an explicit pseudolabel override path for refit
+- support chunk-based experimentation through a dedicated large-corpus chunking utility
+
+Implementation consequences:
+
+- `src/tools/split_large_corpus_into_chunks.py` now creates fixed JSONL chunks from `data/dd_corpus_large.json`
+- `src/pseudolabelling/refit_model.py` and the orchestrator now accept an explicit accumulated pseudolabel path
+- when that explicit path is supplied, refit no longer depends on the current run's `05_split/kept.jsonl`
+
+### Rationale
+
+- iterative experiments need stable chunk boundaries
+- accumulated pseudolabel sets must be first-class artifacts, not implied by directory layout
+- this keeps the future `single shot` vs `iterative` comparison operationally clean and auditable
+
+### Implications For Experimentation
+
+The project now has two semisupervised regimes that should be described separately:
+
+- `single shot`
+  - one unlabeled input
+  - one split step
+  - one refit step
+- `iterative`
+  - multiple fixed unlabeled chunks
+  - one split step per chunk
+  - one accumulated pseudolabel artifact per iteration
+  - one refit step per accumulated state
+
+The iterative regime should use:
+
+- fixed chunk boundaries
+- a stable threshold per experiment family
+- explicit accumulated files such as `kept_acc_01.jsonl`, `kept_acc_02.jsonl`, `kept_acc_03.jsonl`
+
+This ensures that a later comparison between `single shot` and `iterative` is primarily a comparison of incorporation strategy rather than a comparison of undocumented data handling.
+
+### Implications For Dissertation Wording
+
+The dissertation should not describe the iterative regime as merely "rerunning the same pipeline several times."
+
+It should describe it as:
+
+- a chunk-based semisupervised procedure
+- where pseudolabelled reports are accumulated across iterations
+- and where refit can be driven by an explicit accumulated pseudolabel artifact rather than only the current split output
+
 ## 2026-03-21 - Pseudolabelling Selection Happens At Record Level, Not Entity Level
 
 ### Context

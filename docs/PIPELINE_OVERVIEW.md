@@ -79,8 +79,15 @@ Important:
 - a kept report currently carries all of its predicted entities into refit
 - there is no additional entity-level score filter inside a kept report
 
+Single-shot versus iterative consequence:
+
+- in `single shot`, the current run's split output is also the pseudolabel source for refit
+- in `iterative`, the current run's split output is only one contributor to an accumulated pseudolabel artifact that may be passed to refit explicitly
+
 ## Refit Flow (`pseudolabelling/refit_model.py`)
-1. Read kept pseudolabel JSONL from split output.
+1. Read pseudolabel JSONL:
+   - from `--pseudolabel-path` when explicitly provided, or
+   - from the split output directory otherwise.
 2. Optionally read the original supervised training set (`JSON` array or `JSONL`).
 3. Normalize and validate both sources into a shared training format.
 4. Resolve `refit_mode`:
@@ -91,6 +98,33 @@ Important:
 6. Build train/validation split (or use external validation JSONL).
 7. Load base model and run iterative refit training.
 8. Save refit model plus run manifests/stats, including source breakdown and the effective source mix used by the selected refit mode.
+
+Important for iterative experiments:
+
+- the current split directory and the refit pseudolabel source no longer need to be the same artifact
+- this allows refit to consume accumulated files such as `kept_acc_02.jsonl`
+- chunk-local traceability is still preserved because the current run continues to write its own `05_split/kept.jsonl`
+
+## Chunked Iterative Regime
+
+The codebase now supports the minimum building blocks for a chunk-based semisupervised regime.
+
+Supporting utility:
+
+- `src/tools/split_large_corpus_into_chunks.py`
+
+Typical iterative structure:
+
+1. split `data/dd_corpus_large.json` into fixed chunks
+2. run prediction, context boost, scoring, and split on `chunk_01`
+3. save `kept_acc_01.jsonl`
+4. refit on `supervised + kept_acc_01`
+5. repeat for `chunk_02`, `chunk_03`, etc.
+
+The key architectural distinction is:
+
+- chunk-local outputs remain inside each run directory
+- cross-iteration accumulated pseudolabel state lives outside those per-run directories and is passed back into refit explicitly
 
 ## Refit Evaluation Flow (`pseudolabelling/evaluate_refit.py`)
 1. Read labeled ground-truth JSONL (`text` + `spans`).

@@ -137,6 +137,21 @@ def _pick_input_jsonl(input_path):
     )
 
 
+def resolve_pseudolabel_input(script_dir, config):
+    explicit_path = getattr(config, "pseudolabel_path", "")
+    if explicit_path:
+        resolved = resolve_path(script_dir, explicit_path)
+        if not resolved.exists():
+            raise FileNotFoundError(f"Pseudolabel dataset not found: {resolved}")
+        return resolved
+
+    input_candidate = resolve_path(script_dir, config.input_path)
+    resolved = _pick_input_jsonl(input_candidate)
+    if not resolved.exists():
+        raise FileNotFoundError(f"Input JSONL not found: {resolved}")
+    return resolved
+
+
 def _load_json_or_jsonl(path):
     source = Path(path)
     text = source.read_text(encoding="utf-8")
@@ -197,15 +212,12 @@ def run_refit(config, script_path):
     set_seed(config.seed)
 
     script_dir = Path(script_path).resolve().parent
-    input_candidate = resolve_path(script_dir, config.input_path)
     output_model_dir = resolve_path(script_dir, config.output_model_dir)
     stats_json = resolve_path(script_dir, config.stats_json)
     train_manifest_jsonl = resolve_path(script_dir, config.train_manifest_jsonl)
     val_manifest_jsonl = resolve_path(script_dir, config.val_manifest_jsonl)
 
-    input_jsonl = _pick_input_jsonl(input_candidate)
-    if not input_jsonl.exists():
-        raise FileNotFoundError(f"Input JSONL not found: {input_jsonl}")
+    input_jsonl = resolve_pseudolabel_input(script_dir, config)
 
     supervised_json = None
     if config.supervised_train_path:
@@ -329,6 +341,7 @@ def run_refit(config, script_path):
         "runtime_hms": _format_duration(runtime_seconds),
         "config": {
             "input_path": config.input_path,
+            "pseudolabel_path": getattr(config, "pseudolabel_path", ""),
             "supervised_train_path": config.supervised_train_path,
             "refit_mode": config.refit_mode,
             "input_jsonl_resolved": str(input_jsonl.resolve()),

@@ -175,7 +175,140 @@ Recommended first full-corpus operating point:
 - treat `0.20` as a more aggressive follow-up
 - treat `0.40` as a more conservative follow-up
 
-## 11) Controlled Refit Comparison For Dissertation Experiments
+## 11) Split The Large Corpus Into Fixed Chunks For Iterative Experiments
+
+When comparing single-shot pseudolabelling against iterative pseudolabelling, split the large corpus into fixed JSONL chunks first. This keeps chunk boundaries reproducible and prevents ad hoc slicing during long-running experiments.
+
+```bash
+cd .
+python3 src/tools/split_large_corpus_into_chunks.py \
+  --input data/dd_corpus_large.json \
+  --output-dir data/dd_corpus_large_chunks_50k \
+  --chunk-size 50000 \
+  --chunk-prefix dd_corpus_large_chunk \
+  --summary-json data/dd_corpus_large_chunks_50k_summary.json
+```
+
+Recommended use:
+
+- keep chunk size fixed across all iterative runs
+- treat the generated chunk files as immutable experiment inputs
+- accumulate `kept.jsonl` outputs across iterations into explicit JSONL artifacts
+
+The refit stage now supports an explicit accumulated pseudolabel input via:
+
+- `--refit-pseudolabel-path`
+
+Use this when an iterative run should refit on:
+
+- supervised training data
+- plus a manually accumulated pseudolabel file
+
+Chunk summary expectations:
+
+- each chunk is a standalone JSONL file
+- chunk ordering is fixed by source order
+- the summary JSON records:
+  - `rows_total`
+  - `chunk_size`
+  - `chunks_total`
+  - `start_index` / `end_index_exclusive` per chunk
+
+Recommended artifact convention for iterative experiments:
+
+- raw chunks:
+  - `data/dd_corpus_large_chunks_50k/dd_corpus_large_chunk_01.jsonl`
+  - `data/dd_corpus_large_chunks_50k/dd_corpus_large_chunk_02.jsonl`
+  - `data/dd_corpus_large_chunks_50k/dd_corpus_large_chunk_03.jsonl`
+- per-iteration runs:
+  - `src/artifacts/pseudolabelling/iterative_chunks_t030/iter_01/`
+  - `src/artifacts/pseudolabelling/iterative_chunks_t030/iter_02/`
+  - `src/artifacts/pseudolabelling/iterative_chunks_t030/iter_03/`
+- accumulated pseudolabel artifacts:
+  - `src/artifacts/pseudolabelling/iterative_chunks_t030/accumulated/kept_acc_01.jsonl`
+  - `src/artifacts/pseudolabelling/iterative_chunks_t030/accumulated/kept_acc_02.jsonl`
+  - `src/artifacts/pseudolabelling/iterative_chunks_t030/accumulated/kept_acc_03.jsonl`
+
+## 12) Iterative Pseudolabelling Protocol
+
+The iterative regime is not the same as the current single-shot flow.
+
+Single-shot semisupervised run:
+
+- infer on one large unlabeled input
+- split kept/discarded once
+- refit once using a single pseudolabel set
+
+Iterative semisupervised run:
+
+- infer on chunk 1
+- split and save `kept_1`
+- accumulate `kept_acc_01`
+- refit on `supervised + kept_acc_01`
+- repeat on chunk 2, chunk 3, and so on
+
+Recommended first operational design:
+
+- chunk size: `50000`
+- threshold: `0.30`
+- fixed number of iterations: `3`
+- supervised dataset stays fixed
+- accumulated pseudolabel file grows after each chunk
+
+Recommended refit semantics:
+
+- always refit from the same base model checkpoint
+- use the accumulated pseudolabel JSONL as the variable input
+
+This keeps the comparison cleaner because iteration results differ mainly by training data volume, not by continuing optimization from a previously adapted checkpoint.
+
+Example iterative refit invocation:
+
+```bash
+cd src
+python3 -m pseudolabelling.run_iterative_cycle \
+  --run-dir ./artifacts/pseudolabelling/iterative_chunks_t030/iter_02 \
+  --model-path ./artifacts/base_model_training/experiments/baseline_real_bs16_ml512/best_overall_gliner_model \
+  --prediction-calibrator-path ./artifacts/calibration/base_model/calibrator.json \
+  --input-jsonl ../data/dd_corpus_large_chunks_50k/dd_corpus_large_chunk_02.jsonl \
+  --labels Person,Location,Organization \
+  --text-fields assunto,relato,bairroLocal,logradouroLocal,cidadeLocal,pontodeReferenciaLocal \
+  --prediction-batch-size 16 \
+  --prediction-max-tokens 512 \
+  --prediction-threshold 0.0 \
+  --record-score-field score_context_boosted \
+  --split-threshold 0.30 \
+  --refit-mode supervised_plus_pseudolabels \
+  --refit-base-model ./artifacts/base_model_training/experiments/baseline_real_bs16_ml512/best_overall_gliner_model \
+  --refit-pseudolabel-path ./artifacts/pseudolabelling/iterative_chunks_t030/accumulated/kept_acc_02.jsonl \
+  --refit-supervised-train-path ../data/dd_corpus_small_train.json \
+  --refit-epochs 3 \
+  --refit-patience 2 \
+  --refit-batch-size 16 \
+  --refit-max-length 512 \
+  --refit-overlap 128 \
+  --refit-lr 1e-5 \
+  --refit-weight-decay 0.01 \
+  --evaluate-refit \
+  --eval-gt-jsonl ../data/dd_corpus_small_test_filtered.json \
+  --eval-prediction-threshold 0.05 \
+  --eval-batch-size 16 \
+  --eval-max-tokens 512 \
+  --log-level INFO
+```
+
+Important behavior:
+
+- inference and split still run on the current chunk
+- refit ignores the current run's `05_split/kept.jsonl` when `--refit-pseudolabel-path` is supplied
+- refit uses the explicit accumulated pseudolabel artifact instead
+
+Operational note:
+
+- accumulation of `kept_acc_0N.jsonl` is still an external step
+- the current code now supports that artifact cleanly, but does not yet build it automatically
+
+## 13) Controlled Refit Comparison For Dissertation Experiments
 
 Use the same final holdout `../data/dd_corpus_small_test_filtered.json` for both runs below.
 

@@ -25,6 +25,18 @@ Inference-only pipeline to label a large unlabeled corpus using a trained model.
 8. Evaluate both base and refit models on the same labeled holdout and write an explicit comparison artifact.
 9. Prepare discarded rows for the next pseudolabelling iteration.
 
+Two semisupervised regimes are now possible:
+
+- `single shot`
+  - one unlabeled input
+  - one kept/discarded split
+  - one refit
+- `iterative`
+  - multiple fixed unlabeled chunks
+  - one split per chunk
+  - an accumulated pseudolabel artifact that grows across iterations
+  - one refit per accumulated state
+
 ## Command Example
 
 ```bash
@@ -127,6 +139,7 @@ python3 pseudolabelling/split_pseudolabels.py \
 cd src
 python3 pseudolabelling/refit_model.py \
   --input-path ./artifacts/pseudolabelling/iter01/04_split \
+  --pseudolabel-path ./artifacts/pseudolabelling/iter01/04_split/kept.jsonl \
   --output-model-dir ./artifacts/pseudolabelling/iter01/05_refit_model \
   --base-model ./artifacts/base_model_training/experiments/run_batch16/best_overall_gliner_model \
   --supervised-train-path ../data/dd_corpus_small_train.json \
@@ -143,9 +156,24 @@ python3 pseudolabelling/refit_model.py \
 Refit behavior:
 
 - supervised examples are loaded first from `--supervised-train-path`
+- pseudolabel records are loaded from `--pseudolabel-path` when provided, otherwise from `--input-path`
 - kept pseudolabel records are appended afterward
 - if `--disable-deduplicate-by-text` is not used, duplicate texts are dropped with preference for the supervised row
 - `refit_stats.json` records how many rows came from each source
+- iterative experiments can therefore refit on an accumulated pseudolabel JSONL artifact instead of only the current run's `kept.jsonl`
+
+Recommended iterative artifact pattern:
+
+- chunk-local split outputs:
+  - `iter_01/05_split/kept.jsonl`
+  - `iter_02/05_split/kept.jsonl`
+  - `iter_03/05_split/kept.jsonl`
+- accumulated pseudolabel artifacts:
+  - `accumulated/kept_acc_01.jsonl`
+  - `accumulated/kept_acc_02.jsonl`
+  - `accumulated/kept_acc_03.jsonl`
+
+When `--pseudolabel-path` or `--refit-pseudolabel-path` is provided, refit uses the accumulated artifact and not just the current run's local split output.
 
 ## Evaluate Refit Example
 

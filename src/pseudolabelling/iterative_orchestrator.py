@@ -137,6 +137,7 @@ class IterativeCycleConfig:
 
     refit_output_model_dir: str = ""
     refit_base_model: str = ""
+    refit_pseudolabel_path: str = ""
     refit_supervised_train_path: str = ""
     refit_mode: str = "supervised_plus_pseudolabels"
     refit_epochs: int = 10
@@ -294,6 +295,7 @@ def run_iterative_cycle(config: IterativeCycleConfig, script_path: str):
     val_manifest = run_dir / "06_val_manifest.jsonl"
     refit_cfg = RefitConfig(
         input_path=str(split_dir),
+        pseudolabel_path=config.refit_pseudolabel_path,
         supervised_train_path=config.refit_supervised_train_path,
         refit_mode=config.refit_mode,
         output_model_dir=str(refit_model_dir),
@@ -392,6 +394,7 @@ def run_iterative_cycle(config: IterativeCycleConfig, script_path: str):
             "input_jsonl": config.input_jsonl,
             "labels": config.labels,
             "refit_mode": config.refit_mode,
+            "refit_pseudolabel_path": config.refit_pseudolabel_path,
             "use_calibration": config.use_calibration,
             "evaluate_refit": config.evaluate_refit,
             "prepare_next_iteration": config.prepare_next_iteration,
@@ -480,6 +483,7 @@ def parse_args():
 
     parser.add_argument("--refit-output-model-dir", default=defaults.refit_output_model_dir)
     parser.add_argument("--refit-base-model", default=defaults.refit_base_model)
+    parser.add_argument("--refit-pseudolabel-path", default=defaults.refit_pseudolabel_path)
     parser.add_argument("--refit-supervised-train-path", default=defaults.refit_supervised_train_path)
     parser.add_argument(
         "--refit-mode",
@@ -547,6 +551,7 @@ def build_config(args):
         split_fallback_score_field=args.split_fallback_score_field,
         refit_output_model_dir=args.refit_output_model_dir,
         refit_base_model=args.refit_base_model,
+        refit_pseudolabel_path=args.refit_pseudolabel_path,
         refit_supervised_train_path=args.refit_supervised_train_path,
         refit_mode=args.refit_mode,
         refit_epochs=args.refit_epochs,

@@ -1,4 +1,5 @@
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from pseudolabelling.refit_pipeline import (
     merge_training_sources,
     normalize_entities,
     prepare_training_records,
+    resolve_pseudolabel_input,
     split_train_val,
 )
 
@@ -111,6 +113,22 @@ class RefitPipelineTests(unittest.TestCase):
         self.assertEqual(_resolve_refit_sources(Dummy()), (True, True))
         Dummy.refit_mode = "pseudolabel_only"
         self.assertEqual(_resolve_refit_sources(Dummy()), (False, True))
+
+    def test_resolve_pseudolabel_input_prefers_explicit_path(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            explicit = root / "accumulated.jsonl"
+            explicit.write_text('{"text":"x"}\n', encoding="utf-8")
+            split_dir = root / "split"
+            split_dir.mkdir()
+            (split_dir / "kept.jsonl").write_text('{"text":"y"}\n', encoding="utf-8")
+
+            class Dummy:
+                pseudolabel_path = str(explicit)
+                input_path = str(split_dir)
+
+            resolved = resolve_pseudolabel_input(root, Dummy())
+            self.assertEqual(resolved, explicit)
 
 
 if __name__ == "__main__":
