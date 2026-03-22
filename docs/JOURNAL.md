@@ -197,3 +197,35 @@ Implication:
 
 - additional supervised refit explains part of the gain
 - pseudolabel augmentation explains an additional positive margin beyond that supervised-only baseline
+
+### Large-Corpus Sampling And Threshold Probing
+
+To avoid choosing kept/discarded thresholds blindly on the full unlabeled corpus, a reproducible sample of `10k` reports was created from `data/dd_corpus_large.json` using:
+
+- `src/tools/sample_large_corpus.py`
+- `seed=42`
+
+The sampled file was:
+
+- `data/dd_corpus_large_sample_10k.jsonl`
+
+Observed probe results on that `10k` sample:
+
+- prediction output:
+  - `10000` reports
+  - `172074` predicted entities
+- metadata-aware context boost:
+  - `3111` matched reports
+  - `47054` boosted entities
+
+Record-level split results:
+
+- `threshold=0.20` -> `281` kept reports
+- `threshold=0.30` -> `52` kept reports
+- `threshold=0.40` -> `14` kept reports
+
+Implication:
+
+- the large corpus behaves very differently from the small calibration subset
+- threshold selection for full pseudolabelling must be based on the large-corpus score distribution, not reused directly from the small-set pilot
+- `0.30` emerged as the pragmatic first threshold for a full-corpus overnight run because it balances volume and conservatism better than `0.20` or `0.40`

@@ -259,6 +259,28 @@ Interpretation:
 
 This is the first controlled result in the project where the marginal contribution of pseudolabelled examples was separated from the gain of an additional supervised refit.
 
+### Practical Follow-Up For Scaling
+
+After the controlled `t020` result, threshold choice for the large unlabeled corpus was treated as a separate engineering decision rather than a direct carryover from the small holdout experiments.
+
+A `10k` sample from `data/dd_corpus_large.json` was used to probe score distribution under the real metadata-rich inference regime.
+
+Observed kept counts on the `10k` sample:
+
+- `threshold=0.20` -> `281` kept
+- `threshold=0.30` -> `52` kept
+- `threshold=0.40` -> `14` kept
+
+Decision:
+
+- use `0.30` as the first full-corpus threshold for overnight runs
+
+Rationale:
+
+- `0.20` likely yields a very large pseudolabel set on the full corpus
+- `0.40` is likely too conservative for a first real semisupervised run
+- `0.30` is a better first operating point for balancing pseudolabel volume and expected noise
+
 ## 2026-03-21 - Pseudolabelling Selection Happens At Record Level, Not Entity Level
 
 ### Context

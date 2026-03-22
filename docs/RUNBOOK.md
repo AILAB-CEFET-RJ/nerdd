@@ -163,6 +163,18 @@ Recommended use:
 - inspect the resulting score distribution
 - choose the kept/discarded threshold based on the observed volume of candidate reports
 
+Observed probe results on the `10k` sample:
+
+- `threshold=0.20` -> `281` kept
+- `threshold=0.30` -> `52` kept
+- `threshold=0.40` -> `14` kept
+
+Recommended first full-corpus operating point:
+
+- start with `threshold=0.30`
+- treat `0.20` as a more aggressive follow-up
+- treat `0.40` as a more conservative follow-up
+
 ## 11) Controlled Refit Comparison For Dissertation Experiments
 
 Use the same final holdout `../data/dd_corpus_small_test_filtered.json` for both runs below.
