@@ -7,25 +7,8 @@ from time import perf_counter
 
 from base_model_training.io_utils import save_jsonl
 from base_model_training.paths import resolve_path
+from text_chunking import split_text_encoder_aware
 LOGGER = logging.getLogger(__name__)
-
-
-def split_text(text, tokenizer, max_tokens):
-    token_ids = tokenizer.encode(text, add_special_tokens=False)
-    parts = []
-    for index in range(0, len(token_ids), max_tokens):
-        chunk_ids = token_ids[index : index + max_tokens]
-        chunk_text = tokenizer.decode(chunk_ids, skip_special_tokens=True).strip()
-        if chunk_text:
-            parts.append(chunk_text)
-    return parts
-
-
-def find_with_cursor(text, part, cursor):
-    position = text.find(part, cursor)
-    if position == -1:
-        position = text.find(part)
-    return position
 
 
 def clean_entities(entities, chunk_text):
@@ -183,19 +166,17 @@ def format_classification_report(metrics):
 
 def predict_entities_for_text(model, text, labels, batch_size, max_tokens, threshold):
     tokenizer = model.data_processor.transformer_tokenizer
-    chunks = split_text(text, tokenizer=tokenizer, max_tokens=max_tokens)
+    chunks = split_text_encoder_aware(text, model=model, tokenizer=tokenizer, max_tokens=max_tokens)
     chunk_predictions = []
-    for idx in range(0, len(chunks), batch_size):
-        batch = chunks[idx : idx + batch_size]
+    chunk_texts = [chunk["text"] for chunk in chunks]
+    for idx in range(0, len(chunk_texts), batch_size):
+        batch = chunk_texts[idx : idx + batch_size]
         chunk_predictions.extend(predict_batch_entities(model, batch, labels, threshold))
 
     merged = []
-    cursor = 0
-    for chunk_text, entities in zip(chunks, chunk_predictions):
-        chunk_offset = find_with_cursor(text, chunk_text, cursor)
-        if chunk_offset == -1:
-            continue
-        cursor = chunk_offset + len(chunk_text)
+    for chunk, entities in zip(chunks, chunk_predictions):
+        chunk_text = chunk["text"]
+        chunk_offset = chunk["start"]
         for entity in clean_entities(entities, chunk_text):
             fixed = dict(entity)
             fixed["start"] = fixed["start"] + chunk_offset
