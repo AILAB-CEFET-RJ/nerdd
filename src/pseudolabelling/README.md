@@ -43,6 +43,7 @@ Two semisupervised regimes are now possible:
 cd src
 python3 pseudolabelling/generate_corpus_predictions.py \
   --model-path ./artifacts/base_model_training/smoke/run_nested_tiny/best_overall_gliner_model \
+  --model-max-length 384 \
   --calibrator-path ./artifacts/calibration/base_model/calibrator.json \
   --input-jsonl dd_corpus_large.json \
   --output-jsonl ./artifacts/pseudolabelling/iter01/01_predictions.jsonl \
@@ -70,6 +71,7 @@ python3 pseudolabelling/run_iterative_cycle.py \
   --text-fields assunto,relato,bairroLocal,logradouroLocal,cidadeLocal,pontodeReferenciaLocal \
   --prediction-batch-size 4 \
   --prediction-max-tokens 384 \
+  --prediction-model-max-length 384 \
   --prediction-threshold 0.0 \
   --record-score-field score_context_boosted \
   --split-threshold 0.80 \
@@ -79,9 +81,12 @@ python3 pseudolabelling/run_iterative_cycle.py \
   --refit-batch-size 8 \
   --evaluate-refit \
   --eval-gt-jsonl ../data/dd_corpus_small_test_filtered.json \
+  --eval-model-max-length 384 \
   --prepare-next-iteration \
   --log-level INFO
 ```
+
+Use `--model-max-length`, `--prediction-model-max-length`, or `--eval-model-max-length` when you need to pass GLiNER's own `max_length` into `GLiNER.from_pretrained(...)`. This is separate from `--max-tokens` / `--prediction-max-tokens` / `--eval-max-tokens`, which only control the pipeline's external chunking.
 
 ## Context Boost Example
 
@@ -182,6 +187,7 @@ When `--pseudolabel-path` or `--refit-pseudolabel-path` is provided, refit uses 
 cd src
 python3 pseudolabelling/evaluate_refit.py \
   --model-path ./artifacts/pseudolabelling/iter01/05_refit_model \
+  --model-max-length 384 \
   --gt-jsonl ../data/dd_corpus_small_test_filtered.json \
   --out-dir ./artifacts/pseudolabelling/iter01/06_eval_refit \
   --labels Person,Location,Organization \

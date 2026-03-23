@@ -105,6 +105,7 @@ class IterativeCycleConfig:
     )
     prediction_batch_size: int = 4
     prediction_max_tokens: int = 384
+    prediction_model_max_length: int = 0
     prediction_threshold: float = 0.0
     prediction_output_score_field: str = "score_calibrated"
     prediction_preserve_original_score_field: str = "score_original"
@@ -158,6 +159,7 @@ class IterativeCycleConfig:
     eval_prediction_threshold: float = 0.05
     eval_batch_size: int = 4
     eval_max_tokens: int = 384
+    eval_model_max_length: int = 0
 
     prepare_next_iteration: bool = False
     prepare_keep_fields: list[str] = field(
@@ -197,6 +199,7 @@ def run_iterative_cycle(config: IterativeCycleConfig, script_path: str):
         text_fields=config.text_fields,
         batch_size=config.prediction_batch_size,
         max_tokens=config.prediction_max_tokens,
+        model_max_length=config.prediction_model_max_length,
         score_threshold=config.prediction_threshold,
         output_score_field=config.prediction_output_score_field,
         preserve_original_score_field=config.prediction_preserve_original_score_field,
@@ -335,6 +338,7 @@ def run_iterative_cycle(config: IterativeCycleConfig, script_path: str):
             "prediction_threshold": config.eval_prediction_threshold,
             "batch_size": config.eval_batch_size,
             "max_tokens": config.eval_max_tokens,
+            "model_max_length": config.eval_model_max_length,
             "match_mode": "exact",
         }
         run_evaluate_refit(base_eval_cfg, script_path=script_path)
@@ -348,6 +352,7 @@ def run_iterative_cycle(config: IterativeCycleConfig, script_path: str):
             "prediction_threshold": config.eval_prediction_threshold,
             "batch_size": config.eval_batch_size,
             "max_tokens": config.eval_max_tokens,
+            "model_max_length": config.eval_model_max_length,
             "match_mode": "exact",
         }
         run_evaluate_refit(refit_eval_cfg, script_path=script_path)
@@ -393,10 +398,12 @@ def run_iterative_cycle(config: IterativeCycleConfig, script_path: str):
             "model_path": config.model_path,
             "input_jsonl": config.input_jsonl,
             "labels": config.labels,
+            "prediction_model_max_length": config.prediction_model_max_length,
             "refit_mode": config.refit_mode,
             "refit_pseudolabel_path": config.refit_pseudolabel_path,
             "use_calibration": config.use_calibration,
             "evaluate_refit": config.evaluate_refit,
+            "eval_model_max_length": config.eval_model_max_length,
             "prepare_next_iteration": config.prepare_next_iteration,
         },
         "artifacts": {
@@ -433,6 +440,7 @@ def parse_args():
     parser.add_argument("--text-fields", default=",".join(defaults.text_fields))
     parser.add_argument("--prediction-batch-size", type=int, default=defaults.prediction_batch_size)
     parser.add_argument("--prediction-max-tokens", type=int, default=defaults.prediction_max_tokens)
+    parser.add_argument("--prediction-model-max-length", type=int, default=defaults.prediction_model_max_length)
     parser.add_argument("--prediction-threshold", type=float, default=defaults.prediction_threshold)
     parser.add_argument("--prediction-output-score-field", default=defaults.prediction_output_score_field)
     parser.add_argument("--prediction-preserve-original-score-field", default=defaults.prediction_preserve_original_score_field)
@@ -508,6 +516,7 @@ def parse_args():
     parser.add_argument("--eval-prediction-threshold", type=float, default=defaults.eval_prediction_threshold)
     parser.add_argument("--eval-batch-size", type=int, default=defaults.eval_batch_size)
     parser.add_argument("--eval-max-tokens", type=int, default=defaults.eval_max_tokens)
+    parser.add_argument("--eval-model-max-length", type=int, default=defaults.eval_model_max_length)
 
     parser.add_argument("--prepare-next-iteration", action="store_true")
     parser.add_argument("--prepare-keep-fields", default=",".join(defaults.prepare_keep_fields))
@@ -528,6 +537,7 @@ def build_config(args):
         text_fields=_csv_list(args.text_fields),
         prediction_batch_size=args.prediction_batch_size,
         prediction_max_tokens=args.prediction_max_tokens,
+        prediction_model_max_length=args.prediction_model_max_length,
         prediction_threshold=args.prediction_threshold,
         prediction_output_score_field=args.prediction_output_score_field,
         prediction_preserve_original_score_field=args.prediction_preserve_original_score_field,
@@ -571,6 +581,7 @@ def build_config(args):
         eval_prediction_threshold=args.eval_prediction_threshold,
         eval_batch_size=args.eval_batch_size,
         eval_max_tokens=args.eval_max_tokens,
+        eval_model_max_length=args.eval_model_max_length,
         prepare_next_iteration=args.prepare_next_iteration,
         prepare_keep_fields=_csv_list(args.prepare_keep_fields),
         prepare_required_fields=_csv_list(args.prepare_required_fields),

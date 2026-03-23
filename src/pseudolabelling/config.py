@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 @dataclass
 class CorpusPredictConfig:
     model_path: str = "best_overall_gliner_model"
+    model_max_length: int = 0
     calibrator_path: str = ""
     input_jsonl: str = "dd_corpus_large.json"
     output_jsonl: str = "dd_corpus_large_predicted_entities.jsonl"

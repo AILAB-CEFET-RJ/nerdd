@@ -18,6 +18,7 @@ def parse_args():
         description="Profile pseudolabelling inference on a small number of reports."
     )
     parser.add_argument("--model-path", required=True)
+    parser.add_argument("--model-max-length", type=int, default=0)
     parser.add_argument("--input-jsonl", required=True)
     parser.add_argument("--labels", default="Person,Location,Organization")
     parser.add_argument(
@@ -68,7 +69,10 @@ def main():
     model_path = str(model_path_candidate) if model_path_candidate.exists() else args.model_path
 
     rows = load_jsonl(str(input_jsonl))[: args.limit]
-    model = GLiNER.from_pretrained(model_path, load_tokenizer=True)
+    model_kwargs = {"load_tokenizer": True}
+    if args.model_max_length > 0:
+        model_kwargs["max_length"] = args.model_max_length
+    model = GLiNER.from_pretrained(model_path, **model_kwargs)
     tokenizer = model.data_processor.transformer_tokenizer
     budget = effective_chunk_budget(model, tokenizer, args.max_tokens)
 
@@ -135,6 +139,7 @@ def main():
             "input_jsonl": str(input_jsonl),
             "limit": args.limit,
             "batch_size": args.batch_size,
+            "model_max_length": args.model_max_length,
             "max_tokens_requested": args.max_tokens,
             "effective_chunk_budget": budget,
             "labels": labels,

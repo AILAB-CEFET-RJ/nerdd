@@ -14,6 +14,7 @@ def parse_args():
     defaults = CorpusPredictConfig()
     parser = argparse.ArgumentParser(description="Generate entity predictions over a large JSONL corpus")
     parser.add_argument("--model-path", default=defaults.model_path)
+    parser.add_argument("--model-max-length", type=int, default=defaults.model_max_length)
     parser.add_argument("--calibrator-path", default=defaults.calibrator_path)
     parser.add_argument("--input-jsonl", default=defaults.input_jsonl)
     parser.add_argument("--output-jsonl", default=defaults.output_jsonl)
@@ -34,6 +35,7 @@ def parse_args():
 def build_config(args):
     return CorpusPredictConfig(
         model_path=args.model_path,
+        model_max_length=args.model_max_length,
         calibrator_path=args.calibrator_path,
         input_jsonl=args.input_jsonl,
         output_jsonl=args.output_jsonl,

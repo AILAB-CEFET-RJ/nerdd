@@ -11,6 +11,15 @@ from text_chunking import split_text_fast
 LOGGER = logging.getLogger(__name__)
 
 
+def _load_gliner_model(model_path, model_max_length):
+    from gliner import GLiNER
+
+    kwargs = {"load_tokenizer": True}
+    if model_max_length and model_max_length > 0:
+        kwargs["max_length"] = model_max_length
+    return GLiNER.from_pretrained(model_path, **kwargs)
+
+
 def clean_entities(entities, chunk_text):
     cleaned = []
     for entity in entities:
@@ -202,8 +211,6 @@ def _format_duration(seconds):
 
 
 def run_evaluate_refit(config, script_path):
-    from gliner import GLiNER
-
     started_at = datetime.now(timezone.utc).isoformat()
     timer = perf_counter()
 
@@ -220,7 +227,10 @@ def run_evaluate_refit(config, script_path):
     rows = load_gt_jsonl_strict(str(gt_jsonl))
     LOGGER.info("Loaded %s validated GT samples from %s", len(rows), gt_jsonl)
 
-    model = GLiNER.from_pretrained(model_path, load_tokenizer=True)
+    model_max_length = int(config.get("model_max_length", 0) or 0)
+    if model_max_length > 0:
+        LOGGER.info("Using GLiNER model max_length=%s during evaluation", model_max_length)
+    model = _load_gliner_model(model_path, model_max_length)
 
     prediction_rows = []
     pred_spans = []

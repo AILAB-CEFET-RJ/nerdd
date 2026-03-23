@@ -73,6 +73,7 @@ python3 base_model_training/evaluate_gliner.py \
 cd src
 python3 pseudolabelling/generate_corpus_predictions.py \
   --model-path ./artifacts/base_model_training/experiments/run_batch16/best_overall_gliner_model \
+  --model-max-length 384 \
   --input-jsonl ../data/dd_corpus_large.json \
   --output-jsonl ./artifacts/pseudolabelling/iter01/01_predictions.jsonl \
   --stats-json ./artifacts/pseudolabelling/iter01/01_predictions_stats.json \
@@ -131,6 +132,7 @@ python3 calibration/fit_calibrator.py \
 cd src
 python3 pseudolabelling/generate_corpus_predictions.py \
   --model-path ./artifacts/base_model_training/experiments/run_batch16/best_overall_gliner_model \
+  --model-max-length 384 \
   --calibrator-path ./artifacts/calibration/base_model/calibrator.json \
   --input-jsonl ../data/dd_corpus_large.json \
   --output-jsonl ./artifacts/pseudolabelling/iter01/01_predictions.jsonl \
@@ -181,6 +183,7 @@ If inference throughput degrades unexpectedly after prediction-pipeline changes,
 cd src
 python3 tools/profile_pseudolabelling_inference.py \
   --model-path ./artifacts/base_model_training/experiments/baseline_real_bs16_ml512/best_overall_gliner_model \
+  --model-max-length 384 \
   --input-jsonl ../data/dd_corpus_large_sample_10k.jsonl \
   --labels Person,Location,Organization \
   --text-fields assunto,relato,bairroLocal,logradouroLocal,cidadeLocal,pontodeReferenciaLocal \
@@ -198,6 +201,14 @@ This probe reports:
 - average inference seconds per row
 - average and maximum chunk count per row
 - overall rows per second
+
+Inference knobs:
+
+- `--model-max-length`
+  - passed into `GLiNER.from_pretrained(...)`
+  - influences GLiNER's internal processor/tokenizer behavior
+- `--max-tokens`
+  - used by the pseudolabelling pipeline to chunk long texts before calling GLiNER
 
 ## 11) Split The Large Corpus Into Fixed Chunks For Iterative Experiments
 
