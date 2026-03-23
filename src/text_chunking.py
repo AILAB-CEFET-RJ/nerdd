@@ -85,11 +85,26 @@ def effective_chunk_budget(model, tokenizer, requested_max_tokens):
 
 
 def split_text_encoder_aware(text, model, tokenizer, max_tokens):
+    budget = effective_chunk_budget(model, tokenizer, max_tokens)
+
+    try:
+        encoded = tokenizer(
+            text,
+            add_special_tokens=False,
+            truncation=False,
+            return_attention_mask=False,
+            return_offsets_mapping=True,
+        )
+        offset_mapping = encoded.get("offset_mapping")
+        if offset_mapping:
+            return _split_from_offset_mapping(text, offset_mapping, budget)
+    except Exception:
+        pass
+
     words, word_spans = tokenize_with_spans(text)
     if not words:
         return []
 
-    budget = effective_chunk_budget(model, tokenizer, max_tokens)
     wordpiece_lengths_values = wordpiece_lengths(words, tokenizer)
     chunks = []
     start_idx = 0
@@ -104,5 +119,23 @@ def split_text_encoder_aware(text, model, tokenizer, max_tokens):
             chunks.append({"text": chunk_text, "start": start_char, "end": end_char})
         if end_idx >= len(words):
             break
+        start_idx = end_idx
+    return chunks
+
+
+def _split_from_offset_mapping(text, offset_mapping, budget):
+    chunks = []
+    token_offsets = [tuple(item) for item in offset_mapping if item and len(item) == 2 and item[1] > item[0]]
+    if not token_offsets:
+        return chunks
+
+    start_idx = 0
+    while start_idx < len(token_offsets):
+        end_idx = min(len(token_offsets), start_idx + budget)
+        start_char = token_offsets[start_idx][0]
+        end_char = token_offsets[end_idx - 1][1]
+        chunk_text = text[start_char:end_char].strip()
+        if chunk_text:
+            chunks.append({"text": chunk_text, "start": start_char, "end": end_char})
         start_idx = end_idx
     return chunks

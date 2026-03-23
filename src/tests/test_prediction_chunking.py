@@ -20,6 +20,16 @@ class _FakeTokenizer:
         return 2
 
     def __call__(self, *args, **kwargs):
+        if kwargs.get("return_offsets_mapping"):
+            text = args[0]
+            offsets = []
+            cursor = 0
+            for token in text.split():
+                start = text.find(token, cursor)
+                end = start + len(token)
+                offsets.append((start, end))
+                cursor = end
+            return {"offset_mapping": offsets}
         return _FakeBatchEncoding()
 
     def tokenize(self, word):
