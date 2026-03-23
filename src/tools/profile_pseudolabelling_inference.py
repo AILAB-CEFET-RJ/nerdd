@@ -30,6 +30,7 @@ def parse_args():
     parser.add_argument("--score-threshold", type=float, default=0.0)
     parser.add_argument("--limit", type=int, default=100)
     parser.add_argument("--report-json", default="")
+    parser.add_argument("--progress-every", type=int, default=10)
     return parser.parse_args()
 
 
@@ -131,6 +132,24 @@ def main():
                 "inference_seconds": batch_seconds,
             }
         )
+
+        if args.progress_every > 0 and (row_idx % args.progress_every == 0 or row_idx == len(rows)):
+            elapsed = time.perf_counter() - started
+            print(
+                json.dumps(
+                    {
+                        "progress": f"{row_idx}/{len(rows)}",
+                        "elapsed_seconds": elapsed,
+                        "rows_per_second": (row_idx / elapsed) if elapsed else 0.0,
+                        "avg_chunking_seconds_per_row": total_chunking_seconds / row_idx,
+                        "avg_inference_seconds_per_row": total_inference_seconds / row_idx,
+                        "avg_chunks_per_row": total_chunks / row_idx,
+                        "max_chunks_per_row": max_chunks,
+                    },
+                    ensure_ascii=False,
+                ),
+                flush=True,
+            )
 
     runtime_seconds = time.perf_counter() - started
     payload = {
