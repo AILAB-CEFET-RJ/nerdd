@@ -175,6 +175,30 @@ Recommended first full-corpus operating point:
 - treat `0.20` as a more aggressive follow-up
 - treat `0.40` as a more conservative follow-up
 
+If inference throughput degrades unexpectedly after prediction-pipeline changes, profile the first `N` reports before launching another full overnight run:
+
+```bash
+cd src
+python3 tools/profile_pseudolabelling_inference.py \
+  --model-path ./artifacts/base_model_training/experiments/baseline_real_bs16_ml512/best_overall_gliner_model \
+  --input-jsonl ../data/dd_corpus_large_sample_10k.jsonl \
+  --labels Person,Location,Organization \
+  --text-fields assunto,relato,bairroLocal,logradouroLocal,cidadeLocal,pontodeReferenciaLocal \
+  --batch-size 16 \
+  --max-tokens 512 \
+  --score-threshold 0.0 \
+  --limit 100 \
+  --report-json ./artifacts/pseudolabelling/profile_inference_100.json
+```
+
+This probe reports:
+
+- effective chunk budget
+- average chunking seconds per row
+- average inference seconds per row
+- average and maximum chunk count per row
+- overall rows per second
+
 ## 11) Split The Large Corpus Into Fixed Chunks For Iterative Experiments
 
 When comparing single-shot pseudolabelling against iterative pseudolabelling, split the large corpus into fixed JSONL chunks first. This keeps chunk boundaries reproducible and prevents ad hoc slicing during long-running experiments.
