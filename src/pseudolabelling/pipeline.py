@@ -82,32 +82,56 @@ def deduplicate_entities(entities):
     return deduped
 
 
-def predict_entities_for_text(model, text, labels, batch_size, max_tokens, score_threshold):
+def predict_entities_for_texts(model, texts, labels, batch_size, max_tokens, score_threshold):
     tokenizer = model.data_processor.transformer_tokenizer
-    chunks = split_text_fast(text, model=model, tokenizer=tokenizer, max_tokens=max_tokens)
+    chunk_records = []
+    merged_by_row = [[] for _ in texts]
 
-    chunk_predictions = []
-    for index in range(0, len(chunks), batch_size):
-        batch = chunks[index : index + batch_size]
-        chunk_predictions.extend(predict_batch_entities(model, batch, labels, score_threshold))
-
-    merged = []
-    cursor = 0
-    for chunk_text, entities in zip(chunks, chunk_predictions):
-        chunk_offset = find_with_cursor(text, chunk_text, cursor)
-        if chunk_offset == -1:
+    for row_index, text in enumerate(texts):
+        if not text:
             continue
-        cursor = chunk_offset + len(chunk_text)
-        for entity in clean_entities(entities, chunk_text):
-            score = entity.get("score", 1.0)
-            if score < score_threshold:
+        chunks = split_text_fast(text, model=model, tokenizer=tokenizer, max_tokens=max_tokens)
+        cursor = 0
+        for chunk_text in chunks:
+            chunk_offset = find_with_cursor(text, chunk_text, cursor)
+            if chunk_offset == -1:
                 continue
-            fixed = dict(entity)
-            fixed["start"] = fixed["start"] + chunk_offset
-            fixed["end"] = fixed["end"] + chunk_offset
-            merged.append(fixed)
+            cursor = chunk_offset + len(chunk_text)
+            chunk_records.append(
+                {
+                    "row_index": row_index,
+                    "chunk_text": chunk_text,
+                    "chunk_offset": chunk_offset,
+                }
+            )
 
-    return deduplicate_entities(merged)
+    for index in range(0, len(chunk_records), batch_size):
+        batch_records = chunk_records[index : index + batch_size]
+        batch_texts = [record["chunk_text"] for record in batch_records]
+        batch_predictions = predict_batch_entities(model, batch_texts, labels, score_threshold)
+        for record, entities in zip(batch_records, batch_predictions):
+            row_entities = merged_by_row[record["row_index"]]
+            for entity in clean_entities(entities, record["chunk_text"]):
+                score = entity.get("score", 1.0)
+                if score < score_threshold:
+                    continue
+                fixed = dict(entity)
+                fixed["start"] = fixed["start"] + record["chunk_offset"]
+                fixed["end"] = fixed["end"] + record["chunk_offset"]
+                row_entities.append(fixed)
+
+    return [deduplicate_entities(entities) for entities in merged_by_row]
+
+
+def predict_entities_for_text(model, text, labels, batch_size, max_tokens, score_threshold):
+    return predict_entities_for_texts(
+        model=model,
+        texts=[text],
+        labels=labels,
+        batch_size=batch_size,
+        max_tokens=max_tokens,
+        score_threshold=score_threshold,
+    )[0]
 
 
 def _build_stats_payload(config, total_samples, failed_samples, total_entities, label_counts, started_at, finished_at, runtime_seconds):
@@ -189,55 +213,73 @@ def run_corpus_prediction(config, script_path):
     total_entities = 0
     failed_samples = 0
 
-    for index, row in enumerate(tqdm(rows, desc="Predicting", unit="sample"), start=1):
-        inference_text = build_inference_text(
-            sample=row,
-            text_fields=config.text_fields,
-            join_separator=config.join_separator,
-        )
-
-        if not inference_text:
-            output_entry = dict(row)
-            output_entry["entities"] = []
-            if config.keep_inference_text:
-                output_entry["inference_text"] = inference_text
-            output_rows.append(output_entry)
-            continue
-
-        try:
-            entities = predict_entities_for_text(
-                model=model,
-                text=inference_text,
-                labels=config.labels,
-                batch_size=config.batch_size,
-                max_tokens=config.max_tokens,
-                score_threshold=config.score_threshold,
-            )
-        except Exception as exc:  # noqa: BLE001
-            failed_samples += 1
-            LOGGER.exception("Failed to process sample %s: %s", index, exc)
-            entities = []
-
-        if calibrator is not None:
-            for entity in entities:
-                raw_score = entity.get("score", 1.0)
-                if config.preserve_original_score_field and config.preserve_original_score_field not in entity:
-                    entity[config.preserve_original_score_field] = raw_score
-                entity[config.output_score_field] = apply_calibrator_to_score(
-                    raw_score,
-                    str(entity.get("label", "")),
-                    calibrator,
+    with tqdm(total=len(rows), desc="Predicting", unit="sample") as progress:
+        for start in range(0, len(rows), config.batch_size):
+            batch_rows = rows[start : start + config.batch_size]
+            batch_texts = [
+                build_inference_text(
+                    sample=row,
+                    text_fields=config.text_fields,
+                    join_separator=config.join_separator,
                 )
+                for row in batch_rows
+            ]
 
-        for entity in entities:
-            label_counts[entity.get("label", "UNKNOWN")] += 1
-        total_entities += len(entities)
+            try:
+                batch_entities = predict_entities_for_texts(
+                    model=model,
+                    texts=batch_texts,
+                    labels=config.labels,
+                    batch_size=config.batch_size,
+                    max_tokens=config.max_tokens,
+                    score_threshold=config.score_threshold,
+                )
+            except Exception as exc:  # noqa: BLE001
+                LOGGER.exception("Batch prediction failed for samples %s-%s: %s", start + 1, start + len(batch_rows), exc)
+                batch_entities = []
+                for row_offset, inference_text in enumerate(batch_texts, start=1):
+                    if not inference_text:
+                        batch_entities.append([])
+                        continue
+                    try:
+                        batch_entities.append(
+                            predict_entities_for_text(
+                                model=model,
+                                text=inference_text,
+                                labels=config.labels,
+                                batch_size=config.batch_size,
+                                max_tokens=config.max_tokens,
+                                score_threshold=config.score_threshold,
+                            )
+                        )
+                    except Exception as row_exc:  # noqa: BLE001
+                        failed_samples += 1
+                        LOGGER.exception("Failed to process sample %s: %s", start + row_offset, row_exc)
+                        batch_entities.append([])
 
-        output_entry = dict(row)
-        output_entry["entities"] = entities
-        if config.keep_inference_text:
-            output_entry["inference_text"] = inference_text
-        output_rows.append(output_entry)
+            for row, inference_text, entities in zip(batch_rows, batch_texts, batch_entities):
+                if calibrator is not None:
+                    for entity in entities:
+                        raw_score = entity.get("score", 1.0)
+                        if config.preserve_original_score_field and config.preserve_original_score_field not in entity:
+                            entity[config.preserve_original_score_field] = raw_score
+                        entity[config.output_score_field] = apply_calibrator_to_score(
+                            raw_score,
+                            str(entity.get("label", "")),
+                            calibrator,
+                        )
+
+                for entity in entities:
+                    label_counts[entity.get("label", "UNKNOWN")] += 1
+                total_entities += len(entities)
+
+                output_entry = dict(row)
+                output_entry["entities"] = entities
+                if config.keep_inference_text:
+                    output_entry["inference_text"] = inference_text
+                output_rows.append(output_entry)
+
+            progress.update(len(batch_rows))
 
     save_jsonl(str(output_jsonl), output_rows)
 

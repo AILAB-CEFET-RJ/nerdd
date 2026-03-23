@@ -57,6 +57,13 @@ def predict_batch_entities(model, batch_texts, labels, threshold):
     return model.batch_predict_entities(batch_texts, labels, threshold=threshold)
 
 
+def find_with_cursor(text, part, cursor):
+    position = text.find(part, cursor)
+    if position == -1:
+        position = text.find(part)
+    return position
+
+
 def main():
     args = parse_args()
     from gliner import GLiNER
@@ -87,63 +94,83 @@ def main():
 
     started = time.perf_counter()
 
-    for row_idx, row in enumerate(rows, start=1):
-        inference_text = build_inference_text(
-            sample=row,
-            text_fields=text_fields,
-            join_separator=". ",
-        )
-        max_text_len = max(max_text_len, len(inference_text))
+    for start_idx in range(0, len(rows), args.batch_size):
+        batch_rows = rows[start_idx : start_idx + args.batch_size]
+        batch_texts = [
+            build_inference_text(
+                sample=row,
+                text_fields=text_fields,
+                join_separator=". ",
+            )
+            for row in batch_rows
+        ]
 
         t0 = time.perf_counter()
-        chunks = split_text_fast(
-            inference_text,
-            model=model,
-            tokenizer=tokenizer,
-            max_tokens=args.max_tokens,
-        )
+        chunk_records = []
+        batch_row_chunk_counts = []
+        for row_offset, inference_text in enumerate(batch_texts):
+            max_text_len = max(max_text_len, len(inference_text))
+            chunk_texts = split_text_fast(
+                inference_text,
+                model=model,
+                tokenizer=tokenizer,
+                max_tokens=args.max_tokens,
+            )
+            batch_row_chunk_counts.append(len(chunk_texts))
+            total_chunks += len(chunk_texts)
+            max_chunks = max(max_chunks, len(chunk_texts))
+            if chunk_texts:
+                max_chunk_text_len = max(max_chunk_text_len, max(len(chunk) for chunk in chunk_texts))
+            cursor = 0
+            for chunk_text in chunk_texts:
+                chunk_offset = find_with_cursor(inference_text, chunk_text, cursor)
+                if chunk_offset == -1:
+                    continue
+                cursor = chunk_offset + len(chunk_text)
+                chunk_records.append(
+                    {
+                        "row_index": start_idx + row_offset + 1,
+                        "chunk_text": chunk_text,
+                        "chunk_offset": chunk_offset,
+                    }
+                )
         t1 = time.perf_counter()
 
-        chunk_texts = list(chunks)
-        chunk_count = len(chunk_texts)
-        total_chunks += chunk_count
-        max_chunks = max(max_chunks, chunk_count)
-        if chunk_texts:
-            max_chunk_text_len = max(max_chunk_text_len, max(len(chunk) for chunk in chunk_texts))
-
         batch_seconds = 0.0
-        for index in range(0, len(chunk_texts), args.batch_size):
-            batch = chunk_texts[index : index + args.batch_size]
+        for index in range(0, len(chunk_records), args.batch_size):
+            batch = [record["chunk_text"] for record in chunk_records[index : index + args.batch_size]]
             t_batch_0 = time.perf_counter()
             predict_batch_entities(model, batch, labels, args.score_threshold)
             t_batch_1 = time.perf_counter()
             batch_seconds += t_batch_1 - t_batch_0
 
-        chunking_seconds = t1 - t0
-        total_chunking_seconds += chunking_seconds
+        rows_in_batch = len(batch_rows)
+        total_chunking_seconds += t1 - t0
         total_inference_seconds += batch_seconds
 
-        profiled_rows.append(
-            {
-                "row_index": row_idx,
-                "text_len_chars": len(inference_text),
-                "chunk_count": chunk_count,
-                "chunking_seconds": chunking_seconds,
-                "inference_seconds": batch_seconds,
-            }
-        )
+        for row_offset, inference_text in enumerate(batch_texts, start=1):
+            profiled_rows.append(
+                {
+                    "row_index": start_idx + row_offset,
+                    "text_len_chars": len(inference_text),
+                    "chunk_count": batch_row_chunk_counts[row_offset - 1],
+                    "chunking_seconds": (t1 - t0) / rows_in_batch if rows_in_batch else 0.0,
+                    "inference_seconds": batch_seconds / rows_in_batch if rows_in_batch else 0.0,
+                }
+            )
 
-        if args.progress_every > 0 and (row_idx % args.progress_every == 0 or row_idx == len(rows)):
+        rows_done = len(profiled_rows)
+        if args.progress_every > 0 and (rows_done % args.progress_every == 0 or rows_done == len(rows)):
             elapsed = time.perf_counter() - started
             print(
                 json.dumps(
                     {
-                        "progress": f"{row_idx}/{len(rows)}",
+                        "progress": f"{rows_done}/{len(rows)}",
                         "elapsed_seconds": elapsed,
-                        "rows_per_second": (row_idx / elapsed) if elapsed else 0.0,
-                        "avg_chunking_seconds_per_row": total_chunking_seconds / row_idx,
-                        "avg_inference_seconds_per_row": total_inference_seconds / row_idx,
-                        "avg_chunks_per_row": total_chunks / row_idx,
+                        "rows_per_second": (rows_done / elapsed) if elapsed else 0.0,
+                        "avg_chunking_seconds_per_row": total_chunking_seconds / rows_done,
+                        "avg_inference_seconds_per_row": total_inference_seconds / rows_done,
+                        "avg_chunks_per_row": total_chunks / rows_done,
                         "max_chunks_per_row": max_chunks,
                     },
                     ensure_ascii=False,

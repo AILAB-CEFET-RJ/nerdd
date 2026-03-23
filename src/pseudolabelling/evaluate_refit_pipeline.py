@@ -69,6 +69,44 @@ def deduplicate_entities(entities):
     return deduped
 
 
+def predict_entities_for_texts(model, texts, labels, batch_size, max_tokens, threshold):
+    tokenizer = model.data_processor.transformer_tokenizer
+    chunk_records = []
+    merged_by_row = [[] for _ in texts]
+
+    for row_index, text in enumerate(texts):
+        if not text:
+            continue
+        chunks = split_text_fast(text, model=model, tokenizer=tokenizer, max_tokens=max_tokens)
+        cursor = 0
+        for chunk_text in chunks:
+            chunk_offset = find_with_cursor(text, chunk_text, cursor)
+            if chunk_offset == -1:
+                continue
+            cursor = chunk_offset + len(chunk_text)
+            chunk_records.append(
+                {
+                    "row_index": row_index,
+                    "chunk_text": chunk_text,
+                    "chunk_offset": chunk_offset,
+                }
+            )
+
+    for idx in range(0, len(chunk_records), batch_size):
+        batch_records = chunk_records[idx : idx + batch_size]
+        batch_texts = [record["chunk_text"] for record in batch_records]
+        batch_predictions = predict_batch_entities(model, batch_texts, labels, threshold)
+        for record, entities in zip(batch_records, batch_predictions):
+            row_entities = merged_by_row[record["row_index"]]
+            for entity in clean_entities(entities, record["chunk_text"]):
+                fixed = dict(entity)
+                fixed["start"] = fixed["start"] + record["chunk_offset"]
+                fixed["end"] = fixed["end"] + record["chunk_offset"]
+                row_entities.append(fixed)
+
+    return [deduplicate_entities(entities) for entities in merged_by_row]
+
+
 def load_gt_jsonl_strict(path):
     rows = []
     with open(path, "r", encoding="utf-8") as handle:
@@ -181,26 +219,14 @@ def format_classification_report(metrics):
 
 
 def predict_entities_for_text(model, text, labels, batch_size, max_tokens, threshold):
-    tokenizer = model.data_processor.transformer_tokenizer
-    chunks = split_text_fast(text, model=model, tokenizer=tokenizer, max_tokens=max_tokens)
-    chunk_predictions = []
-    for idx in range(0, len(chunks), batch_size):
-        batch = chunks[idx : idx + batch_size]
-        chunk_predictions.extend(predict_batch_entities(model, batch, labels, threshold))
-
-    merged = []
-    cursor = 0
-    for chunk_text, entities in zip(chunks, chunk_predictions):
-        chunk_offset = find_with_cursor(text, chunk_text, cursor)
-        if chunk_offset == -1:
-            continue
-        cursor = chunk_offset + len(chunk_text)
-        for entity in clean_entities(entities, chunk_text):
-            fixed = dict(entity)
-            fixed["start"] = fixed["start"] + chunk_offset
-            fixed["end"] = fixed["end"] + chunk_offset
-            merged.append(fixed)
-    return deduplicate_entities(merged)
+    return predict_entities_for_texts(
+        model=model,
+        texts=[text],
+        labels=labels,
+        batch_size=batch_size,
+        max_tokens=max_tokens,
+        threshold=threshold,
+    )[0]
 
 
 def _format_duration(seconds):
@@ -238,30 +264,47 @@ def run_evaluate_refit(config, script_path):
     failed_predictions = 0
     label_counts = Counter()
 
-    for row_idx, row in enumerate(rows, start=1):
-        text = row["text"]
-        gold = row["spans"]
+    for start in range(0, len(rows), config["batch_size"]):
+        batch_rows = rows[start : start + config["batch_size"]]
+        batch_texts = [row["text"] for row in batch_rows]
         try:
-            entities = predict_entities_for_text(
+            batch_entities = predict_entities_for_texts(
                 model=model,
-                text=text,
+                texts=batch_texts,
                 labels=config["labels"],
                 batch_size=config["batch_size"],
                 max_tokens=config["max_tokens"],
                 threshold=config["prediction_threshold"],
             )
         except Exception as exc:  # noqa: BLE001
-            failed_predictions += 1
-            LOGGER.exception("Prediction failed for row %s: %s", row_idx, exc)
-            entities = []
+            LOGGER.exception("Batch prediction failed for rows %s-%s: %s", start + 1, start + len(batch_rows), exc)
+            batch_entities = []
+            for row_offset, text in enumerate(batch_texts, start=1):
+                try:
+                    batch_entities.append(
+                        predict_entities_for_text(
+                            model=model,
+                            text=text,
+                            labels=config["labels"],
+                            batch_size=config["batch_size"],
+                            max_tokens=config["max_tokens"],
+                            threshold=config["prediction_threshold"],
+                        )
+                    )
+                except Exception as row_exc:  # noqa: BLE001
+                    failed_predictions += 1
+                    LOGGER.exception("Prediction failed for row %s: %s", start + row_offset, row_exc)
+                    batch_entities.append([])
 
-        for entity in entities:
-            label_counts[str(entity.get("label", "UNKNOWN"))] += 1
-        prediction_rows.append({"text": text, "spans": gold, "entities": entities})
-        pred_spans.append(
-            [{"start": int(e["start"]), "end": int(e["end"]), "label": str(e["label"])} for e in entities]
-        )
-        gold_spans.append(gold)
+        for row, entities in zip(batch_rows, batch_entities):
+            gold = row["spans"]
+            for entity in entities:
+                label_counts[str(entity.get("label", "UNKNOWN"))] += 1
+            prediction_rows.append({"text": row["text"], "spans": gold, "entities": entities})
+            pred_spans.append(
+                [{"start": int(e["start"]), "end": int(e["end"]), "label": str(e["label"])} for e in entities]
+            )
+            gold_spans.append(gold)
 
     metrics = compute_span_metrics(gold_spans, pred_spans, config["labels"])
     report_text = format_classification_report(metrics)
