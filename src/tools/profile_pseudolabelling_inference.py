@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from base_model_training.io_utils import load_jsonl
 from base_model_training.paths import resolve_path
-from text_chunking import effective_chunk_budget, split_text_fast
+from text_chunking import effective_chunk_budget, model_position_limit, split_text_fast
 
 
 def parse_args():
@@ -83,6 +83,7 @@ def main():
     model = GLiNER.from_pretrained(model_path, **model_kwargs)
     tokenizer = model.data_processor.transformer_tokenizer
     budget = effective_chunk_budget(model, tokenizer, args.max_tokens)
+    position_limit = model_position_limit(model)
 
     total_chunking_seconds = 0.0
     total_inference_seconds = 0.0
@@ -186,6 +187,7 @@ def main():
             "limit": args.limit,
             "batch_size": args.batch_size,
             "model_max_length": args.model_max_length,
+            "model_position_limit": position_limit,
             "max_tokens_requested": args.max_tokens,
             "effective_chunk_budget": budget,
             "labels": labels,

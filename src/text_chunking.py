@@ -7,11 +7,28 @@ def special_tokens_to_add(tokenizer):
         return int(tokenizer.num_special_tokens_to_add())
 
 
+def model_position_limit(model):
+    candidates = [
+        getattr(model, "config", None),
+        getattr(getattr(model, "model", None), "config", None),
+        getattr(getattr(getattr(model, "data_processor", None), "transformer", None), "config", None),
+        getattr(getattr(getattr(model, "data_processor", None), "transformer_model", None), "config", None),
+    ]
+    for config in candidates:
+        max_positions = getattr(config, "max_position_embeddings", None)
+        if isinstance(max_positions, int) and 0 < max_positions < 100000:
+            return max_positions
+    return None
+
+
 def effective_chunk_budget(model, tokenizer, requested_max_tokens):
     candidates = [requested_max_tokens]
     processor_max_len = getattr(getattr(model, "data_processor", None), "max_len", None)
     if isinstance(processor_max_len, int) and processor_max_len > 0:
         candidates.append(processor_max_len)
+    position_limit = model_position_limit(model)
+    if isinstance(position_limit, int) and position_limit > 0:
+        candidates.append(position_limit)
     tokenizer_model_max = getattr(tokenizer, "model_max_length", None)
     if isinstance(tokenizer_model_max, int) and 0 < tokenizer_model_max < 100000:
         candidates.append(tokenizer_model_max)

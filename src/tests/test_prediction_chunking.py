@@ -17,7 +17,7 @@ sys.modules.setdefault(
     ),
 )
 
-from text_chunking import effective_chunk_budget, split_text_fast
+from text_chunking import effective_chunk_budget, model_position_limit, split_text_fast
 from pseudolabelling.pipeline import predict_entities_for_texts
 
 
@@ -59,6 +59,18 @@ class PredictionChunkingTests(unittest.TestCase):
         chunks = split_text_fast(text, model=model, tokenizer=tokenizer, max_tokens=3)
 
         self.assertEqual(chunks, ["w1", "w2", "w3", "w4"])
+
+    def test_model_position_limit_reads_nested_model_config(self):
+        model = SimpleNamespace(model=SimpleNamespace(config=SimpleNamespace(max_position_embeddings=256)))
+        self.assertEqual(model_position_limit(model), 256)
+
+    def test_effective_budget_uses_model_position_limit(self):
+        tokenizer = _FakeTokenizer()
+        model = SimpleNamespace(
+            data_processor=SimpleNamespace(transformer_tokenizer=tokenizer),
+            model=SimpleNamespace(config=SimpleNamespace(max_position_embeddings=8)),
+        )
+        self.assertEqual(effective_chunk_budget(model, tokenizer, 20), 6)
 
     def test_predict_entities_for_texts_batches_across_rows(self):
         tokenizer = _FakeTokenizer()
