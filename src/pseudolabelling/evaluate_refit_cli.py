@@ -9,10 +9,10 @@ def _parse_csv_list(raw_value):
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Evaluate refit GLiNER model on labeled JSONL (span-exact metrics)")
+    parser = argparse.ArgumentParser(description="Evaluate refit GLiNER model on labeled JSON/JSONL (span-exact metrics)")
     parser.add_argument("--model-path", required=True, help="Trained model path/name")
     parser.add_argument("--model-max-length", type=int, default=0, help="Optional GLiNER max_length passed at load time")
-    parser.add_argument("--gt-jsonl", required=True, help="Ground-truth JSONL with text and spans")
+    parser.add_argument("--gt-jsonl", required=True, help="Ground-truth JSONL or JSON array with text and spans")
     parser.add_argument("--out-dir", required=True, help="Output directory for evaluation artifacts")
     parser.add_argument("--labels", default="Person,Location,Organization", help="Comma-separated label list")
     parser.add_argument("--prediction-threshold", type=float, default=0.05)

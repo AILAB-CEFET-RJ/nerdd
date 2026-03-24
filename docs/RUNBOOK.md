@@ -57,7 +57,7 @@ python3 -m base_model_training.train_nested_kfold \
 cd src
 python3 base_model_training/evaluate_gliner.py \
   --model-path ./artifacts/base_model_training/experiments/run_batch16/best_overall_gliner_model \
-  --gt-jsonl ../data/dd_corpus_small_test_filtered.json \
+  --gt-jsonl ../data/dd_corpus_small_test_final.json \
   --pred-jsonl ./artifacts/base_model_training/experiments/run_batch16/eval/pred.jsonl \
   --report-path ./artifacts/base_model_training/experiments/run_batch16/eval/report.txt \
   --calibrated-thresholds-json ./artifacts/base_model_training/experiments/run_batch16/eval/thresholds.json \
@@ -325,7 +325,7 @@ python3 -m pseudolabelling.run_iterative_cycle \
   --refit-lr 1e-5 \
   --refit-weight-decay 0.01 \
   --evaluate-refit \
-  --eval-gt-jsonl ../data/dd_corpus_small_test_filtered.json \
+  --eval-gt-jsonl ../data/dd_corpus_small_test_final.json \
   --eval-prediction-threshold 0.05 \
   --eval-batch-size 16 \
   --eval-max-tokens 512 \
@@ -345,7 +345,7 @@ Operational note:
 
 ## 13) Controlled Refit Comparison For Dissertation Experiments
 
-Use the same final holdout `../data/dd_corpus_small_test_filtered.json` for both runs below.
+Use the same final holdout `../data/dd_corpus_small_test_final.json` for both runs below.
 
 First, measure the gain from additional supervised refit only:
 
@@ -374,7 +374,7 @@ python3 -m pseudolabelling.run_iterative_cycle \
   --refit-lr 1e-5 \
   --refit-weight-decay 0.01 \
   --evaluate-refit \
-  --eval-gt-jsonl ../data/dd_corpus_small_test_filtered.json \
+  --eval-gt-jsonl ../data/dd_corpus_small_test_final.json \
   --eval-prediction-threshold 0.05 \
   --eval-batch-size 16 \
   --eval-max-tokens 512 \
@@ -409,7 +409,7 @@ python3 -m pseudolabelling.run_iterative_cycle \
   --refit-lr 1e-5 \
   --refit-weight-decay 0.01 \
   --evaluate-refit \
-  --eval-gt-jsonl ../data/dd_corpus_small_test_filtered.json \
+  --eval-gt-jsonl ../data/dd_corpus_small_test_final.json \
   --eval-prediction-threshold 0.05 \
   --eval-batch-size 16 \
   --eval-max-tokens 512 \

@@ -108,18 +108,32 @@ def predict_entities_for_texts(model, texts, labels, batch_size, max_tokens, thr
 
 
 def load_gt_jsonl_strict(path):
-    rows = []
-    with open(path, "r", encoding="utf-8") as handle:
-        for line_no, line in enumerate(handle, start=1):
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                row = json.loads(line)
-            except json.JSONDecodeError as exc:
-                raise ValueError(f"Invalid JSONL at line {line_no}: {exc}") from exc
-            rows.append(_validate_gt_row(row, line_no))
-    return rows
+    source = Path(path)
+    text = source.read_text(encoding="utf-8")
+
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        rows = []
+        with source.open("r", encoding="utf-8") as handle:
+            for line_no, line in enumerate(handle, start=1):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError as exc:
+                    raise ValueError(f"Invalid JSONL at line {line_no}: {exc}") from exc
+                rows.append(_validate_gt_row(row, line_no))
+        return rows
+
+    if isinstance(payload, list):
+        return [_validate_gt_row(row, idx) for idx, row in enumerate(payload, start=1)]
+
+    if isinstance(payload, dict):
+        return [_validate_gt_row(payload, 1)]
+
+    raise ValueError("Ground-truth file must be JSONL, a JSON object, or a JSON array of rows")
 
 
 def _validate_gt_row(row, line_no):
@@ -263,8 +277,10 @@ def run_evaluate_refit(config, script_path):
     gold_spans = []
     failed_predictions = 0
     label_counts = Counter()
+    total_rows = len(rows)
+    progress_every_batches = max(1, 10)
 
-    for start in range(0, len(rows), config["batch_size"]):
+    for batch_index, start in enumerate(range(0, len(rows), config["batch_size"]), start=1):
         batch_rows = rows[start : start + config["batch_size"]]
         batch_texts = [row["text"] for row in batch_rows]
         try:
@@ -305,6 +321,19 @@ def run_evaluate_refit(config, script_path):
                 [{"start": int(e["start"]), "end": int(e["end"]), "label": str(e["label"])} for e in entities]
             )
             gold_spans.append(gold)
+
+        if batch_index % progress_every_batches == 0 or (start + len(batch_rows)) >= total_rows:
+            processed = start + len(batch_rows)
+            elapsed = perf_counter() - timer
+            rows_per_second = processed / elapsed if elapsed > 0 else 0.0
+            LOGGER.info(
+                "Evaluation progress: %s/%s rows (%.1f%%) | elapsed=%s | rows/s=%.3f",
+                processed,
+                total_rows,
+                (processed / total_rows * 100.0) if total_rows else 100.0,
+                _format_duration(elapsed),
+                rows_per_second,
+            )
 
     metrics = compute_span_metrics(gold_spans, pred_spans, config["labels"])
     report_text = format_classification_report(metrics)

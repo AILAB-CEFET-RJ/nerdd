@@ -23,6 +23,15 @@ class EvaluateRefitPipelineTests(unittest.TestCase):
             self.assertEqual(len(rows), 1)
             self.assertEqual(rows[0]["text"], "John in Rio")
 
+    def test_load_gt_jsonl_strict_accepts_json_array(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "gt.json"
+            rows_in = [{"text": "John in Rio", "spans": [{"start": 0, "end": 4, "label": "Person"}]}]
+            path.write_text(json.dumps(rows_in, ensure_ascii=False), encoding="utf-8")
+            rows = load_gt_jsonl_strict(str(path))
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["text"], "John in Rio")
+
     def test_load_gt_jsonl_strict_invalid_schema(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "gt.jsonl"

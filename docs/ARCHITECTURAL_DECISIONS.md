@@ -193,7 +193,7 @@ Once refit was corrected to support supervised data plus kept pseudolabels, an i
 
 - improvements from an additional supervised refit could be mistaken for improvements from pseudolabel augmentation
 
-This is not hypothetical. A controlled run with `refit_mode=supervised_only` already improved over the base model on `data/dd_corpus_small_test_filtered.json`.
+This is not hypothetical. A controlled run with `refit_mode=supervised_only` already improved over the base model on the legacy filtered holdout used in the early experiments.
 
 ### Decision
 
@@ -242,7 +242,7 @@ It should distinguish:
 
 ### First Controlled Result
 
-On the shared holdout `data/dd_corpus_small_test_filtered.json`, a controlled pair of `t020` runs produced:
+On the shared legacy filtered holdout used in those early runs, a controlled pair of `t020` experiments produced:
 
 - base: `micro_f1=0.4440`, `macro_f1=0.4362`
 - supervised-only refit: `micro_f1=0.4952`, `macro_f1=0.4772`

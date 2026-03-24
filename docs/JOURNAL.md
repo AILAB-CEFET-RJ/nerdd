@@ -181,7 +181,7 @@ Observed counts:
   - `11` pseudolabel examples in train
   - `1` pseudolabel example in validation
 
-Observed holdout metrics on `data/dd_corpus_small_test_filtered.json`:
+Observed holdout metrics on the legacy filtered holdout used at that time:
 
 - base:
   - `micro_f1=0.4440`
