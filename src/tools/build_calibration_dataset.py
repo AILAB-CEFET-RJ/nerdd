@@ -5,6 +5,7 @@ import csv
 import json
 import re
 import sys
+import time
 from collections import Counter
 from pathlib import Path
 
@@ -145,6 +146,7 @@ def parse_args():
     parser.add_argument("--batch-size", type=int, default=4, help="Prediction batch size.")
     parser.add_argument("--max-tokens", type=int, default=384, help="Tokenizer chunk size.")
     parser.add_argument("--threshold", type=float, default=0.0, help="Prediction threshold.")
+    parser.add_argument("--progress-every", type=int, default=25, help="Print progress every N rows.")
     return parser.parse_args()
 
 
@@ -163,6 +165,8 @@ def main():
     prediction_dump = []
     label_counts = Counter()
     validation_counts = Counter()
+    started = time.perf_counter()
+    total_rows = len(rows)
 
     with output_csv.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(
@@ -180,7 +184,7 @@ def main():
         )
         writer.writeheader()
 
-        for row_id, row in enumerate(rows):
+        for row_id, row in enumerate(rows, start=1):
             text = str(row.get("text", "")).strip()
             if not text:
                 continue
@@ -221,6 +225,22 @@ def main():
                 )
                 label_counts[label] += 1
                 validation_counts[is_valid] += 1
+
+            if row_id % args.progress_every == 0 or row_id == total_rows:
+                elapsed = time.perf_counter() - started
+                rows_per_second = row_id / elapsed if elapsed > 0 else 0.0
+                print(
+                    json.dumps(
+                        {
+                            "progress": f"{row_id}/{total_rows}",
+                            "elapsed_seconds": elapsed,
+                            "rows_per_second": rows_per_second,
+                            "predicted_entities": int(sum(label_counts.values())),
+                        },
+                        ensure_ascii=False,
+                    ),
+                    flush=True,
+                )
 
     if args.output_predictions_jsonl:
         output_predictions = Path(args.output_predictions_jsonl)
