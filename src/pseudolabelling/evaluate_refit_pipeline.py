@@ -12,10 +12,11 @@ from text_chunking import split_text_fast
 LOGGER = logging.getLogger(__name__)
 
 
-def _load_gliner_model(model_path, model_max_length):
+def _load_gliner_model(model_path, model_max_length, map_location):
     return load_gliner_model(
         model_path,
         model_max_length=model_max_length,
+        map_location=map_location,
         logger=LOGGER,
         context="evaluation",
     )
@@ -269,7 +270,8 @@ def run_evaluate_refit(config, script_path):
     LOGGER.info("Loaded %s validated GT samples from %s", len(rows), gt_jsonl)
 
     model_max_length = int(config.get("model_max_length", 0) or 0)
-    model = _load_gliner_model(model_path, model_max_length)
+    map_location = str(config.get("map_location", "") or "")
+    model = _load_gliner_model(model_path, model_max_length, map_location)
 
     prediction_rows = []
     pred_spans = []

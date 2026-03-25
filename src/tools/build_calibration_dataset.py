@@ -146,6 +146,7 @@ def parse_args():
     parser.add_argument("--batch-size", type=int, default=4, help="Prediction batch size.")
     parser.add_argument("--max-tokens", type=int, default=384, help="Tokenizer chunk size.")
     parser.add_argument("--threshold", type=float, default=0.0, help="Prediction threshold.")
+    parser.add_argument("--map-location", default="", help="Optional model device, e.g. 'cuda' or 'cpu'.")
     parser.add_argument("--progress-every", type=int, default=25, help="Print progress every N rows.")
     return parser.parse_args()
 
@@ -157,7 +158,7 @@ def main():
         raise ValueError("At least one label must be provided.")
 
     rows = read_json_or_jsonl(args.input)
-    model = load_gliner_model(args.model_path)
+    model = load_gliner_model(args.model_path, map_location=args.map_location)
 
     output_csv = Path(args.output_csv)
     output_csv.parent.mkdir(parents=True, exist_ok=True)

@@ -33,12 +33,18 @@ class GLiNERLoaderTests(unittest.TestCase):
             {"load_tokenizer": True, "max_length": 384},
         )
 
+    def test_build_kwargs_with_map_location(self):
+        self.assertEqual(
+            build_inference_gliner_kwargs(model_max_length=384, map_location="cuda"),
+            {"load_tokenizer": True, "max_length": 384, "map_location": "cuda"},
+        )
+
     def test_load_gliner_model_uses_shared_kwargs(self):
-        result = load_gliner_model("model-path", model_max_length=384)
+        result = load_gliner_model("model-path", model_max_length=384, map_location="cuda")
         self.assertEqual(result["model_path"], "model-path")
         self.assertEqual(
             _FakeGLiNER.calls,
-            [("model-path", {"load_tokenizer": True, "max_length": 384})],
+            [("model-path", {"load_tokenizer": True, "max_length": 384, "map_location": "cuda"})],
         )
 
 

@@ -18,10 +18,11 @@ LOGGER = logging.getLogger(__name__)
 VALID_ENTITY_TEXT_PATTERN = re.compile(r"^[\wÀ-ÿ\s\-\.']+$")
 
 
-def _load_gliner_model(model_path, model_max_length):
+def _load_gliner_model(model_path, model_max_length, map_location):
     return load_gliner_model(
         model_path,
         model_max_length=model_max_length,
+        map_location=map_location,
         logger=LOGGER,
         context="prediction",
     )
@@ -145,6 +146,7 @@ def _build_stats_payload(config, total_samples, failed_samples, total_entities, 
         "config": {
             "model_path": config.model_path,
             "model_max_length": config.model_max_length,
+            "map_location": config.map_location,
             "calibrator_path": config.calibrator_path,
             "input_jsonl": config.input_jsonl,
             "output_jsonl": config.output_jsonl,
@@ -205,7 +207,7 @@ def run_corpus_prediction(config, script_path):
     LOGGER.info("Loading model from: %s", model_path)
     if config.model_max_length and config.model_max_length > 0:
         LOGGER.info("Using GLiNER model max_length=%s during prediction", config.model_max_length)
-    model = _load_gliner_model(model_path, config.model_max_length)
+    model = _load_gliner_model(model_path, config.model_max_length, config.map_location)
 
     rows = load_jsonl(str(input_jsonl))
     LOGGER.info("Loaded %s input samples from %s", len(rows), input_jsonl)

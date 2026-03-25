@@ -20,6 +20,7 @@ def parse_args():
     )
     parser.add_argument("--model-path", required=True)
     parser.add_argument("--model-max-length", type=int, default=0)
+    parser.add_argument("--map-location", default="")
     parser.add_argument("--input-jsonl", required=True)
     parser.add_argument("--labels", default="Person,Location,Organization")
     parser.add_argument(
@@ -77,7 +78,11 @@ def main():
     model_path = str(model_path_candidate) if model_path_candidate.exists() else args.model_path
 
     rows = load_jsonl(str(input_jsonl))[: args.limit]
-    model = load_gliner_model(model_path, model_max_length=args.model_max_length)
+    model = load_gliner_model(
+        model_path,
+        model_max_length=args.model_max_length,
+        map_location=args.map_location,
+    )
     tokenizer = model.data_processor.transformer_tokenizer
     budget = effective_chunk_budget(model, tokenizer, args.max_tokens)
     position_limit = model_position_limit(model)
@@ -184,6 +189,7 @@ def main():
             "limit": args.limit,
             "batch_size": args.batch_size,
             "model_max_length": args.model_max_length,
+            "map_location": args.map_location,
             "model_position_limit": position_limit,
             "max_tokens_requested": args.max_tokens,
             "effective_chunk_budget": budget,
