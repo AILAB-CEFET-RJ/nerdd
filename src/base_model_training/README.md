@@ -73,6 +73,9 @@ python3 base_model_training/evaluate_gliner.py \
   --log-level INFO
 ```
 
+The base-model evaluation path now uses the shared inference/evaluation GLiNER loader in `src/gliner_loader.py`.
+The nested-CV training path in `src/base_model_training/cv.py` still keeps its own specialized model-loading fallback logic.
+
 ## Outputs
 
 - `nested_cv_results.txt`

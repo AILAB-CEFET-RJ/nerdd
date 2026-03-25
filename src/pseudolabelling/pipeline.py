@@ -6,12 +6,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from time import perf_counter
 
-from gliner import GLiNER
 from tqdm import tqdm
 
 from base_model_training.io_utils import load_jsonl, save_jsonl
 from base_model_training.paths import resolve_path
 from calibration.serialization import apply_calibrator_to_score, load_calibrator
+from gliner_loader import load_gliner_model
 from text_chunking import split_text_fast
 
 LOGGER = logging.getLogger(__name__)
@@ -19,10 +19,12 @@ VALID_ENTITY_TEXT_PATTERN = re.compile(r"^[\wÀ-ÿ\s\-\.']+$")
 
 
 def _load_gliner_model(model_path, model_max_length):
-    kwargs = {"load_tokenizer": True}
-    if model_max_length and model_max_length > 0:
-        kwargs["max_length"] = model_max_length
-    return GLiNER.from_pretrained(model_path, **kwargs)
+    return load_gliner_model(
+        model_path,
+        model_max_length=model_max_length,
+        logger=LOGGER,
+        context="prediction",
+    )
 
 
 def clean_entities(entities, chunk_text):

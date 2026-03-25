@@ -5,6 +5,8 @@ import random
 from dataclasses import dataclass
 from typing import Any, Dict, List, Tuple
 
+from gliner_loader import load_gliner_model
+
 
 def set_seed(seed: int = 42):
     random.seed(seed)
@@ -18,12 +20,11 @@ def set_seed(seed: int = 42):
         pass
 
 
-def load_gliner(model_name: str):
+def load_gliner(model_name: str, model_max_length: int = 0):
     import torch
-    from gliner import GLiNER
 
     os.environ.setdefault("TRANSFORMERS_NO_ACCELERATE", "1")
-    model = GLiNER.from_pretrained(model_name)
+    model = load_gliner_model(model_name, model_max_length=model_max_length, context="refit")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
     return model, None, device

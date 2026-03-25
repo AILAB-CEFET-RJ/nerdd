@@ -4,9 +4,9 @@ import re
 from collections import Counter
 from pathlib import Path
 
-from gliner import GLiNER
 from base_model_training.io_utils import load_jsonl, save_jsonl
 from base_model_training.paths import resolve_path
+from gliner_loader import load_gliner_model
 from sklearn.metrics import accuracy_score, classification_report, f1_score
 
 LOGGER = logging.getLogger(__name__)
@@ -227,7 +227,7 @@ def run_evaluation(config, script_path):
     calibrated_thresholds_json.parent.mkdir(parents=True, exist_ok=True)
     report_path.parent.mkdir(parents=True, exist_ok=True)
 
-    model = GLiNER.from_pretrained(model_path, load_tokenizer=True)
+    model = load_gliner_model(model_path)
 
     predict_entities_jsonl(
         model=model,

@@ -88,6 +88,13 @@ python3 pseudolabelling/run_iterative_cycle.py \
 
 Use `--model-max-length`, `--prediction-model-max-length`, or `--eval-model-max-length` when you need to pass GLiNER's own `max_length` into `GLiNER.from_pretrained(...)`. This is separate from `--max-tokens` / `--prediction-max-tokens` / `--eval-max-tokens`, which only control the pipeline's external chunking.
 
+Inference-oriented entrypoints now share the same loader in `src/gliner_loader.py`, keeping GLiNER load-time behavior aligned across:
+
+- corpus prediction
+- refit evaluation
+- inference profiling
+- calibration-dataset generation
+
 ## Context Boost Example
 
 ```bash

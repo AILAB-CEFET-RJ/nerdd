@@ -7,17 +7,18 @@ from time import perf_counter
 
 from base_model_training.io_utils import save_jsonl
 from base_model_training.paths import resolve_path
+from gliner_loader import load_gliner_model
 from text_chunking import split_text_fast
 LOGGER = logging.getLogger(__name__)
 
 
 def _load_gliner_model(model_path, model_max_length):
-    from gliner import GLiNER
-
-    kwargs = {"load_tokenizer": True}
-    if model_max_length and model_max_length > 0:
-        kwargs["max_length"] = model_max_length
-    return GLiNER.from_pretrained(model_path, **kwargs)
+    return load_gliner_model(
+        model_path,
+        model_max_length=model_max_length,
+        logger=LOGGER,
+        context="evaluation",
+    )
 
 
 def clean_entities(entities, chunk_text):
@@ -268,8 +269,6 @@ def run_evaluate_refit(config, script_path):
     LOGGER.info("Loaded %s validated GT samples from %s", len(rows), gt_jsonl)
 
     model_max_length = int(config.get("model_max_length", 0) or 0)
-    if model_max_length > 0:
-        LOGGER.info("Using GLiNER model max_length=%s during evaluation", model_max_length)
     model = _load_gliner_model(model_path, model_max_length)
 
     prediction_rows = []

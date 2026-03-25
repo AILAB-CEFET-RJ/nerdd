@@ -7,7 +7,7 @@ import re
 from collections import Counter
 from pathlib import Path
 
-from gliner import GLiNER
+from gliner_loader import load_gliner_model
 
 
 VALID_ENTITY_TEXT_PATTERN = re.compile(r"^[\wÀ-ÿ\s\-\.']+$")
@@ -152,7 +152,7 @@ def main():
         raise ValueError("At least one label must be provided.")
 
     rows = read_json_or_jsonl(args.input)
-    model = GLiNER.from_pretrained(args.model_path, load_tokenizer=True)
+    model = load_gliner_model(args.model_path)
 
     output_csv = Path(args.output_csv)
     output_csv.parent.mkdir(parents=True, exist_ok=True)

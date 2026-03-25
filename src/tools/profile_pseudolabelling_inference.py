@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from base_model_training.io_utils import load_jsonl
 from base_model_training.paths import resolve_path
+from gliner_loader import load_gliner_model
 from text_chunking import effective_chunk_budget, model_position_limit, split_text_fast
 
 
@@ -66,7 +67,6 @@ def find_with_cursor(text, part, cursor):
 
 def main():
     args = parse_args()
-    from gliner import GLiNER
 
     labels = _parse_csv(args.labels)
     text_fields = _parse_csv(args.text_fields)
@@ -77,10 +77,7 @@ def main():
     model_path = str(model_path_candidate) if model_path_candidate.exists() else args.model_path
 
     rows = load_jsonl(str(input_jsonl))[: args.limit]
-    model_kwargs = {"load_tokenizer": True}
-    if args.model_max_length > 0:
-        model_kwargs["max_length"] = args.model_max_length
-    model = GLiNER.from_pretrained(model_path, **model_kwargs)
+    model = load_gliner_model(model_path, model_max_length=args.model_max_length)
     tokenizer = model.data_processor.transformer_tokenizer
     budget = effective_chunk_budget(model, tokenizer, args.max_tokens)
     position_limit = model_position_limit(model)

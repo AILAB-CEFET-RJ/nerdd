@@ -403,6 +403,22 @@ Current refit experiments should be interpreted as:
 
 This means some noisy low-confidence entities can still enter refit if they belong to a report whose aggregate score passes the threshold.
 
+### Shared GLiNER Loader For Inference/Evaluation
+
+GLiNER loading policy outside nested-CV training was centralized in `src/gliner_loader.py`.
+
+This shared loader now serves:
+
+- corpus prediction
+- refit evaluation
+- calibration-dataset generation
+- inference profiling
+- base-model evaluation
+
+The goal is to keep `load_tokenizer=True` and optional `max_length` handling consistent across inference-oriented code paths.
+
+The nested-CV training loader in `src/base_model_training/cv.py` remains separate for now because it still carries specialized fallback behavior (`fix_mistral_regex`, `local_files_only`, and compatibility fallbacks).
+
 ### Implications For Dissertation Wording
 
 The dissertation should describe the current method as selecting pseudolabelled **reports**, not isolated entity spans.

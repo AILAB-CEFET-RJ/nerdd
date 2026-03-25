@@ -38,6 +38,13 @@ This folder now contains multiple subpipelines with separate documentation.
   - smoke: `artifacts/base_model_training/smoke/`
   - experiments: `artifacts/base_model_training/experiments/`
 
+## Shared Utilities
+
+- `gliner_loader.py`
+  - shared GLiNER loader for inference/evaluation paths
+  - centralizes `load_tokenizer=True` and optional `max_length`
+  - does not replace the specialized training loader behavior in `src/base_model_training/cv.py`
+
 ## Shared Docs
 
 - `../docs/MIGRATION.md`
