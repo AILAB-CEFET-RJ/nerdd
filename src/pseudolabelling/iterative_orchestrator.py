@@ -136,6 +136,14 @@ class IterativeCycleConfig:
     split_operator: str = "ge"
     split_missing_policy: str = "discard"
     split_fallback_score_field: str = "score_relato_confianca"
+    split_entity_gate_enabled: bool = True
+    split_entity_gate_score_field: str = "score_context_boosted"
+    split_entity_gate_entity_key: str = "entities"
+    split_entity_gate_label_field: str = "label"
+    split_entity_gate_labels: list[str] = field(default_factory=lambda: ["Location"])
+    split_entity_gate_aggregation: str = "max"
+    split_entity_gate_threshold: float = 0.5
+    split_entity_gate_operator: str = "ge"
 
     refit_output_model_dir: str = ""
     refit_base_model: str = ""
@@ -290,6 +298,19 @@ def run_iterative_cycle(config: IterativeCycleConfig, script_path: str):
         operator=config.split_operator,
         fallback_score_field=config.split_fallback_score_field,
         missing_policy=config.split_missing_policy,
+        entity_gate=(
+            {
+                "entity_key": config.split_entity_gate_entity_key,
+                "score_field": config.split_entity_gate_score_field,
+                "label_field": config.split_entity_gate_label_field,
+                "labels": config.split_entity_gate_labels,
+                "aggregation": config.split_entity_gate_aggregation,
+                "threshold": config.split_entity_gate_threshold,
+                "operator": config.split_entity_gate_operator,
+            }
+            if config.split_entity_gate_enabled
+            else None
+        ),
         legacy_filenames=True,
         script_path=script_path,
     )
@@ -410,6 +431,11 @@ def run_iterative_cycle(config: IterativeCycleConfig, script_path: str):
             "refit_mode": config.refit_mode,
             "refit_pseudolabel_path": config.refit_pseudolabel_path,
             "use_calibration": config.use_calibration,
+            "split_entity_gate_enabled": config.split_entity_gate_enabled,
+            "split_entity_gate_score_field": config.split_entity_gate_score_field if config.split_entity_gate_enabled else "",
+            "split_entity_gate_labels": config.split_entity_gate_labels if config.split_entity_gate_enabled else [],
+            "split_entity_gate_aggregation": config.split_entity_gate_aggregation if config.split_entity_gate_enabled else "",
+            "split_entity_gate_threshold": config.split_entity_gate_threshold if config.split_entity_gate_enabled else 0.0,
             "evaluate_refit": config.evaluate_refit,
             "eval_model_max_length": config.eval_model_max_length,
             "eval_map_location": config.eval_map_location,
@@ -498,6 +524,22 @@ def parse_args():
     parser.add_argument("--split-operator", choices=["ge", "gt", "le", "lt"], default=defaults.split_operator)
     parser.add_argument("--split-missing-policy", choices=["discard", "zero", "error"], default=defaults.split_missing_policy)
     parser.add_argument("--split-fallback-score-field", default=defaults.split_fallback_score_field)
+    parser.add_argument("--disable-split-entity-gate", action="store_true")
+    parser.add_argument("--split-entity-gate-score-field", default=defaults.split_entity_gate_score_field)
+    parser.add_argument("--split-entity-gate-entity-key", default=defaults.split_entity_gate_entity_key)
+    parser.add_argument("--split-entity-gate-label-field", default=defaults.split_entity_gate_label_field)
+    parser.add_argument("--split-entity-gate-labels", default=",".join(defaults.split_entity_gate_labels))
+    parser.add_argument(
+        "--split-entity-gate-aggregation",
+        choices=["mean", "max", "min"],
+        default=defaults.split_entity_gate_aggregation,
+    )
+    parser.add_argument("--split-entity-gate-threshold", type=float, default=defaults.split_entity_gate_threshold)
+    parser.add_argument(
+        "--split-entity-gate-operator",
+        choices=["ge", "gt", "le", "lt"],
+        default=defaults.split_entity_gate_operator,
+    )
 
     parser.add_argument("--refit-output-model-dir", default=defaults.refit_output_model_dir)
     parser.add_argument("--refit-base-model", default=defaults.refit_base_model)
@@ -571,6 +613,14 @@ def build_config(args):
         split_operator=args.split_operator,
         split_missing_policy=args.split_missing_policy,
         split_fallback_score_field=args.split_fallback_score_field,
+        split_entity_gate_enabled=(not args.disable_split_entity_gate),
+        split_entity_gate_score_field=args.split_entity_gate_score_field,
+        split_entity_gate_entity_key=args.split_entity_gate_entity_key,
+        split_entity_gate_label_field=args.split_entity_gate_label_field,
+        split_entity_gate_labels=_csv_list(args.split_entity_gate_labels),
+        split_entity_gate_aggregation=args.split_entity_gate_aggregation,
+        split_entity_gate_threshold=args.split_entity_gate_threshold,
+        split_entity_gate_operator=args.split_entity_gate_operator,
         refit_output_model_dir=args.refit_output_model_dir,
         refit_base_model=args.refit_base_model,
         refit_pseudolabel_path=args.refit_pseudolabel_path,

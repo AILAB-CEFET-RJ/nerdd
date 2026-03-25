@@ -63,7 +63,69 @@ def compare(value, threshold, operator):
     raise ValueError(f"Unsupported operator: {operator}")
 
 
-def split_records(rows, score_field, threshold, operator, fallback_score_field, missing_policy, trace_key):
+def _get_entities(record, entity_key):
+    entities = record.get(entity_key)
+    if isinstance(entities, list):
+        return entities
+    if entity_key != "ner" and isinstance(record.get("ner"), list):
+        return record.get("ner")
+    if entity_key != "entities" and isinstance(record.get("entities"), list):
+        return record.get("entities")
+    return []
+
+
+def resolve_entity_gate_score(
+    record,
+    *,
+    entity_key,
+    score_field,
+    label_field,
+    labels,
+    aggregation,
+):
+    entities = _get_entities(record, entity_key)
+    label_set = set(labels)
+    matched_scores = []
+    matched_entities = []
+    for entity in entities:
+        if str(entity.get(label_field, "")) not in label_set:
+            continue
+        score = _safe_float(entity.get(score_field))
+        if score is None:
+            continue
+        matched_scores.append(score)
+        matched_entities.append(
+            {
+                "text": entity.get("text", ""),
+                "label": entity.get(label_field, ""),
+                "score": score,
+            }
+        )
+
+    if not matched_scores:
+        return None, matched_entities
+
+    if aggregation == "mean":
+        value = mean(matched_scores)
+    elif aggregation == "max":
+        value = max(matched_scores)
+    elif aggregation == "min":
+        value = min(matched_scores)
+    else:
+        raise ValueError(f"Unsupported entity gate aggregation: {aggregation}")
+    return float(value), matched_entities
+
+
+def split_records(
+    rows,
+    score_field,
+    threshold,
+    operator,
+    fallback_score_field,
+    missing_policy,
+    trace_key,
+    entity_gate=None,
+):
     kept = []
     discarded = []
     counters = Counter()
@@ -71,6 +133,10 @@ def split_records(rows, score_field, threshold, operator, fallback_score_field, 
     discarded_scores = []
 
     for row in rows:
+        gate_value = None
+        gate_decision = None
+        gate_entities = []
+        gate_missing_reason = None
         score_value, score_source, missing_reason = resolve_record_score(
             record=row,
             score_field=score_field,
@@ -83,6 +149,23 @@ def split_records(rows, score_field, threshold, operator, fallback_score_field, 
             counters["missing_scores"] += 1
         else:
             is_kept = compare(score_value, threshold, operator)
+            if entity_gate and is_kept:
+                gate_value, gate_entities = resolve_entity_gate_score(
+                    row,
+                    entity_key=entity_gate["entity_key"],
+                    score_field=entity_gate["score_field"],
+                    label_field=entity_gate["label_field"],
+                    labels=entity_gate["labels"],
+                    aggregation=entity_gate["aggregation"],
+                )
+                if gate_value is None:
+                    gate_decision = False
+                    gate_missing_reason = "no_matching_entities"
+                else:
+                    gate_decision = compare(gate_value, entity_gate["threshold"], entity_gate["operator"])
+                is_kept = is_kept and bool(gate_decision)
+                if not is_kept and gate_decision is False:
+                    counters["entity_gate_rejections"] += 1
             decision = "kept" if is_kept else "discarded"
             target = kept if is_kept else discarded
             if is_kept:
@@ -101,6 +184,21 @@ def split_records(rows, score_field, threshold, operator, fallback_score_field, 
             "decision": decision,
             "missing_reason": missing_reason,
         }
+        if entity_gate:
+            updated[trace_key]["entity_gate"] = {
+                "enabled": True,
+                "entity_key": entity_gate["entity_key"],
+                "score_field": entity_gate["score_field"],
+                "label_field": entity_gate["label_field"],
+                "labels": entity_gate["labels"],
+                "aggregation": entity_gate["aggregation"],
+                "threshold": entity_gate["threshold"],
+                "operator": entity_gate["operator"],
+                "gate_score_used": gate_value,
+                "gate_decision": gate_decision,
+                "gate_missing_reason": gate_missing_reason,
+                "matched_entities": gate_entities,
+            }
         target.append(updated)
 
     summary = {
@@ -108,6 +206,7 @@ def split_records(rows, score_field, threshold, operator, fallback_score_field, 
         "kept_count": len(kept),
         "discarded_count": len(discarded),
         "missing_scores": int(counters["missing_scores"]),
+        "entity_gate_rejections": int(counters["entity_gate_rejections"]),
         "kept_score_mean": mean(kept_scores) if kept_scores else None,
         "kept_score_min": min(kept_scores) if kept_scores else None,
         "kept_score_max": max(kept_scores) if kept_scores else None,
@@ -135,6 +234,7 @@ def run_split(
     fallback_score_field="",
     missing_policy="discard",
     trace_key="_split",
+    entity_gate=None,
     legacy_filenames=False,
     script_path,
 ):
@@ -158,6 +258,7 @@ def run_split(
         fallback_score_field=fallback_score_field,
         missing_policy=missing_policy,
         trace_key=trace_key,
+        entity_gate=entity_gate,
     )
 
     kept_path = output_dir / "kept.jsonl"
@@ -182,6 +283,7 @@ def run_split(
             "operator": operator,
             "missing_policy": missing_policy,
             "trace_key": trace_key,
+            "entity_gate": entity_gate,
         },
         "summary": split_summary,
         "outputs": {

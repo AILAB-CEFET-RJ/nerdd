@@ -139,6 +139,10 @@ python3 pseudolabelling/split_pseudolabels.py \
   --score-field record_score \
   --threshold 0.80 \
   --operator ge \
+  --entity-gate-score-field score_context_boosted \
+  --entity-gate-labels Location \
+  --entity-gate-aggregation max \
+  --entity-gate-threshold 0.50 \
   --fallback-score-field score_relato_confianca \
   --missing-policy discard \
   --legacy-filenames \
@@ -296,10 +300,18 @@ Output fields:
 - `kept.jsonl`
 - `discarded.jsonl`
 - `summary.json`
+- per-record decision trace under `_split`, including optional entity-gate audit details
 - Optional legacy names (`--legacy-filenames`):
   - `mantidos.jsonl`
   - `descartados.jsonl`
   - `resumo.json`
+
+Current recommended selection rule:
+
+- primary gate: `record_score >= threshold`
+- secondary entity gate: at least one `Location` entity with `score_context_boosted >= 0.50`
+
+This avoids keeping a report only because non-locational entities scored well.
 
 ## Refit Outputs
 

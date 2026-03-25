@@ -21,6 +21,23 @@ def parse_args():
         help="How to handle records with missing score fields",
     )
     parser.add_argument("--trace-key", default="_split", help="Per-record decision trace key")
+    parser.add_argument("--entity-gate-score-field", default="", help="Optional entity-level score field for a second gate")
+    parser.add_argument("--entity-gate-entity-key", default="entities", help="Entity list key used by the optional entity gate")
+    parser.add_argument("--entity-gate-label-field", default="label", help="Entity label field used by the optional entity gate")
+    parser.add_argument("--entity-gate-labels", default="Location", help="Comma-separated labels eligible for the optional entity gate")
+    parser.add_argument(
+        "--entity-gate-aggregation",
+        choices=["mean", "max", "min"],
+        default="max",
+        help="Aggregation used by the optional entity gate",
+    )
+    parser.add_argument("--entity-gate-threshold", type=float, default=0.5, help="Threshold used by the optional entity gate")
+    parser.add_argument(
+        "--entity-gate-operator",
+        choices=["ge", "gt", "le", "lt"],
+        default="ge",
+        help="Comparison operator used by the optional entity gate",
+    )
     parser.add_argument(
         "--legacy-filenames",
         action="store_true",

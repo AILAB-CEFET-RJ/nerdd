@@ -98,6 +98,74 @@ class SplitByScoreTests(unittest.TestCase):
                 trace_key="_split",
             )
 
+    def test_entity_gate_rejects_row_without_strong_location(self):
+        rows = [
+            {
+                "id": 1,
+                "record_score": 0.7,
+                "entities": [
+                    {"text": "Fulano", "label": "Person", "score_context_boosted": 0.95},
+                    {"text": "Centro", "label": "Location", "score_context_boosted": 0.4},
+                ],
+            }
+        ]
+        kept, discarded, summary = split_records(
+            rows=rows,
+            score_field="record_score",
+            threshold=0.3,
+            operator="ge",
+            fallback_score_field="",
+            missing_policy="discard",
+            trace_key="_split",
+            entity_gate={
+                "entity_key": "entities",
+                "score_field": "score_context_boosted",
+                "label_field": "label",
+                "labels": ["Location"],
+                "aggregation": "max",
+                "threshold": 0.5,
+                "operator": "ge",
+            },
+        )
+        self.assertEqual(len(kept), 0)
+        self.assertEqual(len(discarded), 1)
+        self.assertEqual(summary["entity_gate_rejections"], 1)
+        self.assertFalse(discarded[0]["_split"]["entity_gate"]["gate_decision"])
+
+    def test_entity_gate_accepts_row_with_strong_location(self):
+        rows = [
+            {
+                "id": 1,
+                "record_score": 0.35,
+                "entities": [
+                    {"text": "Centro", "label": "Location", "score_context_boosted": 0.61},
+                    {"text": "Fulano", "label": "Person", "score_context_boosted": 0.2},
+                ],
+            }
+        ]
+        kept, discarded, summary = split_records(
+            rows=rows,
+            score_field="record_score",
+            threshold=0.3,
+            operator="ge",
+            fallback_score_field="",
+            missing_policy="discard",
+            trace_key="_split",
+            entity_gate={
+                "entity_key": "entities",
+                "score_field": "score_context_boosted",
+                "label_field": "label",
+                "labels": ["Location"],
+                "aggregation": "max",
+                "threshold": 0.5,
+                "operator": "ge",
+            },
+        )
+        self.assertEqual(len(kept), 1)
+        self.assertEqual(len(discarded), 0)
+        self.assertEqual(summary["entity_gate_rejections"], 0)
+        self.assertTrue(kept[0]["_split"]["entity_gate"]["gate_decision"])
+
 
 if __name__ == "__main__":
     unittest.main()
