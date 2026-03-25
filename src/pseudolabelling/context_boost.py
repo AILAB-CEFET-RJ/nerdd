@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 import unicodedata
 from collections import Counter
 from copy import deepcopy
@@ -11,6 +12,34 @@ from base_model_training.io_utils import load_jsonl, save_jsonl
 from base_model_training.paths import resolve_path
 
 LOGGER = logging.getLogger(__name__)
+TOKEN_RE = re.compile(r"[0-9a-z]+", re.IGNORECASE)
+MIN_INFORMATIVE_TOKEN_LEN = 3
+STOPWORD_TOKENS = {
+    "a",
+    "ao",
+    "as",
+    "da",
+    "das",
+    "de",
+    "do",
+    "dos",
+    "e",
+    "em",
+    "na",
+    "nas",
+    "no",
+    "nos",
+    "o",
+    "os",
+    "ou",
+    "para",
+    "por",
+    "pra",
+    "pro",
+    "que",
+    "um",
+    "uma",
+}
 
 
 def normalize_text(value):
@@ -35,6 +64,16 @@ def extract_metadata_values(record, metadata_fields):
         if isinstance(value, str) and value.strip():
             values.append((field, value.strip()))
     return values
+
+
+def _tokenize_informative_text(value):
+    normalized = normalize_text(value)
+    raw_tokens = TOKEN_RE.findall(normalized)
+    return [
+        token
+        for token in raw_tokens
+        if len(token) >= MIN_INFORMATIVE_TOKEN_LEN and token not in STOPWORD_TOKENS
+    ]
 
 
 def _iter_entities(record):
@@ -85,11 +124,19 @@ def _entity_matches_metadata(entity, metadata_values):
     entity_text = normalize_text(entity.get("text", ""))
     if not entity_text:
         return False
+    entity_tokens = set(_tokenize_informative_text(entity_text))
+    if not entity_tokens:
+        return False
     for _field, value in metadata_values:
         normalized_value = normalize_text(value)
         if not normalized_value:
             continue
-        if entity_text in normalized_value or normalized_value in entity_text:
+        metadata_tokens = set(_tokenize_informative_text(normalized_value))
+        if not metadata_tokens:
+            continue
+        if entity_tokens <= metadata_tokens or metadata_tokens <= entity_tokens:
+            return True
+        if entity_tokens & metadata_tokens:
             return True
     return False
 

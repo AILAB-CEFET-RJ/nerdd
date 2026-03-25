@@ -5,7 +5,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from pseudolabelling.config import ContextBoostConfig
-from pseudolabelling.context_boost import apply_context_boost_to_record, normalize_text
+from pseudolabelling.context_boost import (
+    apply_context_boost_to_record,
+    normalize_text,
+    _entity_matches_metadata,
+)
 
 
 class ContextBoostTests(unittest.TestCase):
@@ -101,6 +105,17 @@ class ContextBoostTests(unittest.TestCase):
         boosted, _stats = apply_context_boost_to_record(record, config)
         self.assertAlmostEqual(boosted["entities"][0]["score_context_boosted"], 0.84, places=6)
         self.assertEqual(boosted["entities"][0]["_context_boost_score_source"], "score_ts")
+
+    def test_entity_metadata_match_rejects_trivial_substrings(self):
+        metadata_values = [("cidadeLocal", "Rio de Janeiro"), ("bairroLocal", "Centro")]
+        self.assertFalse(_entity_matches_metadata({"text": "de"}, metadata_values))
+        self.assertFalse(_entity_matches_metadata({"text": "."}, metadata_values))
+        self.assertFalse(_entity_matches_metadata({"text": "na"}, metadata_values))
+
+    def test_entity_metadata_match_accepts_informative_overlap(self):
+        metadata_values = [("logradouroLocal", "Estrada do Galeao"), ("bairroLocal", "Ilha do Governador")]
+        self.assertTrue(_entity_matches_metadata({"text": "Galeao"}, metadata_values))
+        self.assertTrue(_entity_matches_metadata({"text": "Ilha do Governador"}, metadata_values))
 
 
 if __name__ == "__main__":
