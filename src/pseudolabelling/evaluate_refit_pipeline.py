@@ -283,6 +283,14 @@ def run_evaluate_refit(config, script_path):
     for batch_index, start in enumerate(range(0, len(rows), config["batch_size"]), start=1):
         batch_rows = rows[start : start + config["batch_size"]]
         batch_texts = [row["text"] for row in batch_rows]
+        if batch_index == 1 or batch_index % progress_every_batches == 0:
+            LOGGER.info(
+                "Starting evaluation batch %s | rows %s-%s of %s",
+                batch_index,
+                start + 1,
+                start + len(batch_rows),
+                total_rows,
+            )
         try:
             batch_entities = predict_entities_for_texts(
                 model=model,
