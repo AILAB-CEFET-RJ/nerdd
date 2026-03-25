@@ -14,6 +14,8 @@ from base_model_training.paths import resolve_path
 LOGGER = logging.getLogger(__name__)
 TOKEN_RE = re.compile(r"[0-9a-z]+", re.IGNORECASE)
 MIN_INFORMATIVE_TOKEN_LEN = 3
+MIN_ENTITY_SCORE_FOR_METADATA_BOOST = 0.5
+MIN_SHARED_INFORMATIVE_TOKENS = 2
 STOPWORD_TOKENS = {
     "a",
     "ao",
@@ -66,6 +68,13 @@ def extract_metadata_values(record, metadata_fields):
     return values
 
 
+def _safe_float(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _tokenize_informative_text(value):
     normalized = normalize_text(value)
     raw_tokens = TOKEN_RE.findall(normalized)
@@ -74,6 +83,10 @@ def _tokenize_informative_text(value):
         for token in raw_tokens
         if len(token) >= MIN_INFORMATIVE_TOKEN_LEN and token not in STOPWORD_TOKENS
     ]
+
+
+def _is_exact_normalized_match(entity_text, metadata_text):
+    return normalize_text(entity_text) == normalize_text(metadata_text)
 
 
 def _iter_entities(record):
@@ -121,8 +134,16 @@ def _record_level_context_match(record, text_field_priority, metadata_fields):
 
 
 def _entity_matches_metadata(entity, metadata_values):
-    entity_text = normalize_text(entity.get("text", ""))
+    entity_text_raw = str(entity.get("text", "") or "")
+    entity_text = normalize_text(entity_text_raw)
     if not entity_text:
+        return False
+    score_value = _safe_float(entity.get("score_context_boosted"))
+    if score_value is None:
+        score_value = _safe_float(entity.get("score_calibrated"))
+    if score_value is None:
+        score_value = _safe_float(entity.get("score"))
+    if score_value is None or score_value < MIN_ENTITY_SCORE_FOR_METADATA_BOOST:
         return False
     entity_tokens = set(_tokenize_informative_text(entity_text))
     if not entity_tokens:
@@ -131,12 +152,17 @@ def _entity_matches_metadata(entity, metadata_values):
         normalized_value = normalize_text(value)
         if not normalized_value:
             continue
+        if _is_exact_normalized_match(entity_text_raw, value):
+            return True
         metadata_tokens = set(_tokenize_informative_text(normalized_value))
         if not metadata_tokens:
             continue
-        if entity_tokens <= metadata_tokens or metadata_tokens <= entity_tokens:
+        shared_tokens = entity_tokens & metadata_tokens
+        if len(shared_tokens) >= MIN_SHARED_INFORMATIVE_TOKENS:
             return True
-        if entity_tokens & metadata_tokens:
+        if entity_tokens <= metadata_tokens and len(entity_tokens) >= MIN_SHARED_INFORMATIVE_TOKENS:
+            return True
+        if metadata_tokens <= entity_tokens and len(metadata_tokens) >= MIN_SHARED_INFORMATIVE_TOKENS:
             return True
     return False
 

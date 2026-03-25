@@ -114,8 +114,20 @@ class ContextBoostTests(unittest.TestCase):
 
     def test_entity_metadata_match_accepts_informative_overlap(self):
         metadata_values = [("logradouroLocal", "Estrada do Galeao"), ("bairroLocal", "Ilha do Governador")]
-        self.assertTrue(_entity_matches_metadata({"text": "Galeao"}, metadata_values))
-        self.assertTrue(_entity_matches_metadata({"text": "Ilha do Governador"}, metadata_values))
+        self.assertFalse(_entity_matches_metadata({"text": "Galeao", "score_calibrated": 0.9}, metadata_values))
+        self.assertTrue(_entity_matches_metadata({"text": "Ilha do Governador", "score_calibrated": 0.9}, metadata_values))
+        self.assertTrue(_entity_matches_metadata({"text": "Estrada do Galeao", "score_calibrated": 0.9}, metadata_values))
+
+    def test_entity_metadata_match_requires_minimum_score(self):
+        metadata_values = [("logradouroLocal", "Rua Faia")]
+        self.assertFalse(_entity_matches_metadata({"text": "Rua Faia", "score_calibrated": 0.2}, metadata_values))
+        self.assertTrue(_entity_matches_metadata({"text": "Rua Faia", "score_calibrated": 0.8}, metadata_values))
+
+    def test_entity_metadata_match_requires_stronger_overlap_than_single_generic_token(self):
+        metadata_values = [("logradouroLocal", "Rua Faia")]
+        self.assertFalse(_entity_matches_metadata({"text": "Rua", "score_calibrated": 0.9}, metadata_values))
+        self.assertFalse(_entity_matches_metadata({"text": "Faia", "score_calibrated": 0.9}, metadata_values))
+        self.assertTrue(_entity_matches_metadata({"text": "Rua Faia", "score_calibrated": 0.9}, metadata_values))
 
 
 if __name__ == "__main__":
