@@ -630,7 +630,21 @@ def run_experiment(config, script_path):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     raw_data = load_dataset(str(train_path))
-    filtered_data = [sample for sample in raw_data if sample["ner"]]
+    if config.keep_empty_samples:
+        filtered_data = list(raw_data)
+        LOGGER.info(
+            "Keeping samples without entities in supervised training: %s raw records retained.",
+            len(filtered_data),
+        )
+    else:
+        filtered_data = [sample for sample in raw_data if sample["ner"]]
+        dropped_empty = len(raw_data) - len(filtered_data)
+        LOGGER.info(
+            "Dropping samples without entities in supervised training: %s/%s records retained (%s dropped).",
+            len(filtered_data),
+            len(raw_data),
+            dropped_empty,
+        )
     dataset = split_long_sentences(
         filtered_data,
         max_length=config.max_length,
@@ -901,6 +915,7 @@ def run_experiment(config, script_path):
     report_payload = {
         "config": {
             "train_path": str(train_path),
+            "keep_empty_samples": config.keep_empty_samples,
             "model_base": str(model_base),
             "n_splits": outer_splitter.n_splits,
             "n_inner_splits": config.n_inner_splits,

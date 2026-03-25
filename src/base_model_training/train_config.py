@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 class TrainConfig:
     seed: int = 42
     train_path: str = "../data/dd_corpus_small_train.json"
+    keep_empty_samples: bool = False
     model_base: str = "birdred/glinerdd"
     batch_size: int = 4
     num_epochs: int = 20
