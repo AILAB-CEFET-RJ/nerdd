@@ -1,8 +1,11 @@
 import json
 import logging
 import re
+import sys
 from collections import Counter
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from base_model_training.io_utils import load_jsonl, save_jsonl
 from base_model_training.paths import resolve_path
