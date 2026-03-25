@@ -91,6 +91,7 @@ class IterativeCycleConfig:
     run_dir: str = "./iterative_cycle_run"
     model_path: str = "best_overall_gliner_model"
     prediction_calibrator_path: str = ""
+    prediction_map_location: str = ""
     input_jsonl: str = "dd_corpus_large.json"
     labels: list[str] = field(default_factory=lambda: ["Person", "Location", "Organization"])
     text_fields: list[str] = field(
@@ -160,6 +161,7 @@ class IterativeCycleConfig:
     eval_batch_size: int = 4
     eval_max_tokens: int = 384
     eval_model_max_length: int = 0
+    eval_map_location: str = ""
 
     prepare_next_iteration: bool = False
     prepare_keep_fields: list[str] = field(
@@ -191,6 +193,7 @@ def run_iterative_cycle(config: IterativeCycleConfig, script_path: str):
     LOGGER.info("Step 1/7: Predict entities on large corpus")
     prediction_cfg = CorpusPredictConfig(
         model_path=config.model_path,
+        map_location=config.prediction_map_location,
         calibrator_path=config.prediction_calibrator_path,
         input_jsonl=config.input_jsonl,
         output_jsonl=str(predictions_jsonl),
@@ -339,6 +342,7 @@ def run_iterative_cycle(config: IterativeCycleConfig, script_path: str):
             "batch_size": config.eval_batch_size,
             "max_tokens": config.eval_max_tokens,
             "model_max_length": config.eval_model_max_length,
+            "map_location": config.eval_map_location,
             "match_mode": "exact",
         }
         run_evaluate_refit(base_eval_cfg, script_path=script_path)
@@ -353,6 +357,7 @@ def run_iterative_cycle(config: IterativeCycleConfig, script_path: str):
             "batch_size": config.eval_batch_size,
             "max_tokens": config.eval_max_tokens,
             "model_max_length": config.eval_model_max_length,
+            "map_location": config.eval_map_location,
             "match_mode": "exact",
         }
         run_evaluate_refit(refit_eval_cfg, script_path=script_path)
@@ -396,6 +401,7 @@ def run_iterative_cycle(config: IterativeCycleConfig, script_path: str):
         "config": {
             "run_dir": str(run_dir.resolve()),
             "model_path": config.model_path,
+            "prediction_map_location": config.prediction_map_location,
             "input_jsonl": config.input_jsonl,
             "labels": config.labels,
             "prediction_model_max_length": config.prediction_model_max_length,
@@ -404,6 +410,7 @@ def run_iterative_cycle(config: IterativeCycleConfig, script_path: str):
             "use_calibration": config.use_calibration,
             "evaluate_refit": config.evaluate_refit,
             "eval_model_max_length": config.eval_model_max_length,
+            "eval_map_location": config.eval_map_location,
             "prepare_next_iteration": config.prepare_next_iteration,
         },
         "artifacts": {
@@ -435,6 +442,7 @@ def parse_args():
     parser.add_argument("--run-dir", default=defaults.run_dir)
     parser.add_argument("--model-path", default=defaults.model_path)
     parser.add_argument("--prediction-calibrator-path", default=defaults.prediction_calibrator_path)
+    parser.add_argument("--prediction-map-location", default=defaults.prediction_map_location)
     parser.add_argument("--input-jsonl", default=defaults.input_jsonl)
     parser.add_argument("--labels", default=",".join(defaults.labels))
     parser.add_argument("--text-fields", default=",".join(defaults.text_fields))
@@ -517,6 +525,7 @@ def parse_args():
     parser.add_argument("--eval-batch-size", type=int, default=defaults.eval_batch_size)
     parser.add_argument("--eval-max-tokens", type=int, default=defaults.eval_max_tokens)
     parser.add_argument("--eval-model-max-length", type=int, default=defaults.eval_model_max_length)
+    parser.add_argument("--eval-map-location", default=defaults.eval_map_location)
 
     parser.add_argument("--prepare-next-iteration", action="store_true")
     parser.add_argument("--prepare-keep-fields", default=",".join(defaults.prepare_keep_fields))
@@ -532,6 +541,7 @@ def build_config(args):
         run_dir=args.run_dir,
         model_path=args.model_path,
         prediction_calibrator_path=args.prediction_calibrator_path,
+        prediction_map_location=args.prediction_map_location,
         input_jsonl=args.input_jsonl,
         labels=_csv_list(args.labels),
         text_fields=_csv_list(args.text_fields),
@@ -582,6 +592,7 @@ def build_config(args):
         eval_batch_size=args.eval_batch_size,
         eval_max_tokens=args.eval_max_tokens,
         eval_model_max_length=args.eval_model_max_length,
+        eval_map_location=args.eval_map_location,
         prepare_next_iteration=args.prepare_next_iteration,
         prepare_keep_fields=_csv_list(args.prepare_keep_fields),
         prepare_required_fields=_csv_list(args.prepare_required_fields),

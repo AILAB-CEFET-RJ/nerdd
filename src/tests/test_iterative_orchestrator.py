@@ -17,12 +17,14 @@ class IterativeOrchestratorTests(unittest.TestCase):
             config = IterativeCycleConfig(
                 run_dir=str(run_dir),
                 prediction_model_max_length=384,
+                prediction_map_location="cuda",
                 refit_mode="supervised_only",
                 refit_pseudolabel_path="../artifacts/accumulated/kept_acc_01.jsonl",
                 use_calibration=False,
                 evaluate_refit=True,
                 eval_gt_jsonl="../data/dd_corpus_small_test_final.json",
                 eval_model_max_length=384,
+                eval_map_location="cuda",
                 prepare_next_iteration=True,
             )
 
@@ -78,13 +80,17 @@ class IterativeOrchestratorTests(unittest.TestCase):
                 "../artifacts/accumulated/kept_acc_01.jsonl",
             )
             self.assertEqual(p_pred.call_args.args[0].model_max_length, 384)
+            self.assertEqual(p_pred.call_args.args[0].map_location, "cuda")
             self.assertEqual(p_eval.call_args_list[0].args[0]["model_max_length"], 384)
             self.assertEqual(p_eval.call_args_list[1].args[0]["model_max_length"], 384)
+            self.assertEqual(p_eval.call_args_list[0].args[0]["map_location"], "cuda")
+            self.assertEqual(p_eval.call_args_list[1].args[0]["map_location"], "cuda")
 
             summary_path = run_dir / "cycle_summary.json"
             self.assertTrue(summary_path.exists())
             payload = json.loads(summary_path.read_text(encoding="utf-8"))
             self.assertEqual(payload["config"]["refit_mode"], "supervised_only")
+            self.assertEqual(payload["config"]["prediction_map_location"], "cuda")
             self.assertEqual(payload["config"]["prediction_model_max_length"], 384)
             self.assertEqual(
                 payload["config"]["refit_pseudolabel_path"],
@@ -93,6 +99,7 @@ class IterativeOrchestratorTests(unittest.TestCase):
             self.assertEqual(payload["config"]["use_calibration"], False)
             self.assertEqual(payload["config"]["evaluate_refit"], True)
             self.assertEqual(payload["config"]["eval_model_max_length"], 384)
+            self.assertEqual(payload["config"]["eval_map_location"], "cuda")
             self.assertEqual(payload["config"]["prepare_next_iteration"], True)
             self.assertTrue((run_dir / "09_base_vs_refit_comparison.json").exists())
             comparison_payload = json.loads((run_dir / "09_base_vs_refit_comparison.json").read_text(encoding="utf-8"))
