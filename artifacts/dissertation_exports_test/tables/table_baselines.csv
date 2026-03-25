@@ -1,1 +1,2 @@
 model,model_path,micro_f1,macro_f1,person_f1,location_f1,organization_f1,holdout
+Base supervisionado oficial com negativos,artifacts/base_model_training/experiments/multi_lr_wd_grid_bs16_with_negatives/best_overall_gliner_model,0.746036,0.752626,0.771686,0.736796,0.749395,../data/dd_corpus_small_test_final.json
