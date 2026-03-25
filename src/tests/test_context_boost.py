@@ -17,7 +17,7 @@ class ContextBoostTests(unittest.TestCase):
         return ContextBoostConfig(
             write_trace_fields=True,
             write_legacy_fields=False,
-            fallback_score_fields=["score_ts", "score_iso"],
+            fallback_score_fields=["score_calibrated", "score_ts", "score_iso"],
         )
 
     def test_normalize_text_removes_accents_and_case(self):
@@ -128,6 +128,25 @@ class ContextBoostTests(unittest.TestCase):
         self.assertFalse(_entity_matches_metadata({"text": "Rua", "score_calibrated": 0.9}, metadata_values))
         self.assertFalse(_entity_matches_metadata({"text": "Faia", "score_calibrated": 0.9}, metadata_values))
         self.assertTrue(_entity_matches_metadata({"text": "Rua Faia", "score_calibrated": 0.9}, metadata_values))
+
+    def test_boost_uses_only_metadata_matched_in_text(self):
+        config = self._base_config()
+        config.boost_scope = "location-matched-only"
+        record = {
+            "relato": "Ocorrencia na Rua Faia.",
+            "logradouroLocal": "Rua Faia",
+            "cidadeLocal": "Rio de Janeiro",
+            "entities": [
+                {"text": "Rua Faia", "label": "Location", "score_calibrated": 0.9},
+                {"text": "Rio de Janeiro", "label": "Location", "score_calibrated": 0.9},
+            ],
+        }
+        boosted, stats = apply_context_boost_to_record(record, config)
+        self.assertEqual(stats["boosted_entities"], 1)
+        self.assertAlmostEqual(boosted["entities"][0]["score_context_boosted"], 1.0, places=6)
+        self.assertAlmostEqual(boosted["entities"][1]["score_context_boosted"], 0.9, places=6)
+        self.assertTrue(boosted["entities"][0]["_context_boost_applied"])
+        self.assertFalse(boosted["entities"][1]["_context_boost_applied"])
 
 
 if __name__ == "__main__":

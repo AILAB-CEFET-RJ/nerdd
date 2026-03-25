@@ -117,17 +117,20 @@ def _record_level_context_match(record, text_field_priority, metadata_fields):
     metadata_values = extract_metadata_values(record, metadata_fields)
 
     matched_metadata_fields = []
+    matched_metadata_values = []
     match_count = 0
     for field, value in metadata_values:
         normalized_value = normalize_text(value)
         if normalized_value and normalized_value in normalized_text:
             match_count += 1
             matched_metadata_fields.append(field)
+            matched_metadata_values.append((field, value))
     return {
         "raw_text": raw_text,
         "text_field_used": text_field,
         "metadata_values": metadata_values,
         "matched_metadata_fields": matched_metadata_fields,
+        "matched_metadata_values": matched_metadata_values,
         "match_count": match_count,
         "has_match": match_count > 0,
     }
@@ -232,7 +235,7 @@ def apply_context_boost_to_record(record, config):
         if score_value is None:
             continue
 
-        entity_matches_metadata = _entity_matches_metadata(entity, match_data["metadata_values"])
+        entity_matches_metadata = _entity_matches_metadata(entity, match_data["matched_metadata_values"])
         policy = {
             "boost_scope": config.boost_scope,
             "label_field": config.label_field,
@@ -290,7 +293,7 @@ def apply_context_boost_to_record(record, config):
         enriched["_context_boost_trace"] = {
             "text_field_used": match_data["text_field_used"],
             "matched_metadata_fields": match_data["matched_metadata_fields"],
-            "matched_metadata_values": [value for _field, value in match_data["metadata_values"] if normalize_text(value) in normalize_text(match_data["raw_text"])],
+            "matched_metadata_values": [value for _field, value in match_data["matched_metadata_values"]],
             "match_count": match_data["match_count"],
             "record_context_match": bool(record_context_match),
             "boost_multiplier": float(boost_multiplier),
