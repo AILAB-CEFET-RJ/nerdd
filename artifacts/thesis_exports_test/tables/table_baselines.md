@@ -1,0 +1,4 @@
+# Baselines
+
+| model | model_path | micro_f1 | macro_f1 | person_f1 | location_f1 | organization_f1 | holdout |
+| --- | --- | --- | --- | --- | --- | --- | --- |
