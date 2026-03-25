@@ -69,6 +69,24 @@ class ContextBoostTests(unittest.TestCase):
         self.assertAlmostEqual(boosted["entities"][0]["score_context_boosted"], 0.6, places=6)
         self.assertAlmostEqual(boosted["entities"][1]["score_context_boosted"], 0.5, places=6)
 
+    def test_location_matched_only_scope(self):
+        config = self._base_config()
+        config.boost_scope = "location-matched-only"
+        record = {
+            "relato": "Acontece em Centro com apoio da Guarda Centro",
+            "bairroLocal": "Centro",
+            "entities": [
+                {"text": "Centro", "label": "Location", "score": 0.5},
+                {"text": "Guarda Centro", "label": "Organization", "score": 0.5},
+            ],
+        }
+        boosted, stats = apply_context_boost_to_record(record, config)
+        self.assertEqual(stats["boosted_entities"], 1)
+        self.assertAlmostEqual(boosted["entities"][0]["score_context_boosted"], 0.6, places=6)
+        self.assertAlmostEqual(boosted["entities"][1]["score_context_boosted"], 0.5, places=6)
+        self.assertEqual(boosted["entities"][0]["_context_boost_reason"], "location-entity-overlaps-metadata")
+        self.assertEqual(boosted["entities"][1]["_context_boost_reason"], "no-boost")
+
     def test_score_fallback_precedence(self):
         config = self._base_config()
         config.base_score_field = "score"

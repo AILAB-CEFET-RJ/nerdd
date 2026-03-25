@@ -108,7 +108,7 @@ python3 pseudolabelling/apply_context_boost.py \
   --output-score-field score_context_boosted \
   --output-record-score-field record_score_context_boosted \
   --boost-factor 1.2 \
-  --boost-scope all-entities \
+  --boost-scope location-matched-only \
   --match-policy any-metadata-in-text \
   --log-level INFO
 ```
@@ -270,17 +270,20 @@ Use when downstream pseudolabelling stages also depend on metadata context from 
   enables boosting if any metadata location field appears in the selected text field.
 - `--match-policy entity-metadata-overlap`:
   requires metadata/text context and then checks per-entity overlap for matched scope.
-- `--boost-scope all-entities`:
-  boosts all entities in a matched record.
 - `--boost-scope location-only`:
   boosts only entities with labels listed in `--location-labels`.
 - `--boost-scope matched-only`:
   boosts only entities whose text overlaps metadata values.
+- `--boost-scope location-matched-only`:
+  boosts only `Location` entities whose text overlaps metadata values. This is the recommended default for the current metadata set.
+- `--boost-scope all-entities`:
+  boosts all entities in a matched record. This is available for ablations, but it is not the recommended default because it can inflate unrelated entity scores.
 
 Output fields:
 - per-entity: `score_context_boosted`
 - per-record: `record_score_context_boosted`
 - legacy aliases (default on): `score_confianca`, `score_relato_confianca`
+- detailed audit artifact: `03_context_boost_details.jsonl` in orchestrated runs, including which entities were boosted and the recorded reason
 
 ## Record Score Outputs
 

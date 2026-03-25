@@ -35,6 +35,7 @@ class ContextBoostConfig:
     input_jsonl: str = "dd_corpus_large_predicted_entities.jsonl"
     output_jsonl: str = "dd_corpus_large_context_boosted.jsonl"
     stats_json: str = "context_boost_stats.json"
+    details_jsonl: str = ""
     text_field_priority: list[str] = field(default_factory=lambda: ["relato", "text"])
     metadata_fields: list[str] = field(
         default_factory=lambda: [
@@ -52,8 +53,8 @@ class ContextBoostConfig:
     boost_factor: float = 1.2
     per_match: bool = False
     clamp_scores: bool = True
-    boost_scope: str = "all-entities"  # all-entities | location-only | matched-only
+    boost_scope: str = "location-matched-only"  # all-entities | location-only | matched-only | location-matched-only
     match_policy: str = "any-metadata-in-text"  # any-metadata-in-text | entity-metadata-overlap
     location_labels: list[str] = field(default_factory=lambda: ["Location"])
-    write_trace_fields: bool = False
+    write_trace_fields: bool = True
     write_legacy_fields: bool = True

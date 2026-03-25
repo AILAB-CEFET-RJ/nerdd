@@ -121,7 +121,7 @@ class IterativeCycleConfig:
 
     context_boost_enabled: bool = True
     context_boost_factor: float = 1.2
-    context_boost_scope: str = "all-entities"
+    context_boost_scope: str = "location-matched-only"
     context_match_policy: str = "any-metadata-in-text"
     context_base_score_field: str = "score"
     context_output_score_field: str = "score_context_boosted"
@@ -253,12 +253,14 @@ def run_iterative_cycle(config: IterativeCycleConfig, script_path: str):
             input_jsonl=str(context_input),
             output_jsonl=str(context_jsonl),
             stats_json=str(context_stats),
+            details_jsonl=str(run_dir / "03_context_boost_details.jsonl"),
             base_score_field=context_base_score_field,
             output_score_field=config.context_output_score_field,
             output_record_score_field=config.context_output_record_score_field,
             boost_factor=config.context_boost_factor,
             boost_scope=config.context_boost_scope,
             match_policy=config.context_match_policy,
+            write_trace_fields=True,
         )
         run_context_boost(context_cfg, script_path=script_path)
         context_input = context_jsonl
@@ -471,7 +473,7 @@ def parse_args():
     parser.add_argument("--context-boost-factor", type=float, default=defaults.context_boost_factor)
     parser.add_argument(
         "--context-boost-scope",
-        choices=["all-entities", "location-only", "matched-only"],
+        choices=["all-entities", "location-only", "matched-only", "location-matched-only"],
         default=defaults.context_boost_scope,
     )
     parser.add_argument(

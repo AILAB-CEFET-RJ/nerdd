@@ -81,6 +81,7 @@ class IterativeOrchestratorTests(unittest.TestCase):
             )
             self.assertEqual(p_pred.call_args.args[0].model_max_length, 384)
             self.assertEqual(p_pred.call_args.args[0].map_location, "cuda")
+            self.assertEqual(p_boost.call_args.args[0].boost_scope, "location-matched-only")
             self.assertEqual(p_eval.call_args_list[0].args[0]["model_max_length"], 384)
             self.assertEqual(p_eval.call_args_list[1].args[0]["model_max_length"], 384)
             self.assertEqual(p_eval.call_args_list[0].args[0]["map_location"], "cuda")
