@@ -22,6 +22,7 @@ Regra prática:
 | `src/tools/clean_generic_spans.py` | limpeza | JSON, JSONL | cuidado com `--inplace` | remover spans genéricos por banlist |
 | `src/tools/convert_sanity_jsonl_to_bio_csv.py` | conversão | JSONL | sobrescreve saída | converter JSONL de sanidade para CSV BIO |
 | `src/tools/count_dataset_entities.py` | inspeção | JSON, JSONL | seguro | contar spans e distribuição de labels em um corpus |
+| `src/tools/evaluate_chunk_quality.py` | auditoria | artefatos locais | sobrescreve saída | avaliar qualidade de um chunk a partir dos artefatos do ciclo |
 | `src/tools/export_dissertation_tables.py` | exportação | artefatos locais | sobrescreve saída | wrapper para exportar tabelas de dissertação |
 | `src/tools/export_thesis_tables.py` | exportação | artefatos locais | sobrescreve saída | consolidar artefatos em CSV/Markdown para escrita |
 | `src/tools/list_distinct_labels.py` | inspeção | JSON, JSONL | seguro | listar labels distintas encontradas em um corpus |
@@ -186,6 +187,27 @@ Use quando:
 
 - você precisa de estatísticas rápidas de volume
 - quer comparar corpora antes de treino ou limpeza
+
+### `src/tools/evaluate_chunk_quality.py`
+
+Resume um ou mais runs de chunk usando os artefatos já produzidos pelo ciclo.
+
+Use quando:
+
+- você quer investigar por que um chunk foi bom ou ruim
+- precisa comparar `kept_count`, deltas, boosts e redundância de textos
+- quer gerar um CSV consolidado por chunk
+
+Métricas incluídas:
+
+- `kept_count` e `kept_rate`
+- delta micro e macro
+- delta por label
+- `boosted_records` e `boosted_entities_total`
+- média de entidades por relato kept
+- média de entidades fortes e fracas por relato
+- taxa de texto duplicado nos kepts
+- flags simples como `high_kept_count`, `duplicate_texts`, `no_context_boost`
 
 ### `src/tools/list_distinct_labels.py`
 
@@ -430,4 +452,14 @@ python3 tools/run_remaining_chunk_probes.py \
   --version v13 \
   --run-root ./artifacts/pseudolabelling \
   --summary-csv ./artifacts/pseudolabelling/chunk_probe_status_t037_v13.csv
+```
+
+### `evaluate_chunk_quality.py`
+
+```bash
+cd src
+python3 tools/evaluate_chunk_quality.py \
+  --run-glob './artifacts/pseudolabelling/multi_with_negatives_chunk*_50k_t037_cuda_v*' \
+  --output-csv ./artifacts/pseudolabelling/chunk_quality_t037.csv \
+  --output-json ./artifacts/pseudolabelling/chunk_quality_t037.json
 ```
