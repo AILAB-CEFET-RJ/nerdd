@@ -25,6 +25,7 @@ Regra prática:
 | `src/tools/evaluate_chunk_quality.py` | auditoria | artefatos locais | sobrescreve saída | avaliar qualidade de um chunk a partir dos artefatos do ciclo |
 | `src/tools/export_dissertation_tables.py` | exportação | artefatos locais | sobrescreve saída | wrapper para exportar tabelas de dissertação |
 | `src/tools/export_thesis_tables.py` | exportação | artefatos locais | sobrescreve saída | consolidar artefatos em CSV/Markdown para escrita |
+| `src/tools/inspect_dense_tips.py` | auditoria | JSON, JSONL | sobrescreve saída | filtrar e visualizar tips com muitas entidades |
 | `src/tools/list_distinct_labels.py` | inspeção | JSON, JSONL | seguro | listar labels distintas encontradas em um corpus |
 | `src/tools/profile_pseudolabelling_inference.py` | profiling | JSONL | sobrescreve saída opcional | medir custo de inferência do pipeline de pseudolabel |
 | `src/tools/render_ner_html.py` | visualização | JSON, JSONL | sobrescreve saída | renderizar corpus anotado em HTML |
@@ -208,6 +209,22 @@ Métricas incluídas:
 - média de entidades fortes e fracas por relato
 - taxa de texto duplicado nos kepts
 - flags simples como `high_kept_count`, `duplicate_texts`, `no_context_boost`
+
+### `src/tools/inspect_dense_tips.py`
+
+Seleciona tips com muitas entidades e exporta uma visão legível para inspeção.
+
+Use quando:
+
+- você quer investigar outliers com densidade alta de spans
+- precisa abrir rapidamente os tips kept mais carregados
+- quer exportar um subconjunto para HTML e revisão manual
+
+Saídas possíveis:
+
+- JSONL filtrado
+- HTML para leitura
+- summary JSON com contagens agregadas
 
 ### `src/tools/list_distinct_labels.py`
 
@@ -462,4 +479,17 @@ python3 tools/evaluate_chunk_quality.py \
   --run-glob './artifacts/pseudolabelling/multi_with_negatives_chunk*_50k_t037_cuda_v*' \
   --output-csv ./artifacts/pseudolabelling/chunk_quality_t037.csv \
   --output-json ./artifacts/pseudolabelling/chunk_quality_t037.json
+```
+
+### `inspect_dense_tips.py`
+
+```bash
+cd src
+python3 tools/inspect_dense_tips.py \
+  --input ./artifacts/pseudolabelling/multi_with_negatives_chunk04_50k_t037_cuda_v13/05_split/kept.jsonl \
+  --min-entities 30 \
+  --output-jsonl ./artifacts/pseudolabelling/chunk04_dense_tips.jsonl \
+  --output-html ./artifacts/pseudolabelling/chunk04_dense_tips.html \
+  --summary-json ./artifacts/pseudolabelling/chunk04_dense_tips_summary.json \
+  --title "Chunk 04 Dense Tips"
 ```
