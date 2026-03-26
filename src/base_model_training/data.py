@@ -1,4 +1,6 @@
 import logging
+import math
+import random
 import re
 from collections import Counter
 
@@ -153,16 +155,18 @@ def _wordpiece_lengths(words, tokenizer):
     return lengths
 
 
-def _find_chunk_end(wordpiece_lengths, start_idx, budget):
+def _find_chunk_end(wordpiece_lengths, start_idx, budget, max_words=None):
     """Return the exclusive end index of the largest chunk that fits the budget."""
     used = 0
     end_idx = start_idx
     while end_idx < len(wordpiece_lengths):
+        if max_words is not None and (end_idx - start_idx) >= max_words:
+            break
         next_len = max(1, wordpiece_lengths[end_idx])
         if used and used + next_len > budget:
             break
         if not used and next_len > budget:
-            return end_idx + 1
+            return min(end_idx + 1, start_idx + max_words) if max_words is not None else end_idx + 1
         used += next_len
         end_idx += 1
     return end_idx
@@ -172,6 +176,7 @@ def split_long_sentences(dataset, max_length=384, overlap=50, tokenizer=None, ke
     """Split long tokenized sequences using encoder-aware chunk sizes."""
     split_data = []
     budget = max(1, max_length - _special_tokens_to_add(tokenizer))
+    max_words = max(1, max_length)
     truncated_single_words = 0
 
     for sample in dataset:
@@ -186,7 +191,7 @@ def split_long_sentences(dataset, max_length=384, overlap=50, tokenizer=None, ke
         if total_wordpieces > budget:
             start_idx = 0
             while start_idx < len(words):
-                end_idx = _find_chunk_end(wordpiece_lengths, start_idx, budget)
+                end_idx = _find_chunk_end(wordpiece_lengths, start_idx, budget, max_words=max_words)
                 if end_idx <= start_idx:
                     end_idx = start_idx + 1
 
@@ -267,8 +272,84 @@ def _compute_sampling_weights(dataset):
     return weights
 
 
+def _build_non_empty_batches(dataset, batch_size, rng):
+    positive_indices = [index for index, sample in enumerate(dataset) if sample.get("ner")]
+    negative_indices = [index for index, sample in enumerate(dataset) if not sample.get("ner")]
+
+    if not positive_indices:
+        raise ValueError("Training dataset cannot contain only empty-entity chunks.")
+
+    rng.shuffle(positive_indices)
+    rng.shuffle(negative_indices)
+
+    max_negatives = len(positive_indices) * max(0, batch_size - 1)
+    dropped_negatives = max(0, len(negative_indices) - max_negatives)
+    if dropped_negatives:
+        LOGGER.warning(
+            "Sampling %s/%s empty chunks this epoch so every batch keeps at least one positive example.",
+            max_negatives,
+            len(negative_indices),
+        )
+        negative_indices = negative_indices[:max_negatives]
+
+    total = len(positive_indices) + len(negative_indices)
+    num_batches = max(1, math.ceil(total / batch_size))
+    if num_batches > len(positive_indices):
+        num_batches = len(positive_indices)
+
+    batches = [[positive_indices.pop()] for _ in range(num_batches)]
+    remaining = positive_indices + negative_indices
+    rng.shuffle(remaining)
+
+    batch_cursor = 0
+    for index in remaining:
+        attempts = 0
+        while attempts < len(batches) and len(batches[batch_cursor]) >= batch_size:
+            batch_cursor = (batch_cursor + 1) % len(batches)
+            attempts += 1
+        if attempts >= len(batches):
+            break
+        batches[batch_cursor].append(index)
+        batch_cursor = (batch_cursor + 1) % len(batches)
+
+    return batches
+
+
+class _NonEmptyBatchSampler:
+    def __init__(self, dataset, batch_size, seed=42):
+        self.dataset = dataset
+        self.batch_size = batch_size
+        self.seed = seed
+        self._epoch = 0
+
+    def __iter__(self):
+        rng = random.Random(self.seed + self._epoch)
+        self._epoch += 1
+        yield from _build_non_empty_batches(self.dataset, self.batch_size, rng)
+
+    def __len__(self):
+        positives = sum(1 for sample in self.dataset if sample.get("ner"))
+        negatives = sum(1 for sample in self.dataset if not sample.get("ner"))
+        usable_negatives = min(negatives, positives * max(0, self.batch_size - 1))
+        total = positives + usable_negatives
+        return max(1, math.ceil(total / self.batch_size))
+
+
 def create_training_dataloader(dataset, batch_size, collator, sampling="random"):
     """Build the training DataLoader with configurable example sampling."""
+    has_empty_chunks = any(not sample.get("ner") for sample in dataset)
+    if has_empty_chunks:
+        if sampling == "weighted":
+            LOGGER.warning(
+                "Weighted sampling is not compatible with empty-only GLiNER batches; "
+                "falling back to non-empty-safe batching for this epoch."
+            )
+        return DataLoader(
+            dataset,
+            collate_fn=collator,
+            batch_sampler=_NonEmptyBatchSampler(dataset, batch_size=batch_size),
+        )
+
     if sampling == "random":
         return DataLoader(dataset, batch_size=batch_size, collate_fn=collator, shuffle=True)
 
