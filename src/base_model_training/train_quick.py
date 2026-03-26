@@ -29,7 +29,11 @@ from base_model_training.cv import (
 from base_model_training.data import load_dataset, split_long_sentences
 from base_model_training.io_utils import save_jsonl
 from base_model_training.paths import resolve_path
-from pseudolabelling.evaluate_refit_pipeline import compute_span_metrics, format_classification_report
+from pseudolabelling.evaluate_refit_pipeline import (
+    compute_span_metrics,
+    format_classification_report,
+    load_gt_jsonl_strict,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -117,25 +121,7 @@ def build_config(args):
 
 
 def _load_gt_rows(path: Path):
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    if isinstance(payload, dict):
-        payload = [payload]
-    rows = []
-    for row in payload:
-        rows.append(
-            {
-                "text": row["text"],
-                "spans": [
-                    {
-                        "start": int(span["start"]),
-                        "end": int(span["end"]),
-                        "label": str(span["label"]),
-                    }
-                    for span in row["spans"]
-                ],
-            }
-        )
-    return rows
+    return load_gt_jsonl_strict(str(path))
 
 
 def _predict_rows(model, rows, labels, threshold):
