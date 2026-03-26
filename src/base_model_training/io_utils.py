@@ -2,9 +2,26 @@ import json
 
 
 def load_jsonl(path):
-    """Load JSONL file into a list of dicts."""
+    """Load records from JSONL, JSON array, or a single JSON object."""
     with open(path, "r", encoding="utf-8") as handle:
-        return [json.loads(line) for line in handle]
+        text = handle.read()
+
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        rows = []
+        for line in text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            rows.append(json.loads(line))
+        return rows
+
+    if isinstance(payload, list):
+        return payload
+    if isinstance(payload, dict):
+        return [payload]
+    raise ValueError(f"Unsupported JSON payload in {path}: expected object, array, or JSONL")
 
 
 def save_jsonl(path, entries):
