@@ -1,4 +1,5 @@
 import logging
+import re
 from collections import Counter
 
 import torch
@@ -9,8 +10,15 @@ from base_model_training.io_utils import load_jsonl
 LOGGER = logging.getLogger(__name__)
 
 
-def tokenize_with_spans(text):
-    """Split text by whitespace and return (tokens, char spans)."""
+def tokenize_with_spans(text, strategy="whitespace"):
+    """Split text into tokens and return (tokens, char spans)."""
+    if strategy == "regex":
+        matches = list(re.finditer(r"\w+|[^\w\s]", text, flags=re.UNICODE))
+        return [match.group(0) for match in matches], [match.span() for match in matches]
+
+    if strategy != "whitespace":
+        raise ValueError(f"Unsupported tokenization strategy: {strategy}")
+
     tokens = []
     token_spans = []
     start = 0
@@ -29,11 +37,11 @@ def tokenize_with_spans(text):
     return tokens, token_spans
 
 
-def process_sample(sample):
+def process_sample(sample, tokenization_strategy="whitespace"):
     """Map char spans to token spans for a single example."""
     text = sample["text"]
     spans = sample.get("spans", [])
-    tokens, token_spans = tokenize_with_spans(text)
+    tokens, token_spans = tokenize_with_spans(text, strategy=tokenization_strategy)
 
     ner = []
     for span in spans:
@@ -57,10 +65,15 @@ def process_sample(sample):
             ner.append([start_token, end_token, label])
 
     sample_id = sample.get("sample_id")
-    return {"tokenized_text": tokens, "ner": ner, "sample_id": sample_id}
+    return {
+        "tokenized_text": tokens,
+        "ner": ner,
+        "sample_id": sample_id,
+        "_tokenization_strategy": tokenization_strategy,
+    }
 
 
-def load_dataset(path):
+def load_dataset(path, tokenization_strategy="whitespace"):
     """Load JSONL and preprocess into tokenized samples."""
     dataset = []
     assigned_sample_ids = 0
@@ -72,7 +85,7 @@ def load_dataset(path):
             assigned_sample_ids += 1
         else:
             seen_sample_ids.append(str(enriched["sample_id"]))
-        dataset.append(process_sample(enriched))
+        dataset.append(process_sample(enriched, tokenization_strategy=tokenization_strategy))
 
     if assigned_sample_ids:
         LOGGER.info(
@@ -155,7 +168,7 @@ def _find_chunk_end(wordpiece_lengths, start_idx, budget):
     return end_idx
 
 
-def split_long_sentences(dataset, max_length=384, overlap=50, tokenizer=None):
+def split_long_sentences(dataset, max_length=384, overlap=50, tokenizer=None, keep_empty_chunks=False):
     """Split long tokenized sequences using encoder-aware chunk sizes."""
     split_data = []
     budget = max(1, max_length - _special_tokens_to_add(tokenizer))
@@ -194,7 +207,7 @@ def split_long_sentences(dataset, max_length=384, overlap=50, tokenizer=None):
                     "ner": new_ner,
                     "sample_id": sample.get("sample_id"),
                 }
-                if split_sample["ner"]:
+                if split_sample["ner"] or keep_empty_chunks:
                     split_data.append(split_sample)
 
                 if end_idx >= len(words):
@@ -211,6 +224,14 @@ def split_long_sentences(dataset, max_length=384, overlap=50, tokenizer=None):
                         "sample_id": sample.get("sample_id"),
                     }
                 )
+            elif keep_empty_chunks:
+                split_data.append(
+                    {
+                        "tokenized_text": words,
+                        "ner": [],
+                        "sample_id": sample.get("sample_id"),
+                    }
+                )
 
     if truncated_single_words:
         LOGGER.warning(
@@ -220,6 +241,8 @@ def split_long_sentences(dataset, max_length=384, overlap=50, tokenizer=None):
             budget,
         )
 
+    if keep_empty_chunks:
+        return [ex for ex in split_data if "ner" in ex and isinstance(ex["ner"], list)]
     return [ex for ex in split_data if "ner" in ex and isinstance(ex["ner"], list) and ex["ner"]]
 
 

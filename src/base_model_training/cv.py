@@ -629,7 +629,10 @@ def run_experiment(config, script_path):
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    raw_data = load_dataset(str(train_path))
+    raw_data = load_dataset(
+        str(train_path),
+        tokenization_strategy=config.tokenization_strategy,
+    )
     if config.keep_empty_samples:
         filtered_data = list(raw_data)
         LOGGER.info(
@@ -650,6 +653,7 @@ def run_experiment(config, script_path):
         max_length=config.max_length,
         overlap=config.overlap,
         tokenizer=getattr(base_model.data_processor, "transformer_tokenizer", None),
+        keep_empty_chunks=config.keep_empty_chunks,
     )
 
     if not dataset:
@@ -916,6 +920,7 @@ def run_experiment(config, script_path):
         "config": {
             "train_path": str(train_path),
             "keep_empty_samples": config.keep_empty_samples,
+            "keep_empty_chunks": config.keep_empty_chunks,
             "model_base": str(model_base),
             "n_splits": outer_splitter.n_splits,
             "n_inner_splits": config.n_inner_splits,
@@ -926,6 +931,7 @@ def run_experiment(config, script_path):
             "ner_lr_values": config.ner_lr_values,
             "weight_decay_values": config.weight_decay_values,
             "train_sampling": config.train_sampling,
+            "tokenization_strategy": config.tokenization_strategy,
             "batch_size": config.batch_size,
             "num_epochs": config.num_epochs,
         },

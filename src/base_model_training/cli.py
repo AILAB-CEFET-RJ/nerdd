@@ -33,6 +33,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="GLiNER nested KFold training")
     parser.add_argument("--train-path", default=defaults.train_path)
     parser.add_argument("--keep-empty-samples", action="store_true", default=defaults.keep_empty_samples)
+    parser.add_argument("--keep-empty-chunks", action="store_true", default=defaults.keep_empty_chunks)
     parser.add_argument("--model-base", default=defaults.model_base)
     parser.add_argument("--batch-size", type=int, default=defaults.batch_size)
     parser.add_argument("--num-epochs", type=int, default=defaults.num_epochs)
@@ -60,6 +61,11 @@ def parse_args():
         choices=["random", "weighted"],
         default=defaults.train_sampling,
     )
+    parser.add_argument(
+        "--tokenization-strategy",
+        choices=["whitespace", "regex"],
+        default=defaults.tokenization_strategy,
+    )
     parser.add_argument("--refit-val-size", type=float, default=defaults.refit_val_size)
     parser.add_argument("--early-stopping-patience", type=int, default=defaults.early_stopping_patience)
     parser.add_argument("--early-stopping-threshold", type=float, default=defaults.early_stopping_threshold)
@@ -77,6 +83,7 @@ def build_config(args):
         seed=args.seed,
         train_path=args.train_path,
         keep_empty_samples=args.keep_empty_samples,
+        keep_empty_chunks=args.keep_empty_chunks,
         model_base=args.model_base,
         batch_size=args.batch_size,
         num_epochs=args.num_epochs,
@@ -91,6 +98,7 @@ def build_config(args):
         ner_lr_values=parse_float_list(args.ner_lr_values),
         weight_decay_values=parse_float_list(args.weight_decay_values),
         train_sampling=args.train_sampling,
+        tokenization_strategy=args.tokenization_strategy,
         refit_val_size=args.refit_val_size,
         early_stopping_patience=args.early_stopping_patience,
         early_stopping_threshold=args.early_stopping_threshold,

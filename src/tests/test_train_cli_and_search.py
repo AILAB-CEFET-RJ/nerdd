@@ -21,6 +21,9 @@ class TrainCliAndSearchTests(unittest.TestCase):
             "0.01,0.05",
             "--train-sampling",
             "weighted",
+            "--tokenization-strategy",
+            "regex",
+            "--keep-empty-chunks",
         ]
 
         with patch.object(sys, "argv", argv):
@@ -31,6 +34,8 @@ class TrainCliAndSearchTests(unittest.TestCase):
         self.assertEqual(config.ner_lr_values, [2e-5, 3e-5])
         self.assertEqual(config.weight_decay_values, [0.01, 0.05])
         self.assertEqual(config.train_sampling, "weighted")
+        self.assertEqual(config.tokenization_strategy, "regex")
+        self.assertTrue(config.keep_empty_chunks)
 
     def test_removed_lr_values_argument_is_rejected(self):
         argv = ["train_nested_kfold.py", "--lr-values", "1e-5"]
