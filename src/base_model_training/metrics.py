@@ -24,7 +24,7 @@ def f1_score_from_span_lists(pred_spans_list, gold_spans_list, average="macro"):
 
 
 def compute_f1_by_threshold(model, dataset, threshold, entity_labels):
-    """Predict entities and compute macro F1 at a confidence threshold."""
+    """Predict entities and compute macro F1 using the same per-label exact-span metric as final evaluation."""
     all_preds = []
     gold_spans = [spans for _, spans in dataset]
 
@@ -33,4 +33,33 @@ def compute_f1_by_threshold(model, dataset, threshold, entity_labels):
         filtered = [pred for pred in preds if pred["label"] in entity_labels]
         all_preds.append(filtered)
 
-    return f1_score_from_span_lists(all_preds, gold_spans, average="macro")
+    return compute_macro_f1_from_span_lists(all_preds, gold_spans, entity_labels)
+
+
+def compute_macro_f1_from_span_lists(pred_spans_list, gold_spans_list, labels):
+    """Compute macro F1 from exact span matches, averaged across entity labels."""
+    per_label_f1 = []
+
+    for label in labels:
+        tp = fp = fn = 0
+        for pred_spans, gold_spans in zip(pred_spans_list, gold_spans_list):
+            pred_set = {
+                (span["start"], span["end"], span["label"])
+                for span in pred_spans
+                if span["label"] == label
+            }
+            gold_set = {
+                (span["start"], span["end"], span["label"])
+                for span in gold_spans
+                if span["label"] == label
+            }
+            tp += len(pred_set & gold_set)
+            fp += len(pred_set - gold_set)
+            fn += len(gold_set - pred_set)
+
+        precision = tp / (tp + fp) if (tp + fp) else 0.0
+        recall = tp / (tp + fn) if (tp + fn) else 0.0
+        f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) else 0.0
+        per_label_f1.append(f1)
+
+    return sum(per_label_f1) / len(per_label_f1) if per_label_f1 else 0.0
