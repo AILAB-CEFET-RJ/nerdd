@@ -2,9 +2,12 @@
 
 import argparse
 import json
+import sys
 from collections import Counter
 from pathlib import Path
 from random import Random
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from base_model_training.io_utils import load_jsonl
 
