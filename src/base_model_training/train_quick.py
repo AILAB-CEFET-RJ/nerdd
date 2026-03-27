@@ -42,7 +42,7 @@ LOGGER = logging.getLogger(__name__)
 class QuickTrainConfig:
     train_path: str = "../data/dd_corpus_small_train.json"
     test_path: str = "../data/dd_corpus_small_test_final.json"
-    model_base: str = "birdred/glinerdd"
+    model_base: str = "urchade/gliner_multi-v2.1"
     output_dir: str = "./artifacts/base_model_training/quick_run"
     seed: int = 42
     keep_empty_samples: bool = False

@@ -7,7 +7,7 @@ class TrainConfig:
     train_path: str = "../data/dd_corpus_small_train.json"
     keep_empty_samples: bool = False
     keep_empty_chunks: bool = False
-    model_base: str = "birdred/glinerdd"
+    model_base: str = "urchade/gliner_multi-v2.1"
     batch_size: int = 4
     num_epochs: int = 20
     n_splits: int = 3

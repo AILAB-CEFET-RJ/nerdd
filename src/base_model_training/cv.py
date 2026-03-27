@@ -621,7 +621,7 @@ def run_experiment(config, script_path):
             raise FileNotFoundError(
                 f"Base model path not found locally: {model_base_path}. "
                 "Pass --model-base with a local folder or a Hugging Face repo id "
-                "(example: birdred/glinerdd)."
+                "(example: urchade/gliner_multi-v2.1)."
             )
     model_base = materialize_model_base(model_base)
     _prime_and_freeze_hf_cache(model_base)
