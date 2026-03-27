@@ -1,4 +1,5 @@
 from sklearn.metrics import f1_score
+from base_model_training.evaluate import predict_entities_for_text
 
 
 def f1_score_from_span_lists(pred_spans_list, gold_spans_list, average="macro"):
@@ -29,7 +30,7 @@ def compute_f1_by_threshold(model, dataset, threshold, entity_labels):
     gold_spans = [spans for _, spans in dataset]
 
     for text, _ in dataset:
-        preds = model.predict_entities(text, labels=entity_labels, threshold=threshold)
+        preds = predict_entities_for_text(model, text, entity_labels, threshold)
         filtered = [pred for pred in preds if pred["label"] in entity_labels]
         all_preds.append(filtered)
 

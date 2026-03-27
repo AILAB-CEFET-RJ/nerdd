@@ -65,6 +65,61 @@ def predict_batch_entities(model, batch_texts, labels, threshold):
     return model.batch_predict_entities(batch_texts, labels, threshold=threshold)
 
 
+def deduplicate_entities(entities):
+    seen = set()
+    deduped = []
+    for entity in entities:
+        key = (
+            entity.get("start"),
+            entity.get("end"),
+            entity.get("label"),
+            entity.get("text", ""),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(entity)
+    return deduped
+
+
+def _resolve_chunk_size(model, chunk_size):
+    if isinstance(chunk_size, int) and chunk_size > 0:
+        return chunk_size
+    processor_max_len = getattr(getattr(model, "data_processor", None), "max_len", None)
+    if isinstance(processor_max_len, int) and processor_max_len > 0:
+        return processor_max_len
+    return 384
+
+
+def predict_entities_for_text(model, text, labels, threshold, chunk_size=0, batch_size=1):
+    tokenizer = model.data_processor.transformer_tokenizer
+    effective_chunk_size = _resolve_chunk_size(model, chunk_size)
+    chunks = split_text(text, tokenizer=tokenizer, max_tokens=effective_chunk_size)
+    if not chunks:
+        return []
+
+    chunk_predictions = []
+    for index in range(0, len(chunks), batch_size):
+        batch = chunks[index : index + batch_size]
+        chunk_predictions.extend(predict_batch_entities(model, batch, labels, threshold))
+
+    merged = []
+    cursor = 0
+    for chunk_text, entities in zip(chunks, chunk_predictions):
+        cleaned = clean_entities(entities, chunk_text)
+        offset = find_with_cursor(text, chunk_text, cursor)
+        if offset == -1:
+            continue
+        cursor = offset + len(chunk_text)
+        for entity in cleaned:
+            fixed = dict(entity)
+            fixed["start"] = fixed["start"] + offset
+            fixed["end"] = fixed["end"] + offset
+            merged.append(fixed)
+
+    return deduplicate_entities(merged)
+
+
 def predict_entities_jsonl(model, input_path, output_path, labels, batch_size, chunk_size, threshold):
     """Run prediction and persist entities in JSONL."""
     rows = load_jsonl(input_path)
@@ -73,27 +128,19 @@ def predict_entities_jsonl(model, input_path, output_path, labels, batch_size, c
 
     predictions = []
     for text in texts:
-        chunks = split_text(text, tokenizer=tokenizer, max_tokens=chunk_size)
-        chunk_preds = []
-        for index in range(0, len(chunks), batch_size):
-            batch = chunks[index : index + batch_size]
-            chunk_preds.extend(predict_batch_entities(model, batch, labels, threshold))
-
-        merged = []
-        cursor = 0
-        for chunk_text, entities in zip(chunks, chunk_preds):
-            cleaned = clean_entities(entities, chunk_text)
-            offset = find_with_cursor(text, chunk_text, cursor)
-            if offset == -1:
-                continue
-            cursor = offset + len(chunk_text)
-            for entity in cleaned:
-                fixed = dict(entity)
-                fixed["start"] = fixed["start"] + offset
-                fixed["end"] = fixed["end"] + offset
-                merged.append(fixed)
-
-        predictions.append({"text": text, "entities": merged})
+        predictions.append(
+            {
+                "text": text,
+                "entities": predict_entities_for_text(
+                    model,
+                    text,
+                    labels,
+                    threshold,
+                    chunk_size=chunk_size,
+                    batch_size=batch_size,
+                ),
+            }
+        )
 
     save_jsonl(output_path, predictions)
     LOGGER.info("Saved predictions to %s", output_path)

@@ -27,6 +27,7 @@ from base_model_training.cv import (
     set_seed,
 )
 from base_model_training.data import load_dataset, split_long_sentences
+from base_model_training.evaluate import predict_entities_for_text
 from base_model_training.io_utils import save_jsonl
 from base_model_training.paths import resolve_path
 from pseudolabelling.evaluate_refit_pipeline import (
@@ -127,7 +128,7 @@ def _load_gt_rows(path: Path):
 def _predict_rows(model, rows, labels, threshold):
     pred_rows = []
     for row in rows:
-        entities = model.predict_entities(row["text"], labels=labels, threshold=threshold)
+        entities = predict_entities_for_text(model, row["text"], labels, threshold)
         pred_rows.append({"text": row["text"], "entities": [entity for entity in entities if entity["label"] in labels]})
     return pred_rows
 

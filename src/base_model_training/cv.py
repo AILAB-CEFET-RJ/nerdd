@@ -27,6 +27,7 @@ from base_model_training.data import (
 from base_model_training.engine import train_with_early_stopping
 from base_model_training.group_stratified import StratifiedGroupKFoldNER
 from base_model_training.metrics import compute_f1_by_threshold, f1_score_from_span_lists
+from base_model_training.evaluate import predict_entities_for_text
 from base_model_training.paths import resolve_path
 from base_model_training.plots import save_loss_plot
 from base_model_training.search import generate_trial_params
@@ -355,7 +356,7 @@ def _compute_seen_unseen_breakdown(model, dataset, threshold, entity_labels, see
     unseen_gold = []
 
     for text, gold_spans in dataset:
-        preds = model.predict_entities(text, labels=entity_labels, threshold=threshold)
+        preds = predict_entities_for_text(model, text, entity_labels, threshold)
         filtered_preds = [pred for pred in preds if pred["label"] in entity_labels]
 
         gold_seen, gold_unseen = _split_spans_by_seen(text, gold_spans, seen_entity_keys)
