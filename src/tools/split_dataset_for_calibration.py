@@ -78,7 +78,16 @@ def build_profiles(rows, label_field):
     return profiles, label_names, global_presence, global_spans
 
 
-def build_split(rows, ratio, seed, label_field):
+def _order_rows_by_indices(rows, indices, shuffle_output, seed):
+    ordered = list(indices)
+    if shuffle_output:
+        Random(seed).shuffle(ordered)
+    else:
+        ordered = sorted(ordered)
+    return [rows[idx] for idx in ordered], ordered
+
+
+def build_split(rows, ratio, seed, label_field, shuffle_output=False):
     if not 0.0 < ratio < 1.0:
         raise ValueError("--calibration-ratio must be between 0 and 1.")
 
@@ -183,17 +192,24 @@ def build_split(rows, ratio, seed, label_field):
         else:
             final_indices.append(profile["index"])
 
-    calibration_rows = [rows[idx] for idx in sorted(calibration["indices"])]
-    final_test_rows = [rows[idx] for idx in sorted(final_indices)]
+    calibration_rows, calibration_indices = _order_rows_by_indices(
+        rows, calibration["indices"], shuffle_output=shuffle_output, seed=seed
+    )
+    final_test_rows, final_test_indices = _order_rows_by_indices(
+        rows, final_indices, shuffle_output=shuffle_output, seed=seed + 1
+    )
     summary = {
         "label_names": label_names,
         "calibration": summarize_rows(calibration_rows, label_field),
         "final_test": summarize_rows(final_test_rows, label_field),
+        "shuffle_output": shuffle_output,
+        "calibration_indices_preview": calibration_indices[:20],
+        "final_test_indices_preview": final_test_indices[:20],
     }
     return calibration_rows, final_test_rows, summary
 
 
-def build_random_split(rows, ratio, seed, label_field):
+def build_random_split(rows, ratio, seed, label_field, shuffle_output=False):
     if not 0.0 < ratio < 1.0:
         raise ValueError("--calibration-ratio must be between 0 and 1.")
     if len(rows) < 2:
@@ -204,11 +220,12 @@ def build_random_split(rows, ratio, seed, label_field):
     rng.shuffle(indices)
     calibration_target = max(1, min(len(rows) - 1, round(len(rows) * ratio)))
 
-    calibration_indices = sorted(indices[:calibration_target])
-    final_test_indices = sorted(indices[calibration_target:])
-
-    calibration_rows = [rows[idx] for idx in calibration_indices]
-    final_test_rows = [rows[idx] for idx in final_test_indices]
+    calibration_rows, calibration_indices = _order_rows_by_indices(
+        rows, indices[:calibration_target], shuffle_output=shuffle_output, seed=seed
+    )
+    final_test_rows, final_test_indices = _order_rows_by_indices(
+        rows, indices[calibration_target:], shuffle_output=shuffle_output, seed=seed + 1
+    )
     summary = {
         "label_names": sorted(
             {
@@ -220,6 +237,9 @@ def build_random_split(rows, ratio, seed, label_field):
         ),
         "calibration": summarize_rows(calibration_rows, label_field),
         "final_test": summarize_rows(final_test_rows, label_field),
+        "shuffle_output": shuffle_output,
+        "calibration_indices_preview": calibration_indices[:20],
+        "final_test_indices_preview": final_test_indices[:20],
     }
     return calibration_rows, final_test_rows, summary
 
@@ -256,6 +276,11 @@ def parse_args():
         default="random",
         help="Split strategy. Use random by default for calibration holdout creation.",
     )
+    parser.add_argument(
+        "--shuffle-output",
+        action="store_true",
+        help="Shuffle row order inside each split instead of preserving input order.",
+    )
     return parser.parse_args()
 
 
@@ -268,6 +293,7 @@ def main():
             ratio=args.calibration_ratio,
             seed=args.seed,
             label_field=args.label_field,
+            shuffle_output=args.shuffle_output,
         )
     else:
         calibration_rows, final_test_rows, summary = build_split(
@@ -275,6 +301,7 @@ def main():
             ratio=args.calibration_ratio,
             seed=args.seed,
             label_field=args.label_field,
+            shuffle_output=args.shuffle_output,
         )
 
     write_json_array(args.calibration_output, calibration_rows)

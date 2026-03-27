@@ -3,6 +3,7 @@
 import argparse
 import json
 from pathlib import Path
+from random import Random
 
 
 def _parse_jsonl(text):
@@ -44,6 +45,13 @@ def write_jsonl(path, rows):
             handle.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
+def maybe_shuffle_rows(rows, shuffle_first, seed):
+    shuffled = list(rows)
+    if shuffle_first:
+        Random(seed).shuffle(shuffled)
+    return shuffled
+
+
 def chunk_rows(rows, chunk_size):
     if chunk_size < 1:
         raise ValueError("--chunk-size must be >= 1")
@@ -56,12 +64,14 @@ def build_chunk_name(prefix, index, total_digits):
     return f"{prefix}_{index:0{total_digits}d}.jsonl"
 
 
-def summarize_chunks(rows_total, chunk_specs, input_path, output_dir, chunk_size):
+def summarize_chunks(rows_total, chunk_specs, input_path, output_dir, chunk_size, shuffle_first, seed):
     return {
         "input_path": str(Path(input_path).resolve()),
         "output_dir": str(Path(output_dir).resolve()),
         "rows_total": rows_total,
         "chunk_size": chunk_size,
+        "shuffle_first": shuffle_first,
+        "seed": seed,
         "chunks_total": len(chunk_specs),
         "chunks": chunk_specs,
     }
@@ -76,12 +86,15 @@ def parse_args():
     parser.add_argument("--chunk-size", type=int, required=True, help="Rows per chunk.")
     parser.add_argument("--chunk-prefix", default="chunk", help="Prefix for chunk file names.")
     parser.add_argument("--summary-json", default="", help="Optional summary JSON output.")
+    parser.add_argument("--shuffle-first", action="store_true", help="Shuffle rows before splitting into chunks.")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed used with --shuffle-first.")
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
     rows = read_json_or_jsonl(args.input)
+    rows = maybe_shuffle_rows(rows, shuffle_first=args.shuffle_first, seed=args.seed)
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -109,6 +122,8 @@ def main():
         input_path=args.input,
         output_dir=output_dir,
         chunk_size=args.chunk_size,
+        shuffle_first=args.shuffle_first,
+        seed=args.seed,
     )
 
     if args.summary_json:

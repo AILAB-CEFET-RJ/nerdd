@@ -45,7 +45,7 @@ def write_jsonl(path, rows):
             handle.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
-def sample_rows(rows, sample_size, seed):
+def sample_rows(rows, sample_size, seed, preserve_input_order=True):
     if sample_size < 1:
         raise ValueError("--sample-size must be >= 1")
     if sample_size > len(rows):
@@ -54,17 +54,20 @@ def sample_rows(rows, sample_size, seed):
         )
 
     rng = Random(seed)
-    indices = sorted(rng.sample(range(len(rows)), sample_size))
+    indices = rng.sample(range(len(rows)), sample_size)
+    if preserve_input_order:
+        indices = sorted(indices)
     return [rows[idx] for idx in indices], indices
 
 
-def summarize_sample(rows, indices, input_path, output_path, seed):
+def summarize_sample(rows, indices, input_path, output_path, seed, preserve_input_order):
     return {
         "input_path": str(Path(input_path).resolve()),
         "output_path": str(Path(output_path).resolve()),
         "rows_total": len(rows),
         "rows_sampled": len(indices),
         "seed": seed,
+        "preserve_input_order": preserve_input_order,
         "sampled_index_min": min(indices) if indices else None,
         "sampled_index_max": max(indices) if indices else None,
         "sampled_indices_preview": indices[:20],
@@ -80,13 +83,24 @@ def parse_args():
     parser.add_argument("--sample-size", type=int, required=True, help="Number of rows to sample.")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility.")
     parser.add_argument("--summary-json", default="", help="Optional summary JSON output.")
+    parser.add_argument(
+        "--shuffle-output",
+        action="store_true",
+        help="Write sampled rows in sampled order instead of preserving input order.",
+    )
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
     rows = read_json_or_jsonl(args.input)
-    sampled_rows, sampled_indices = sample_rows(rows, sample_size=args.sample_size, seed=args.seed)
+    preserve_input_order = not args.shuffle_output
+    sampled_rows, sampled_indices = sample_rows(
+        rows,
+        sample_size=args.sample_size,
+        seed=args.seed,
+        preserve_input_order=preserve_input_order,
+    )
     write_jsonl(args.output_jsonl, sampled_rows)
 
     summary = summarize_sample(
@@ -95,6 +109,7 @@ def main():
         input_path=args.input,
         output_path=args.output_jsonl,
         seed=args.seed,
+        preserve_input_order=preserve_input_order,
     )
 
     if args.summary_json:

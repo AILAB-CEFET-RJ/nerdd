@@ -146,6 +146,7 @@ Use quando:
 
 - você precisa montar split específico para calibrador
 - quer separar subconjuntos sem depender do split principal de treino
+- quer evitar preservar ordem temporal dentro dos arquivos de saída
 
 Entradas principais:
 
@@ -155,6 +156,10 @@ Entradas principais:
 Saídas:
 
 - arquivos JSON com subconjuntos separados
+
+Observação:
+
+- use `--shuffle-output` para embaralhar a ordem final dentro de cada split
 
 ## Limpeza E Edição De Corpus
 
@@ -325,6 +330,12 @@ Use quando:
 
 - você quer criar probes como `10k`
 - precisa repetir um experimento com a mesma seed
+- quer evitar preservar a ordem temporal no arquivo amostrado
+
+Observação:
+
+- por padrão, a amostra preserva a ordem original dos índices sorteados
+- use `--shuffle-output` para escrever os registros em ordem embaralhada
 
 ### `src/tools/split_large_corpus_into_chunks.py`
 
@@ -334,6 +345,7 @@ Use quando:
 
 - você quer rodar pseudolabeling iterativo por partes
 - precisa controlar custo por lote
+- quer evitar que cada chunk represente uma janela temporal contígua
 
 Entradas principais:
 
@@ -345,6 +357,10 @@ Entradas principais:
 Saída opcional:
 
 - `--summary-json`
+
+Observação:
+
+- use `--shuffle-first` com `--seed` para embaralhar o corpus antes de particionar
 
 ## Exportação De Resultados
 
