@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from tools.prune_pseudolabel_tips import prune_rows
+from tools.prune_pseudolabel_tips import _parse_label_score_overrides, prune_rows
 
 
 class PrunePseudolabelTipsTests(unittest.TestCase):
@@ -23,6 +23,7 @@ class PrunePseudolabelTipsTests(unittest.TestCase):
         cleaned_rows, summary = prune_rows(
             rows,
             min_entity_score=0.5,
+            label_min_scores={},
             max_entities_per_tip=1,
             score_fields=["score_context_boosted"],
             allowed_labels=set(),
@@ -55,6 +56,7 @@ class PrunePseudolabelTipsTests(unittest.TestCase):
         cleaned_rows, summary = prune_rows(
             rows,
             min_entity_score=0.0,
+            label_min_scores={},
             max_entities_per_tip=0,
             score_fields=["score_context_boosted"],
             allowed_labels={"Person"},
@@ -81,6 +83,7 @@ class PrunePseudolabelTipsTests(unittest.TestCase):
         cleaned_rows, summary = prune_rows(
             rows,
             min_entity_score=0.0,
+            label_min_scores={},
             max_entities_per_tip=1,
             score_fields=["score_context_boosted"],
             allowed_labels=set(),
@@ -91,6 +94,36 @@ class PrunePseudolabelTipsTests(unittest.TestCase):
         self.assertEqual(cleaned_rows, [])
         self.assertEqual(summary["dropped_tip_over_cap"], 1)
         self.assertEqual(summary["dropped_empty_tips"], 1)
+
+    def test_label_specific_score_override(self):
+        rows = [
+            {
+                "relato": "a",
+                "entities": [
+                    {"label": "Organization", "start": 0, "end": 1, "score_context_boosted": 0.75},
+                    {"label": "Person", "start": 2, "end": 3, "score_context_boosted": 0.65},
+                ],
+            }
+        ]
+
+        cleaned_rows, summary = prune_rows(
+            rows,
+            min_entity_score=0.6,
+            label_min_scores={"Organization": 0.8},
+            max_entities_per_tip=0,
+            score_fields=["score_context_boosted"],
+            allowed_labels=set(),
+            drop_tips_over_max=False,
+            drop_empty_tips=False,
+        )
+
+        self.assertEqual(len(cleaned_rows[0]["entities"]), 1)
+        self.assertEqual(cleaned_rows[0]["entities"][0]["label"], "Person")
+        self.assertEqual(summary["dropped_by_score"], 1)
+
+    def test_parse_label_score_overrides(self):
+        parsed = _parse_label_score_overrides("Organization=0.8,Person=0.6")
+        self.assertEqual(parsed, {"Organization": 0.8, "Person": 0.6})
 
 
 if __name__ == "__main__":

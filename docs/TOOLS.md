@@ -18,6 +18,7 @@ Regra prática:
 | Script | Categoria | Entrada típica | Reexecução | Uso principal |
 | --- | --- | --- | --- | --- |
 | `src/tools/build_annotation_editor.py` | anotação | JSON, JSONL | sobrescreve saída | gerar um editor HTML para revisão manual de spans |
+| `src/tools/audit_calibration_by_label.py` | auditoria | CSV de calibração | sobrescreve saída | auditar scores brutos vs calibrados por label e por validade |
 | `src/tools/build_calibration_dataset.py` | calibração | JSON, JSONL | sobrescreve saída | montar dataset de calibração a partir de previsões do modelo |
 | `src/tools/clean_generic_spans.py` | limpeza | JSON, JSONL | cuidado com `--inplace` | remover spans genéricos por banlist |
 | `src/tools/convert_sanity_jsonl_to_bio_csv.py` | conversão | JSONL | sobrescreve saída | converter JSONL de sanidade para CSV BIO |
@@ -94,6 +95,26 @@ Saída:
 - relatório HTML estático
 
 ## Calibração
+
+### `src/tools/audit_calibration_by_label.py`
+
+Resume um `calibration_predictions.csv` por label, separando positivos e negativos.
+
+Use quando:
+
+- você quer saber se erros continuam superconfiantes após calibração
+- precisa comparar `Score` bruto com score calibrado por label
+- quer medir rapidamente a fração de negativos com score alto, por exemplo em `Organization`
+
+Entradas principais:
+
+- `--calibration-csv`
+- `--calibrator-path` opcional
+- `--high-score-threshold`
+
+Saída:
+
+- JSON com contagens, médias e quantis para positivos e negativos, em modo bruto e calibrado
 
 ### `src/tools/build_calibration_dataset.py`
 

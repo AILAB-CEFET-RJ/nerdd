@@ -29,6 +29,20 @@ def _parse_csv(value):
     return [item.strip() for item in str(value).split(",") if item.strip()]
 
 
+def _parse_label_score_overrides(value):
+    overrides = {}
+    for item in _parse_csv(value):
+        if "=" not in item:
+            raise ValueError(f"Invalid label score override: {item}. Expected LABEL=SCORE.")
+        label, raw_score = item.split("=", 1)
+        label = label.strip()
+        score = _safe_float(raw_score.strip())
+        if not label or score is None:
+            raise ValueError(f"Invalid label score override: {item}. Expected LABEL=SCORE.")
+        overrides[label] = score
+    return overrides
+
+
 def _entity_key(row):
     for key in DEFAULT_ENTITY_KEYS:
         value = row.get(key)
@@ -79,6 +93,7 @@ def prune_row(
     row,
     *,
     min_entity_score,
+    label_min_scores,
     max_entities_per_tip,
     score_fields,
     allowed_labels,
@@ -104,7 +119,8 @@ def prune_row(
             stats["missing_score"] += 1
             score = float("-inf")
 
-        if score < min_entity_score:
+        entity_min_score = label_min_scores.get(label, min_entity_score)
+        if score < entity_min_score:
             stats["dropped_by_score"] += 1
             continue
 
@@ -131,6 +147,7 @@ def prune_row(
         "pruned_by_cap": stats["pruned_by_cap"],
         "dropped_tip_over_cap": bool(stats["dropped_tip_over_cap"]),
         "min_entity_score": min_entity_score,
+        "label_min_scores": dict(label_min_scores),
         "max_entities_per_tip": max_entities_per_tip,
         "score_fields": list(score_fields),
         "allowed_labels": sorted(allowed_labels) if allowed_labels else [],
@@ -143,6 +160,7 @@ def prune_rows(
     rows,
     *,
     min_entity_score,
+    label_min_scores,
     max_entities_per_tip,
     score_fields,
     allowed_labels,
@@ -156,6 +174,7 @@ def prune_rows(
         cleaned, row_stats = prune_row(
             row,
             min_entity_score=min_entity_score,
+            label_min_scores=label_min_scores,
             max_entities_per_tip=max_entities_per_tip,
             score_fields=score_fields,
             allowed_labels=allowed_labels,
@@ -194,6 +213,7 @@ def build_summary(summary, args, input_path):
         "dropped_tip_over_cap": summary.get("dropped_tip_over_cap", 0),
         "config": {
             "min_entity_score": args.min_entity_score,
+            "label_min_scores": _parse_label_score_overrides(args.label_min_scores),
             "max_entities_per_tip": args.max_entities_per_tip,
             "drop_tips_over_max": args.drop_tips_over_max,
             "drop_empty_tips": args.drop_empty_tips,
@@ -213,6 +233,11 @@ def parse_args():
     parser.add_argument("--output-html", default="", help="Optional HTML output for cleaned rows.")
     parser.add_argument("--title", default="Pruned Pseudolabel Tips", help="HTML title when --output-html is used.")
     parser.add_argument("--min-entity-score", type=float, default=0.0, help="Minimum entity score to keep.")
+    parser.add_argument(
+        "--label-min-scores",
+        default="",
+        help="Optional comma-separated per-label score floors, e.g. Organization=0.8,Person=0.6",
+    )
     parser.add_argument(
         "--max-entities-per-tip",
         type=int,
@@ -247,10 +272,12 @@ def main():
     rows = read_json_or_jsonl(args.input)
     score_fields = _parse_csv(args.score_fields) or list(DEFAULT_SCORE_FIELDS)
     allowed_labels = set(_parse_csv(args.allowed_labels))
+    label_min_scores = _parse_label_score_overrides(args.label_min_scores)
 
     cleaned_rows, counters = prune_rows(
         rows,
         min_entity_score=args.min_entity_score,
+        label_min_scores=label_min_scores,
         max_entities_per_tip=args.max_entities_per_tip,
         score_fields=score_fields,
         allowed_labels=allowed_labels,
