@@ -22,6 +22,7 @@ Regra prática:
 | `src/tools/build_calibration_dataset.py` | calibração | JSON, JSONL | sobrescreve saída | montar dataset de calibração a partir de previsões do modelo |
 | `src/tools/clean_generic_spans.py` | limpeza | JSON, JSONL | cuidado com `--inplace` | remover spans genéricos por banlist |
 | `src/tools/compare_spacy_predictions.py` | auditoria | JSON, JSONL | sobrescreve saída | comparar previsões existentes contra spaCy no mesmo conjunto |
+| `src/tools/compare_gliner_predictions.py` | auditoria | JSON, JSONL | sobrescreve saída | comparar previsões existentes contra outro modelo GLiNER no mesmo conjunto |
 | `src/tools/convert_sanity_jsonl_to_bio_csv.py` | conversão | JSONL | sobrescreve saída | converter JSONL de sanidade para CSV BIO |
 | `src/tools/count_dataset_entities.py` | inspeção | JSON, JSONL | seguro | contar spans e distribuição de labels em um corpus |
 | `src/tools/evaluate_chunk_quality.py` | auditoria | artefatos locais | sobrescreve saída | avaliar qualidade de um chunk a partir dos artefatos do ciclo |
@@ -347,6 +348,22 @@ Saídas:
 
 - JSONL com `baseline_entities` e `spacy_entities`
 - HTML com baseline e spaCy renderizados lado a lado por registro
+- summary JSON opcional com contagens por label
+
+### `src/tools/compare_gliner_predictions.py`
+
+Compara as entidades já previstas em um corpus com as entidades produzidas por outro modelo GLiNER no mesmo texto.
+
+Use quando:
+
+- quer comparar backbone puro com modelo fine-tuned
+- precisa verificar se um erro já existe no backbone ou foi introduzido pelo fine-tuning
+- quer uma revisão HTML lado a lado usando o mesmo conjunto de casos problemáticos
+
+Saídas:
+
+- JSONL com `baseline_entities` e `model_entities`
+- HTML com baseline e GLiNER de comparação renderizados lado a lado
 - summary JSON opcional com contagens por label
 
 ### `src/tools/list_distinct_labels.py`
