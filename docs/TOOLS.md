@@ -28,6 +28,7 @@ Regra prática:
 | `src/tools/export_thesis_tables.py` | exportação | artefatos locais | sobrescreve saída | consolidar artefatos em CSV/Markdown para escrita |
 | `src/tools/inspect_dense_tips.py` | auditoria | JSON, JSONL | sobrescreve saída | filtrar e visualizar tips com muitas entidades |
 | `src/tools/prune_pseudolabel_tips.py` | limpeza | JSON, JSONL | sobrescreve saída | podar entidades de pseudolabel por score e densidade por tip |
+| `src/tools/review_model_predictions.py` | auditoria | conjunto anotado | sobrescreve saída | gerar revisão HTML lado a lado de gold vs predição do modelo |
 | `src/tools/list_distinct_labels.py` | inspeção | JSON, JSONL | seguro | listar labels distintas encontradas em um corpus |
 | `src/tools/profile_pseudolabelling_inference.py` | profiling | JSONL | sobrescreve saída opcional | medir custo de inferência do pipeline de pseudolabel |
 | `src/tools/render_ner_html.py` | visualização | JSON, JSONL | sobrescreve saída | renderizar corpus anotado em HTML |
@@ -271,6 +272,23 @@ Saídas possíveis:
 - JSONL limpo
 - HTML opcional para revisão manual
 - summary JSON com contagens do que foi removido
+
+### `src/tools/review_model_predictions.py`
+
+Roda um modelo sobre um conjunto anotado e gera material de revisão qualitativa.
+
+Use quando:
+
+- você quer inspecionar diretamente se o baseline parece pior do que o F1 sugere
+- precisa abrir os piores casos primeiro, com gold e predição lado a lado
+- quer um `comparison.jsonl` para auditoria manual mais detalhada
+
+Saídas:
+
+- `comparison.jsonl`
+- `metrics.json`
+- `summary.json`
+- `review.html`
 
 ### `src/tools/list_distinct_labels.py`
 

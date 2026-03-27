@@ -167,3 +167,4 @@ src/artifacts/
 dd_ner_pipeline/artifacts/annotation_editor.html
 
 .venv-gliner2-smoke
+html/
