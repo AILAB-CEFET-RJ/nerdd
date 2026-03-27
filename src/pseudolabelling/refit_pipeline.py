@@ -236,6 +236,31 @@ def _resolve_refit_sources(config):
     raise ValueError(f"Unsupported refit_mode: {mode}")
 
 
+def sample_pseudolabel_rows(rows, *, sample_ratio, max_records, seed):
+    sampled = list(rows)
+    counters = Counter(
+        {
+            "input_records": len(rows),
+            "sample_ratio": float(sample_ratio),
+            "max_records": int(max_records),
+        }
+    )
+
+    if sampled and sample_ratio < 1.0:
+        keep_count = max(1, int(round(len(sampled) * sample_ratio)))
+        rng = random.Random(seed)
+        sampled = rng.sample(sampled, keep_count)
+        counters["dropped_by_ratio"] = len(rows) - len(sampled)
+
+    if sampled and max_records > 0 and len(sampled) > max_records:
+        rng = random.Random(seed + 1)
+        sampled = rng.sample(sampled, max_records)
+        counters["dropped_by_cap"] = counters["input_records"] - counters["dropped_by_ratio"] - len(sampled)
+
+    counters["kept_records"] = len(sampled)
+    return sampled, counters
+
+
 def run_refit(config, script_path):
     started_at = datetime.now(timezone.utc).isoformat()
     timer = perf_counter()
@@ -272,6 +297,23 @@ def run_refit(config, script_path):
         allowed_labels=set(config.allowed_labels),
         source_name="pseudolabel",
     )
+    pseudolabel_sample_counts = Counter(
+        {
+            "input_records": len(prepared_pseudolabel_rows),
+            "kept_records": len(prepared_pseudolabel_rows),
+            "sample_ratio": float(config.pseudolabel_sample_ratio),
+            "max_records": int(config.max_pseudolabel_records),
+        }
+    )
+    if prepared_pseudolabel_rows and (
+        config.pseudolabel_sample_ratio < 1.0 or config.max_pseudolabel_records > 0
+    ):
+        prepared_pseudolabel_rows, pseudolabel_sample_counts = sample_pseudolabel_rows(
+            prepared_pseudolabel_rows,
+            sample_ratio=config.pseudolabel_sample_ratio,
+            max_records=config.max_pseudolabel_records,
+            seed=config.seed,
+        )
 
     include_supervised_train, include_pseudolabel_train = _resolve_refit_sources(config)
 
@@ -395,11 +437,14 @@ def run_refit(config, script_path):
             "num_workers": config.num_workers,
             "include_supervised_train": config.include_supervised_train,
             "deduplicate_by_text": config.deduplicate_by_text,
+            "pseudolabel_sample_ratio": config.pseudolabel_sample_ratio,
+            "max_pseudolabel_records": config.max_pseudolabel_records,
             "effective_include_supervised_train": include_supervised_train,
             "effective_include_pseudolabel_train": include_pseudolabel_train,
         },
         "data_summary": {
             "prepare_counts_pseudolabel_source": dict(pseudolabel_prepare_counts),
+            "sample_counts_pseudolabel_source": dict(pseudolabel_sample_counts),
             "prepare_counts_supervised_source": dict(supervised_prepare_counts),
             "prepare_counts_val_source": dict(val_prepare_counts),
             "merge_counts": dict(merge_counts),

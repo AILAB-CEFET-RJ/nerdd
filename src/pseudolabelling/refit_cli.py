@@ -27,6 +27,8 @@ class RefitConfig:
     num_workers: int = 2
     include_supervised_train: bool = True
     deduplicate_by_text: bool = True
+    pseudolabel_sample_ratio: float = 1.0
+    max_pseudolabel_records: int = 0
 
 
 def _parse_csv_list(raw_value):
@@ -75,6 +77,8 @@ def parse_args():
     parser.add_argument("--num-workers", type=int, default=defaults.num_workers)
     parser.add_argument("--exclude-supervised-train", action="store_true")
     parser.add_argument("--disable-deduplicate-by-text", action="store_true")
+    parser.add_argument("--pseudolabel-sample-ratio", type=float, default=defaults.pseudolabel_sample_ratio)
+    parser.add_argument("--max-pseudolabel-records", type=int, default=defaults.max_pseudolabel_records)
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     return parser.parse_args()
 
@@ -104,4 +108,6 @@ def build_config(args):
         num_workers=args.num_workers,
         include_supervised_train=(not args.exclude_supervised_train),
         deduplicate_by_text=(not args.disable_deduplicate_by_text),
+        pseudolabel_sample_ratio=args.pseudolabel_sample_ratio,
+        max_pseudolabel_records=args.max_pseudolabel_records,
     )
