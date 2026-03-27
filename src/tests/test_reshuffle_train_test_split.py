@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from tools.reshuffle_train_test_split import reshuffle_train_test
+from tools.reshuffle_train_test_split import remove_exact_duplicates_across_inputs, reshuffle_train_test
 
 
 class ReshuffleTrainTestSplitTests(unittest.TestCase):
@@ -22,6 +22,17 @@ class ReshuffleTrainTestSplitTests(unittest.TestCase):
         self.assertEqual(order_a, order_b)
         combined_ids = {row["id"] for row in train_a + test_a}
         self.assertEqual(combined_ids, {row["id"] for row in train_rows + test_rows})
+
+    def test_remove_duplicates_across_inputs_keeps_train_copy(self):
+        shared = {"id": "shared", "text": "same"}
+        train_rows = [{"id": "train_only"}, shared]
+        test_rows = [shared, {"id": "test_only"}]
+
+        dedup_train, dedup_test, dropped = remove_exact_duplicates_across_inputs(train_rows, test_rows)
+
+        self.assertEqual(dedup_train, train_rows)
+        self.assertEqual(dedup_test, [{"id": "test_only"}])
+        self.assertEqual(dropped, 1)
 
 
 if __name__ == "__main__":

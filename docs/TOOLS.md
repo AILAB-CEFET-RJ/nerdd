@@ -29,7 +29,7 @@ Regra prática:
 | `src/tools/inspect_dense_tips.py` | auditoria | JSON, JSONL | sobrescreve saída | filtrar e visualizar tips com muitas entidades |
 | `src/tools/prune_pseudolabel_tips.py` | limpeza | JSON, JSONL | sobrescreve saída | podar entidades de pseudolabel por score e densidade por tip |
 | `src/tools/review_model_predictions.py` | auditoria | conjunto anotado | sobrescreve saída | gerar revisão HTML lado a lado de gold vs predição do modelo |
-| `src/tools/reshuffle_train_test_split.py` | split | JSON, JSONL | sobrescreve saída | recombinar train/test e reemitir novos splits com tamanhos preservados |
+| `src/tools/reshuffle_train_test_split.py` | split | JSON, JSONL | sobrescreve saída | recombinar train/test, opcionalmente remover duplicatas exatas entre inputs, e reemitir novos splits |
 | `src/tools/list_distinct_labels.py` | inspeção | JSON, JSONL | seguro | listar labels distintas encontradas em um corpus |
 | `src/tools/profile_pseudolabelling_inference.py` | profiling | JSONL | sobrescreve saída opcional | medir custo de inferência do pipeline de pseudolabel |
 | `src/tools/render_ner_html.py` | visualização | JSON, JSONL | sobrescreve saída | renderizar corpus anotado em HTML |
@@ -298,7 +298,9 @@ Saídas:
 
 ### `src/tools/reshuffle_train_test_split.py`
 
-Recombina dois splits existentes, embaralha com seed fixa e gera novos `train` e `test` com os mesmos tamanhos.
+Recombina dois splits existentes, embaralha com seed fixa e gera novos `train` e `test`.
+
+Opcionalmente remove duplicatas exatas entre os inputs, preservando a cópia do `train` e descartando a cópia correspondente do `test`. Nesse modo, o `train` mantém seu tamanho efetivo e o `test` pode encolher.
 
 Use quando:
 
@@ -310,7 +312,7 @@ Saídas:
 
 - novo arquivo de train
 - novo arquivo de test
-- summary JSON opcional com tamanhos, duplicatas exatas entre os insumos e distribuição de labels
+- summary JSON opcional com tamanhos, duplicatas exatas entre os insumos, remoções aplicadas e distribuição de labels
 
 ### `src/tools/list_distinct_labels.py`
 
