@@ -26,6 +26,7 @@ Regra prática:
 | `src/tools/export_dissertation_tables.py` | exportação | artefatos locais | sobrescreve saída | wrapper para exportar tabelas de dissertação |
 | `src/tools/export_thesis_tables.py` | exportação | artefatos locais | sobrescreve saída | consolidar artefatos em CSV/Markdown para escrita |
 | `src/tools/inspect_dense_tips.py` | auditoria | JSON, JSONL | sobrescreve saída | filtrar e visualizar tips com muitas entidades |
+| `src/tools/prune_pseudolabel_tips.py` | limpeza | JSON, JSONL | sobrescreve saída | podar entidades de pseudolabel por score e densidade por tip |
 | `src/tools/list_distinct_labels.py` | inspeção | JSON, JSONL | seguro | listar labels distintas encontradas em um corpus |
 | `src/tools/profile_pseudolabelling_inference.py` | profiling | JSONL | sobrescreve saída opcional | medir custo de inferência do pipeline de pseudolabel |
 | `src/tools/render_ner_html.py` | visualização | JSON, JSONL | sobrescreve saída | renderizar corpus anotado em HTML |
@@ -225,6 +226,30 @@ Saídas possíveis:
 - JSONL filtrado
 - HTML para leitura
 - summary JSON com contagens agregadas
+
+### `src/tools/prune_pseudolabel_tips.py`
+
+Limpa um conjunto de pseudolabels já kept, removendo entidades fracas e limitando densidade por tip.
+
+Use quando:
+
+- você quer testar se o problema está dentro dos tips kept, e não apenas no `kept_count`
+- precisa gerar um `kept.jsonl` mais limpo para refit experimental
+- quer podar entidades por score antes de mexer no threshold de split
+
+Controles principais:
+
+- `--min-entity-score`
+- `--max-entities-per-tip`
+- `--drop-tips-over-max`
+- `--drop-empty-tips`
+- `--allowed-labels`
+
+Saídas possíveis:
+
+- JSONL limpo
+- HTML opcional para revisão manual
+- summary JSON com contagens do que foi removido
 
 ### `src/tools/list_distinct_labels.py`
 
