@@ -21,6 +21,7 @@ Regra prática:
 | `src/tools/audit_calibration_by_label.py` | auditoria | CSV de calibração | sobrescreve saída | auditar scores brutos vs calibrados por label e por validade |
 | `src/tools/build_calibration_dataset.py` | calibração | JSON, JSONL | sobrescreve saída | montar dataset de calibração a partir de previsões do modelo |
 | `src/tools/clean_generic_spans.py` | limpeza | JSON, JSONL | cuidado com `--inplace` | remover spans genéricos por banlist |
+| `src/tools/compare_spacy_predictions.py` | auditoria | JSON, JSONL | sobrescreve saída | comparar previsões existentes contra spaCy no mesmo conjunto |
 | `src/tools/convert_sanity_jsonl_to_bio_csv.py` | conversão | JSONL | sobrescreve saída | converter JSONL de sanidade para CSV BIO |
 | `src/tools/count_dataset_entities.py` | inspeção | JSON, JSONL | seguro | contar spans e distribuição de labels em um corpus |
 | `src/tools/evaluate_chunk_quality.py` | auditoria | artefatos locais | sobrescreve saída | avaliar qualidade de um chunk a partir dos artefatos do ciclo |
@@ -331,6 +332,22 @@ Saídas:
 - JSONL opcional com `_candidate_rank`
 - HTML opcional para revisão visual
 - summary JSON opcional com filtros e estatísticas dos selecionados
+
+### `src/tools/compare_spacy_predictions.py`
+
+Compara as entidades já previstas em um corpus com as entidades produzidas por um modelo spaCy no mesmo texto.
+
+Use quando:
+
+- quer verificar se a fragmentação vista no baseline também aparece em uma estratégia mais simples
+- precisa de uma revisão lado a lado entre baseline e spaCy
+- quer um controle qualitativo rápido em tips problemáticos
+
+Saídas:
+
+- JSONL com `baseline_entities` e `spacy_entities`
+- HTML com baseline e spaCy renderizados lado a lado por registro
+- summary JSON opcional com contagens por label
 
 ### `src/tools/list_distinct_labels.py`
 
