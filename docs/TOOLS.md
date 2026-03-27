@@ -28,6 +28,7 @@ Regra prática:
 | `src/tools/export_thesis_tables.py` | exportação | artefatos locais | sobrescreve saída | consolidar artefatos em CSV/Markdown para escrita |
 | `src/tools/inspect_dense_tips.py` | auditoria | JSON, JSONL | sobrescreve saída | filtrar e visualizar tips com muitas entidades |
 | `src/tools/prune_pseudolabel_tips.py` | limpeza | JSON, JSONL | sobrescreve saída | podar entidades de pseudolabel por score e densidade por tip |
+| `src/tools/rank_pseudolabel_candidates.py` | auditoria | JSON, JSONL | sobrescreve saída | ranquear candidatos de pseudolabel para revisão manual |
 | `src/tools/review_model_predictions.py` | auditoria | conjunto anotado | sobrescreve saída | gerar revisão HTML lado a lado de gold vs predição do modelo |
 | `src/tools/reshuffle_train_test_split.py` | split | JSON, JSONL | sobrescreve saída | recombinar train/test, opcionalmente remover duplicatas exatas entre inputs, e reemitir novos splits |
 | `src/tools/list_distinct_labels.py` | inspeção | JSON, JSONL | seguro | listar labels distintas encontradas em um corpus |
@@ -313,6 +314,23 @@ Saídas:
 - novo arquivo de train
 - novo arquivo de test
 - summary JSON opcional com tamanhos, duplicatas exatas entre os insumos, remoções aplicadas e distribuição de labels
+
+### `src/tools/rank_pseudolabel_candidates.py`
+
+Ranqeia candidatos de pseudolabel para revisão manual a partir de scores de registro e entidade.
+
+Use quando:
+
+- quer revisar os top candidatos antes de escalar pseudolabelling
+- precisa misturar score de registro com penalizações por densidade, spans curtos e dominância de `Organization`
+- quer exportar CSV/JSONL/HTML dos candidatos priorizados
+
+Saídas:
+
+- CSV com features e ranking
+- JSONL opcional com `_candidate_rank`
+- HTML opcional para revisão visual
+- summary JSON opcional com filtros e estatísticas dos selecionados
 
 ### `src/tools/list_distinct_labels.py`
 
