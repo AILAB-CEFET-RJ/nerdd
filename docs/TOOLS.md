@@ -24,6 +24,7 @@ Regra prática:
 | `src/tools/compare_spacy_predictions.py` | auditoria | JSON, JSONL | sobrescreve saída | comparar previsões existentes contra spaCy no mesmo conjunto |
 | `src/tools/compare_gliner_predictions.py` | auditoria | JSON, JSONL | sobrescreve saída | comparar previsões existentes contra outro modelo GLiNER no mesmo conjunto |
 | `src/tools/convert_sanity_jsonl_to_bio_csv.py` | conversão | JSONL | sobrescreve saída | converter JSONL de sanidade para CSV BIO |
+| `src/tools/compare_tokenizers.py` | auditoria | JSON, JSONL | sobrescreve saída | comparar tokenização fast vs slow em textos selecionados |
 | `src/tools/count_dataset_entities.py` | inspeção | JSON, JSONL | seguro | contar spans e distribuição de labels em um corpus |
 | `src/tools/evaluate_chunk_quality.py` | auditoria | artefatos locais | sobrescreve saída | avaliar qualidade de um chunk a partir dos artefatos do ciclo |
 | `src/tools/export_dissertation_tables.py` | exportação | artefatos locais | sobrescreve saída | wrapper para exportar tabelas de dissertação |
@@ -365,6 +366,22 @@ Saídas:
 - JSONL com `baseline_entities` e `model_entities`
 - HTML com baseline e GLiNER de comparação renderizados lado a lado
 - summary JSON opcional com contagens por label
+
+### `src/tools/compare_tokenizers.py`
+
+Compara a tokenização `fast` e `slow` de um modelo HF para textos selecionados.
+
+Use quando:
+
+- quer investigar warnings de byte fallback e tokenizer fast convertido
+- suspeita que diferenças de tokenização estão contribuindo para boundaries estranhos
+- precisa inspecionar tokens e contagem de `UNK` em tips problemáticos
+
+Saídas:
+
+- JSON com tokens fast/slow por registro
+- HTML opcional para inspeção manual
+- summary JSON opcional com contagem de diferenças e `UNK`
 
 ### `src/tools/list_distinct_labels.py`
 
