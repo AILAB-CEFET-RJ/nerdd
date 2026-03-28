@@ -4,10 +4,30 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from tools.compare_tokenizers import build_summary
+from tools.compare_tokenizers import _tokenize, build_summary
 
 
 class CompareTokenizersTests(unittest.TestCase):
+    def test_tokenize_exposes_per_token_rows(self):
+        class StubTokenizer:
+            is_fast = True
+            unk_token = "[UNK]"
+
+            def __call__(self, text, add_special_tokens, truncation, return_offsets_mapping):
+                return {"input_ids": [101, 102], "offset_mapping": [(0, 2), (3, 5)]}
+
+            def convert_ids_to_tokens(self, input_ids):
+                return ["ab", "[UNK]"]
+
+        result = _tokenize(StubTokenizer(), "ab cd")
+        self.assertEqual(result["token_rows"][0]["token"], "ab")
+        self.assertEqual(result["token_rows"][0]["input_id"], 101)
+        self.assertEqual(result["token_rows"][0]["start"], 0)
+        self.assertEqual(result["token_rows"][0]["end"], 2)
+        self.assertEqual(result["token_rows"][0]["text"], "ab")
+        self.assertEqual(result["token_rows"][1]["token"], "[UNK]")
+        self.assertEqual(result["unk_count"], 1)
+
     def test_build_summary_counts_differences_and_unk_rows(self):
         comparisons = [
             {

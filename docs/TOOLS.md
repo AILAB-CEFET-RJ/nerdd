@@ -380,6 +380,7 @@ Use quando:
 Saídas:
 
 - JSON com tokens fast/slow por registro
+- inclui por token: `input_id`, offsets e trecho original quando disponível
 - HTML opcional para inspeção manual
 - summary JSON opcional com contagem de diferenças e `UNK`
 

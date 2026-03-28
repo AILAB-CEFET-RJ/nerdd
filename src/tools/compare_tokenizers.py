@@ -41,10 +41,31 @@ def _tokenize(tokenizer, text):
     offsets = encoded.get("offset_mapping")
     unk_token = getattr(tokenizer, "unk_token", None)
     unk_count = sum(1 for token in tokens if unk_token is not None and token == unk_token)
+    token_rows = []
+    normalized_offsets = offsets if offsets is not None else [None] * len(tokens)
+    for index, (token, input_id, offset) in enumerate(zip(tokens, input_ids, normalized_offsets), start=1):
+        if offset is None:
+            start = None
+            end = None
+            snippet = ""
+        else:
+            start, end = offset
+            snippet = text[start:end]
+        token_rows.append(
+            {
+                "index_1based": index,
+                "token": token,
+                "input_id": input_id,
+                "start": start,
+                "end": end,
+                "text": snippet,
+            }
+        )
     return {
         "tokens": tokens,
         "input_ids": input_ids,
         "offsets": offsets if offsets is not None else [],
+        "token_rows": token_rows,
         "unk_count": unk_count,
         "token_count": len(tokens),
     }
@@ -89,6 +110,29 @@ def build_summary(comparisons):
 
 
 def render_html(title, comparisons, output_path):
+    def render_token_table(token_rows):
+        if not token_rows:
+            return "<div class='meta'>No per-token offsets available.</div>"
+        rows = []
+        for token_row in token_rows:
+            start = "" if token_row["start"] is None else token_row["start"]
+            end = "" if token_row["end"] is None else token_row["end"]
+            rows.append(
+                "<tr>"
+                f"<td>{token_row['index_1based']}</td>"
+                f"<td>{escape(str(token_row['input_id']))}</td>"
+                f"<td>{escape(token_row['token'])}</td>"
+                f"<td>{start}</td>"
+                f"<td>{end}</td>"
+                f"<td>{escape(token_row['text'])}</td>"
+                "</tr>"
+            )
+        return (
+            "<table class='tokens'>"
+            "<thead><tr><th>#</th><th>id</th><th>token</th><th>start</th><th>end</th><th>text</th></tr></thead>"
+            f"<tbody>{''.join(rows)}</tbody></table>"
+        )
+
     rows_html = []
     for item in comparisons:
         fast_tokens = " ".join(escape(token) for token in item["fast"]["tokens"])
@@ -99,7 +143,9 @@ def render_html(title, comparisons, output_path):
             f"<div class='meta'>fast_tokens={item['fast']['token_count']} | slow_tokens={item['slow']['token_count']} | fast_unk={item['fast']['unk_count']} | slow_unk={item['slow']['unk_count']} | tokens_equal={item['delta']['tokens_equal']}</div>"
             f"<div class='meta'><b>Text</b></div><div class='text'>{escape(item['text'])}</div>"
             f"<div class='meta' style='margin-top:8px;'><b>Fast tokens</b></div><div class='text'>{fast_tokens}</div>"
+            f"<details><summary>Fast token table</summary>{render_token_table(item['fast']['token_rows'])}</details>"
             f"<div class='meta' style='margin-top:8px;'><b>Slow tokens</b></div><div class='text'>{slow_tokens}</div>"
+            f"<details><summary>Slow token table</summary>{render_token_table(item['slow']['token_rows'])}</details>"
             "</section>"
         )
     summary = build_summary(comparisons)
@@ -125,6 +171,10 @@ def render_html(title, comparisons, output_path):
     .report h3 {{ margin: 0 0 8px 0; font-size: 14px; color: #111827; }}
     .meta {{ font-size: 12px; color: #6b7280; margin-bottom: 8px; }}
     .text {{ line-height: 1.7; white-space: pre-wrap; }}
+    .tokens {{ border-collapse: collapse; margin-top: 8px; width: 100%; font-size: 12px; }}
+    .tokens th, .tokens td {{ border: 1px solid #d1d5db; padding: 4px 6px; text-align: left; vertical-align: top; }}
+    details {{ margin-top: 8px; }}
+    summary {{ cursor: pointer; color: #111827; font-size: 12px; }}
   </style>
 </head>
 <body>
