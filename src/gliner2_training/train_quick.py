@@ -277,6 +277,28 @@ def run_quick_experiment(config: QuickTrainConfig, script_path: str):
         _convert_rows_to_gliner2_jsonl(raw_rows, temp_train)
 
         dataset = TrainingDataset.load(temp_train, shuffle=True, seed=config.seed)
+        invalid_indices = []
+        invalid_errors = []
+        if hasattr(dataset, "validate"):
+            report = dataset.validate(raise_on_error=False)
+            invalid_indices = sorted(set(report.get("invalid_indices", []) or []))
+            invalid_errors = report.get("errors", []) or []
+            if invalid_indices:
+                LOGGER.warning(
+                    "GLiNER2 validation marked %s/%s training examples as invalid. First errors: %s",
+                    len(invalid_indices),
+                    len(dataset.examples),
+                    invalid_errors[:3],
+                )
+                invalid_set = set(invalid_indices)
+                invalid_examples_path = output_dir / "invalid_train_examples.jsonl"
+                with temp_train.open("r", encoding="utf-8") as handle:
+                    invalid_lines = [line.rstrip("\n") for idx, line in enumerate(handle) if idx in invalid_set]
+                invalid_examples_path.write_text("\n".join(invalid_lines) + ("\n" if invalid_lines else ""), encoding="utf-8")
+                dataset = TrainingDataset([example for idx, example in enumerate(dataset.examples) if idx not in invalid_set])
+                if not dataset.examples:
+                    raise ValueError("All training examples were rejected by GLiNER2 validation.")
+
         train_data, val_data, _ = dataset.split(
             train_ratio=config.train_ratio,
             val_ratio=config.val_ratio,
@@ -347,6 +369,7 @@ def run_quick_experiment(config: QuickTrainConfig, script_path: str):
         "dataset": {
             "raw_train_rows": len(raw_rows_all),
             "filtered_train_rows": len(raw_rows),
+            "invalid_train_examples": len(invalid_indices),
             "train_rows": len(train_data.examples),
             "val_rows": len(val_data.examples),
             "entity_labels": entity_labels,
