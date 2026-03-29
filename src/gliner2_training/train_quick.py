@@ -41,15 +41,12 @@ class QuickTrainConfig:
     experiment_name: str = "gliner2_quick_lora"
     seed: int = 42
     keep_empty_examples: bool = False
-    tokenization_strategy: str = "whitespace"
-    max_length: int = 384
-    overlap: int = 100
     train_ratio: float = 0.8
     val_ratio: float = 0.2
     num_epochs: int = 8
-    batch_size: int = 8
-    eval_batch_size: int = 8
-    grad_accum: int = 2
+    batch_size: int = 1
+    eval_batch_size: int = 1
+    grad_accum: int = 16
     encoder_lr: float = 1.0e-5
     task_lr: float = 5.0e-4
     weight_decay: float = 0.01
@@ -57,7 +54,7 @@ class QuickTrainConfig:
     logging_steps: int = 50
     eval_steps: int = 500
     early_stopping_patience: int = 2
-    fp16: bool = False
+    fp16: bool = True
     use_lora: bool = True
     lora_r: int = 8
     lora_alpha: float = 16.0
@@ -75,9 +72,6 @@ def parse_args():
     parser.add_argument("--experiment-name", default=defaults.experiment_name)
     parser.add_argument("--seed", type=int, default=defaults.seed)
     parser.add_argument("--keep-empty-examples", action="store_true", default=defaults.keep_empty_examples)
-    parser.add_argument("--tokenization-strategy", choices=["whitespace", "regex"], default=defaults.tokenization_strategy)
-    parser.add_argument("--max-length", type=int, default=defaults.max_length)
-    parser.add_argument("--overlap", type=int, default=defaults.overlap)
     parser.add_argument("--train-ratio", type=float, default=defaults.train_ratio)
     parser.add_argument("--val-ratio", type=float, default=defaults.val_ratio)
     parser.add_argument("--num-epochs", type=int, default=defaults.num_epochs)
@@ -91,7 +85,8 @@ def parse_args():
     parser.add_argument("--logging-steps", type=int, default=defaults.logging_steps)
     parser.add_argument("--eval-steps", type=int, default=defaults.eval_steps)
     parser.add_argument("--early-stopping-patience", type=int, default=defaults.early_stopping_patience)
-    parser.add_argument("--fp16", action="store_true", default=defaults.fp16)
+    parser.add_argument("--fp16", dest="fp16", action="store_true", default=defaults.fp16)
+    parser.add_argument("--no-fp16", dest="fp16", action="store_false")
     parser.add_argument("--use-lora", action="store_true", default=defaults.use_lora)
     parser.add_argument("--no-lora", dest="use_lora", action="store_false")
     parser.add_argument("--lora-r", type=int, default=defaults.lora_r)
@@ -110,9 +105,6 @@ def build_config(args):
         experiment_name=args.experiment_name,
         seed=args.seed,
         keep_empty_examples=args.keep_empty_examples,
-        tokenization_strategy=args.tokenization_strategy,
-        max_length=args.max_length,
-        overlap=args.overlap,
         train_ratio=args.train_ratio,
         val_ratio=args.val_ratio,
         num_epochs=args.num_epochs,
@@ -159,49 +151,6 @@ def _convert_rows_to_gliner2_jsonl(rows, path):
             handle.write(json.dumps({"input": text, "output": {"entities": entities}}, ensure_ascii=False) + "\n")
 
 
-def _chunk_rows(rows, tokenization_strategy, max_length, overlap, keep_empty_examples, tokenizer=None):
-    from base_model_training.data import process_sample, split_long_sentences, token_spans_to_char_offsets
-
-    processed = []
-    for index, row in enumerate(rows):
-        enriched = dict(row)
-        enriched.setdefault("sample_id", f"sample_{index}")
-        processed.append(process_sample(enriched, tokenization_strategy=tokenization_strategy))
-
-    split_rows = split_long_sentences(
-        processed,
-        max_length=max_length,
-        overlap=overlap,
-        tokenizer=tokenizer,
-        keep_empty_chunks=keep_empty_examples,
-    )
-
-    converted = []
-    for sample in split_rows:
-        text, spans = token_spans_to_char_offsets(sample["tokenized_text"], sample["ner"])
-        converted.append(
-            {
-                "text": text,
-                "spans": spans,
-                "sample_id": sample.get("sample_id"),
-            }
-        )
-    return converted
-
-
-def _extract_tokenizer_from_gliner2_model(model):
-    candidates = [
-        getattr(model, "tokenizer", None),
-        getattr(getattr(model, "processor", None), "tokenizer", None),
-        getattr(getattr(model, "data_processor", None), "transformer_tokenizer", None),
-        getattr(getattr(model, "model", None), "tokenizer", None),
-    ]
-    for candidate in candidates:
-        if candidate is not None:
-            return candidate
-    return None
-
-
 def _write_report(report_dir: Path, metrics, predictions):
     report_dir.mkdir(parents=True, exist_ok=True)
     (report_dir / "classification_report.txt").write_text(format_classification_report(metrics), encoding="utf-8")
@@ -241,20 +190,7 @@ def run_quick_experiment(config: QuickTrainConfig, script_path: str):
 
     with tempfile.TemporaryDirectory(prefix="gliner2_quick_") as temp_dir:
         model = GLiNER2.from_pretrained(config.model_base)
-        tokenizer = _extract_tokenizer_from_gliner2_model(model)
-        if tokenizer is None:
-            LOGGER.warning(
-                "Could not extract a tokenizer from GLiNER2 model. Falling back to tokenizer-agnostic chunking."
-            )
-
-        raw_rows = _chunk_rows(
-            raw_rows_all,
-            tokenization_strategy=config.tokenization_strategy,
-            max_length=config.max_length,
-            overlap=config.overlap,
-            keep_empty_examples=config.keep_empty_examples,
-            tokenizer=tokenizer,
-        )
+        raw_rows = list(raw_rows_all)
         if not config.keep_empty_examples:
             raw_rows = [row for row in raw_rows if row.get("spans")]
         if not raw_rows:
@@ -262,16 +198,6 @@ def run_quick_experiment(config: QuickTrainConfig, script_path: str):
 
         entity_labels = sorted({str(span["label"]) for row in raw_rows for span in (row.get("spans") or [])})
         entity_types = [_normalize_label(label) for label in entity_labels]
-
-        chunk_word_lengths = [len(str(row.get("text", "")).split()) for row in raw_rows if row.get("text")]
-        if chunk_word_lengths:
-            LOGGER.info(
-                "Prepared %s chunked training rows from %s raw rows. Max words per chunk=%s, mean words per chunk=%.1f",
-                len(raw_rows),
-                len(raw_rows_all),
-                max(chunk_word_lengths),
-                mean(chunk_word_lengths),
-            )
 
         temp_train = Path(temp_dir) / "train.jsonl"
         _convert_rows_to_gliner2_jsonl(raw_rows, temp_train)
