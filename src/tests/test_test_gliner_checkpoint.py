@@ -21,6 +21,16 @@ class TestTestGlinerCheckpoint(unittest.TestCase):
             args = _Args(text=["Anitta"], file=str(input_path))
             self.assertEqual(_load_texts(args), ["Anitta", "Ivete Sangalo", "Xuxa Meneguel"])
 
+    def test_load_texts_reads_jsonl_records(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            input_path = Path(temp_dir) / "samples.jsonl"
+            input_path.write_text(
+                '{"text":"Ivete Sangalo"}\n{"relato":"Xuxa Meneguel"}\n{"foo":"bar"}\n',
+                encoding="utf-8",
+            )
+            args = _Args(file=str(input_path))
+            self.assertEqual(_load_texts(args), ["Ivete Sangalo", "Xuxa Meneguel"])
+
     def test_load_texts_rejects_missing_inputs(self):
         with self.assertRaises(ValueError):
             _load_texts(_Args())
