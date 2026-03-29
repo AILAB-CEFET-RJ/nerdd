@@ -159,7 +159,7 @@ def _convert_rows_to_gliner2_jsonl(rows, path):
             handle.write(json.dumps({"input": text, "output": {"entities": entities}}, ensure_ascii=False) + "\n")
 
 
-def _chunk_rows(rows, tokenization_strategy, max_length, overlap, keep_empty_examples):
+def _chunk_rows(rows, tokenization_strategy, max_length, overlap, keep_empty_examples, tokenizer=None):
     from base_model_training.data import process_sample, split_long_sentences, token_spans_to_char_offsets
 
     processed = []
@@ -172,7 +172,7 @@ def _chunk_rows(rows, tokenization_strategy, max_length, overlap, keep_empty_exa
         processed,
         max_length=max_length,
         overlap=overlap,
-        tokenizer=None,
+        tokenizer=tokenizer,
         keep_empty_chunks=keep_empty_examples,
     )
 
@@ -187,6 +187,19 @@ def _chunk_rows(rows, tokenization_strategy, max_length, overlap, keep_empty_exa
             }
         )
     return converted
+
+
+def _extract_tokenizer_from_gliner2_model(model):
+    candidates = [
+        getattr(model, "tokenizer", None),
+        getattr(getattr(model, "processor", None), "tokenizer", None),
+        getattr(getattr(model, "data_processor", None), "transformer_tokenizer", None),
+        getattr(getattr(model, "model", None), "tokenizer", None),
+    ]
+    for candidate in candidates:
+        if candidate is not None:
+            return candidate
+    return None
 
 
 def _write_report(report_dir: Path, metrics, predictions):
@@ -224,23 +237,42 @@ def run_quick_experiment(config: QuickTrainConfig, script_path: str):
         raise FileNotFoundError(f"Test dataset not found: {test_path}")
 
     raw_rows_all = read_json_or_jsonl(str(train_path))
-    raw_rows = _chunk_rows(
-        raw_rows_all,
-        tokenization_strategy=config.tokenization_strategy,
-        max_length=config.max_length,
-        overlap=config.overlap,
-        keep_empty_examples=config.keep_empty_examples,
-    )
-    if not config.keep_empty_examples:
-        raw_rows = [row for row in raw_rows if row.get("spans")]
-    if not raw_rows:
-        raise ValueError("Training dataset is empty after preprocessing.")
-
     test_rows = load_gt_jsonl_strict(str(test_path))
-    entity_labels = sorted({str(span["label"]) for row in raw_rows for span in (row.get("spans") or [])})
-    entity_types = [_normalize_label(label) for label in entity_labels]
 
     with tempfile.TemporaryDirectory(prefix="gliner2_quick_") as temp_dir:
+        model = GLiNER2.from_pretrained(config.model_base)
+        tokenizer = _extract_tokenizer_from_gliner2_model(model)
+        if tokenizer is None:
+            LOGGER.warning(
+                "Could not extract a tokenizer from GLiNER2 model. Falling back to tokenizer-agnostic chunking."
+            )
+
+        raw_rows = _chunk_rows(
+            raw_rows_all,
+            tokenization_strategy=config.tokenization_strategy,
+            max_length=config.max_length,
+            overlap=config.overlap,
+            keep_empty_examples=config.keep_empty_examples,
+            tokenizer=tokenizer,
+        )
+        if not config.keep_empty_examples:
+            raw_rows = [row for row in raw_rows if row.get("spans")]
+        if not raw_rows:
+            raise ValueError("Training dataset is empty after preprocessing.")
+
+        entity_labels = sorted({str(span["label"]) for row in raw_rows for span in (row.get("spans") or [])})
+        entity_types = [_normalize_label(label) for label in entity_labels]
+
+        chunk_word_lengths = [len(str(row.get("text", "")).split()) for row in raw_rows if row.get("text")]
+        if chunk_word_lengths:
+            LOGGER.info(
+                "Prepared %s chunked training rows from %s raw rows. Max words per chunk=%s, mean words per chunk=%.1f",
+                len(raw_rows),
+                len(raw_rows_all),
+                max(chunk_word_lengths),
+                mean(chunk_word_lengths),
+            )
+
         temp_train = Path(temp_dir) / "train.jsonl"
         _convert_rows_to_gliner2_jsonl(raw_rows, temp_train)
 
@@ -257,7 +289,6 @@ def run_quick_experiment(config: QuickTrainConfig, script_path: str):
         if len(val_data.examples) == 0:
             raise ValueError("Validation split is empty.")
 
-        model = GLiNER2.from_pretrained(config.model_base)
         train_config = TrainingConfig(
             output_dir=str(output_dir),
             experiment_name=config.experiment_name,
