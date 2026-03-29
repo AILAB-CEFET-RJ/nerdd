@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""Profile pseudolabelling inference throughput and chunking behavior."""
 
 import argparse
 import json

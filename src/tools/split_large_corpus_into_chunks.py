@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""Split the large corpus into fixed-size JSONL chunks for iterative experiments."""
 
 import argparse
 import json

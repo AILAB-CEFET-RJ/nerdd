@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""Count rows and entity-label frequencies in JSON and JSONL corpora."""
 
 import argparse
 import json

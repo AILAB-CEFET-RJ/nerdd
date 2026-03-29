@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""Build an interactive HTML editor for manual review and correction of NER spans."""
 
 import argparse
 import json

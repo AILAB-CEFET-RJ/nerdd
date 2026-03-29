@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""Inspect dense pseudolabel tips and generate JSONL/HTML summaries for review."""
 
 import argparse
 import json

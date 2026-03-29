@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""Compare fast and slow tokenizer outputs for the same texts and report differences."""
 
 import argparse
 import json

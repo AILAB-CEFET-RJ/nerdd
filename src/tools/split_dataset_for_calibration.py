@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""Split a labeled dataset into calibration and final-test partitions."""
 
 import argparse
 import json

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""Generate a calibration CSV from labeled data and GLiNER2 predictions."""
 
 import argparse
 import csv

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""Run remaining chunk probe jobs and summarize context-boost audit status."""
 
 import argparse
 import csv

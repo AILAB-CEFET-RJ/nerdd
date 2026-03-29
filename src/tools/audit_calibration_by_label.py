@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""Audit calibration behavior by label and score bucket from a calibration CSV."""
 
 import argparse
 import csv

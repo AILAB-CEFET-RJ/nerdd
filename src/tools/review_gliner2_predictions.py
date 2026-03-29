@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""Run a GLiNER2 model on labeled data and generate side-by-side review artifacts."""
 
 import argparse
 import json

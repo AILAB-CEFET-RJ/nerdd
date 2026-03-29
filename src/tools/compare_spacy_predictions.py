@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""Compare existing predictions against spaCy NER outputs on the same records."""
 
 import argparse
 import json

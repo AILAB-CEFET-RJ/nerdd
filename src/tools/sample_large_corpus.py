@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""Sample a reproducible subset from the large corpus and save summary metadata."""
 
 import argparse
 import json

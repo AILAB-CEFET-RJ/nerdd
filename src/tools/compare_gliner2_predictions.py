@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""Compare existing predictions against GLiNER2 base and adapter outputs."""
 
 import argparse
 import json

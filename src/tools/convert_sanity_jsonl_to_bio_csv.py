@@ -1,3 +1,4 @@
+"""Convert sanity-check JSONL annotations into BIO-style CSV rows."""
 import argparse
 import csv
 import json

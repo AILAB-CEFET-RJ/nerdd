@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""List distinct entity labels and their frequencies in JSON or JSONL files."""
 
 import argparse
 import json

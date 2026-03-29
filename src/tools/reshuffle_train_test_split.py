@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""Rebuild train/test splits and emit reshuffled dataset artifacts plus summaries."""
 
 import argparse
 import json

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""Render NER spans as standalone HTML snippets and reports."""
 
 import argparse
 import json

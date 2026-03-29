@@ -1,3 +1,4 @@
+"""Summarize context-boost audit JSONL artifacts into compact statistics."""
 import argparse
 import csv
 import json

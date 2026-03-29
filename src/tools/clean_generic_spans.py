@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""Remove generic or banned spans from JSON/JSONL NER outputs using a label banlist."""
 
 import argparse
 import json

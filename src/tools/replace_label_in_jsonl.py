@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""Replace one entity label with another across JSONL records."""
 
 import argparse
 import json

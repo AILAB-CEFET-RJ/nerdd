@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""Export thesis-ready CSV and Markdown tables from experiment artifacts."""
 
 import argparse
 import csv

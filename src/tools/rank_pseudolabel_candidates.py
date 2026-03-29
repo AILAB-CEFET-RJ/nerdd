@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""Rank pseudolabel candidates with heuristic quality scores for manual review."""
 
 import argparse
 import csv

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""Evaluate chunk-level pseudolabel quality artifacts and summarize outcomes."""
 
 import argparse
 import csv

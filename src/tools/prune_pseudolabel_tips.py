@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""Filter pseudolabel tips by score and structural heuristics before manual review."""
 
 import argparse
 import json

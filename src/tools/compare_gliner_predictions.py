@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""Compare existing predictions against a GLiNER checkpoint on the same records."""
 
 import argparse
 import json
