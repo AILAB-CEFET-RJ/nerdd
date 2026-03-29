@@ -13,7 +13,7 @@ from statistics import mean
 from time import perf_counter
 
 from base_model_training.io_utils import save_jsonl
-from base_model_training.paths import resolve_path
+from base_model_training.paths import resolve_path, resolve_repo_artifact_path
 from gliner2_inference import predict_entities_for_text
 from gliner2_loader import load_gliner2_model
 from pseudolabelling.evaluate_refit_pipeline import (
@@ -175,7 +175,7 @@ def run_quick_experiment(config: QuickTrainConfig, script_path: str):
     timer = perf_counter()
 
     script_dir = Path(script_path).resolve().parent
-    output_dir = resolve_path(script_dir, config.output_dir)
+    output_dir = resolve_repo_artifact_path(__file__, config.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     train_path = resolve_path(script_dir, config.train_path)

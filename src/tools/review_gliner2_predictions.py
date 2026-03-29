@@ -8,6 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from base_model_training.paths import resolve_repo_artifact_path
 from base_model_training.io_utils import save_jsonl
 from gliner2_inference import predict_entities_for_text
 from gliner2_loader import load_gliner2_model
@@ -71,13 +72,14 @@ def main():
     if not entity_types:
         raise ValueError("At least one supported label must be provided.")
 
-    out_dir = Path(args.output_dir)
+    out_dir = resolve_repo_artifact_path(__file__, args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    rows = load_gt_jsonl_strict(args.gt_jsonl)
+    gt_path = resolve_repo_artifact_path(__file__, args.gt_jsonl)
+    rows = load_gt_jsonl_strict(str(gt_path))
     model = load_gliner2_model(
-        args.model_path,
-        adapter_dir=args.adapter_dir,
+        str(resolve_repo_artifact_path(__file__, args.model_path)),
+        adapter_dir=str(resolve_repo_artifact_path(__file__, args.adapter_dir)) if args.adapter_dir else "",
         logger=LOGGER,
         context="review",
     )

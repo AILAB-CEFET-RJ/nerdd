@@ -10,6 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from base_model_training.paths import resolve_repo_artifact_path
 from gliner2_inference import predict_entities_for_text
 from gliner2_loader import load_gliner2_model
 from tools.build_calibration_dataset import read_json_or_jsonl
@@ -56,10 +57,14 @@ def main():
     if not entity_types:
         raise ValueError("At least one supported label must be provided.")
 
-    rows = read_json_or_jsonl(args.input)
-    model = load_gliner2_model(args.model_path, adapter_dir=args.adapter_dir)
+    input_path = resolve_repo_artifact_path(__file__, args.input)
+    rows = read_json_or_jsonl(str(input_path))
+    model = load_gliner2_model(
+        str(resolve_repo_artifact_path(__file__, args.model_path)),
+        adapter_dir=str(resolve_repo_artifact_path(__file__, args.adapter_dir)) if args.adapter_dir else "",
+    )
 
-    output_csv = Path(args.output_csv)
+    output_csv = resolve_repo_artifact_path(__file__, args.output_csv)
     output_csv.parent.mkdir(parents=True, exist_ok=True)
 
     prediction_dump = []
@@ -135,7 +140,7 @@ def main():
                 )
 
     if args.output_predictions_jsonl:
-        output_predictions = Path(args.output_predictions_jsonl)
+        output_predictions = resolve_repo_artifact_path(__file__, args.output_predictions_jsonl)
         output_predictions.parent.mkdir(parents=True, exist_ok=True)
         with output_predictions.open("w", encoding="utf-8") as handle:
             for row in prediction_dump:

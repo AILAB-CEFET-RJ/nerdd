@@ -10,6 +10,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from base_model_training.paths import resolve_repo_artifact_path
+
 LOGGER = logging.getLogger(__name__)
 DEFAULT_LABELS = ["Person", "Location", "Organization"]
 
@@ -21,7 +23,7 @@ def _parse_csv(raw_value: str) -> list[str]:
 def _load_texts(args) -> list[str]:
     texts = [value.strip() for value in (args.text or []) if value and value.strip()]
     if args.file:
-        file_path = Path(args.file)
+        file_path = resolve_repo_artifact_path(__file__, args.file)
         if not file_path.exists():
             raise FileNotFoundError(f"Input file not found: {file_path}")
         file_texts = [line.strip() for line in file_path.read_text(encoding="utf-8").splitlines() if line.strip()]
@@ -72,7 +74,7 @@ def main() -> None:
     texts = _load_texts(args)
 
     model = load_gliner_model(
-        args.model_path,
+        str(resolve_repo_artifact_path(__file__, args.model_path)),
         model_max_length=args.model_max_length,
         map_location=args.map_location,
         logger=LOGGER,

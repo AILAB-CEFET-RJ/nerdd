@@ -8,6 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from base_model_training.paths import resolve_repo_artifact_path
 from tools.inspect_dense_tips import get_spans, get_text, read_json_or_jsonl, write_jsonl
 from tools.render_ner_html import build_html, build_label_colors, render_text_with_spans, sanitize_spans
 
@@ -266,24 +267,28 @@ def main():
     except ImportError as exc:  # pragma: no cover
         raise SystemExit("gliner2 is not installed in this environment.") from exc
 
-    rows = read_json_or_jsonl(args.input)
+    input_path = resolve_repo_artifact_path(__file__, args.input)
+    rows = read_json_or_jsonl(str(input_path))
     if args.max_records > 0:
         rows = rows[: args.max_records]
 
     entity_types = _parse_csv(args.entity_types) or list(DEFAULT_ENTITY_TYPES)
-    model = GLiNER2.from_pretrained(args.model)
-    compared_rows = build_comparison_rows(rows, model=model, entity_types=entity_types, adapter_dir=args.adapter_dir)
-    write_jsonl(args.output_jsonl, compared_rows)
-    render_comparison_html(compared_rows, args.output_html, args.title, show_adapter=bool(args.adapter_dir))
+    model = GLiNER2.from_pretrained(str(resolve_repo_artifact_path(__file__, args.model)))
+    adapter_dir = str(resolve_repo_artifact_path(__file__, args.adapter_dir)) if args.adapter_dir else ""
+    output_jsonl = resolve_repo_artifact_path(__file__, args.output_jsonl)
+    output_html = resolve_repo_artifact_path(__file__, args.output_html)
+    compared_rows = build_comparison_rows(rows, model=model, entity_types=entity_types, adapter_dir=adapter_dir)
+    write_jsonl(str(output_jsonl), compared_rows)
+    render_comparison_html(compared_rows, output_html, args.title, show_adapter=bool(adapter_dir))
     summary = build_summary(compared_rows)
 
-    print(f"Saved JSONL: {args.output_jsonl}")
-    print(f"Saved HTML: {args.output_html}")
+    print(f"Saved JSONL: {output_jsonl}")
+    print(f"Saved HTML: {output_html}")
     if args.summary_json:
-        target = Path(args.summary_json)
+        target = resolve_repo_artifact_path(__file__, args.summary_json)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
-        print(f"Saved summary JSON: {args.summary_json}")
+        print(f"Saved summary JSON: {target}")
 
     print(f"Records compared: {summary['records']}")
     print(f"Baseline spans: {summary['baseline_total_spans']}")
