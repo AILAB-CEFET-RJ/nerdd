@@ -143,6 +143,28 @@ Entradas principais:
 - `--input`
 - `--output-csv` ou artefato equivalente definido no script
 
+### `src/tools/build_calibration_dataset_gliner2.py`
+
+Executa inferência do GLiNER2 e produz dados para calibrar scores.
+
+Use quando:
+
+- você quer ajustar ou reconstruir o calibrador de confiança para GLiNER2
+- precisa comparar `GLiNER2 base` e `GLiNER2 + LoRA` com o mesmo formato de CSV do projeto atual
+
+Pontos relevantes:
+
+- usa `src/gliner2_loader.py`
+- aceita `--adapter-dir`
+- emite progresso durante execução
+
+Entradas principais:
+
+- `--model-path`
+- `--adapter-dir` opcional
+- `--input`
+- `--output-csv`
+
 ### `src/tools/split_dataset_for_calibration.py`
 
 Separa um dataset em subconjuntos para calibração, preservando perfil de labels.
@@ -299,6 +321,26 @@ Saídas:
 - `metrics.json`
 - `summary.json`
 - `review.html`
+
+### `src/tools/review_gliner2_predictions.py`
+
+Executa um modelo GLiNER2 base ou GLiNER2 + LoRA em um dataset anotado e gera revisão lado a lado.
+
+Use quando:
+
+- quer comparar GLiNER2 com o baseline atual usando o mesmo holdout anotado
+- precisa de `metrics.json`, `summary.json` e `review.html` no mesmo estilo do pipeline atual
+- está validando se GLiNER2 base ou LoRA vale uma migração
+
+### `src/gliner2_training/train_quick.py`
+
+Treina rapidamente um modelo GLiNER2 em split único e avalia no holdout anotado.
+
+Use quando:
+
+- quer um análogo do `base_model_training.train_quick` para GLiNER2
+- precisa testar rápido `GLiNER2 base`, `LoRA` ou hiperparâmetros antes de um experimento maior
+- quer gerar `quick_summary.json` e `eval_test/metrics.json` para comparação com o stack atual
 
 ### `src/tools/reshuffle_train_test_split.py`
 
