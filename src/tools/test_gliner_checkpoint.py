@@ -47,11 +47,23 @@ def _extract_text_from_record(record) -> str:
     return ""
 
 
-def _load_rows_from_json_payload(payload: str, source_name: str) -> list[str]:
+def _extract_record_score(record):
+    if not isinstance(record, dict):
+        return None
+    for key in ("record_score", "record_score_context_boosted", "score_relato_confianca", "score_relato"):
+        value = record.get(key)
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _load_rows_from_json_payload(payload: str, source_name: str) -> list[dict]:
     try:
         parsed = json.loads(payload)
     except json.JSONDecodeError:
-        texts = []
+        rows = []
         for line_number, line in enumerate(payload.splitlines(), start=1):
             line = line.strip()
             if not line:
@@ -62,32 +74,37 @@ def _load_rows_from_json_payload(payload: str, source_name: str) -> list[str]:
                 raise ValueError(f"Invalid JSONL in {source_name} at line {line_number}: {exc}") from exc
             text = _extract_text_from_record(record)
             if text:
-                texts.append(text)
-        return texts
+                rows.append({"text": text, "record_score": _extract_record_score(record)})
+        return rows
 
     if isinstance(parsed, list):
-        return [text for text in (_extract_text_from_record(item) for item in parsed) if text]
+        rows = []
+        for item in parsed:
+            text = _extract_text_from_record(item)
+            if text:
+                rows.append({"text": text, "record_score": _extract_record_score(item)})
+        return rows
     if isinstance(parsed, dict):
         text = _extract_text_from_record(parsed)
-        return [text] if text else []
+        return [{"text": text, "record_score": _extract_record_score(parsed)}] if text else []
     raise ValueError(f"Unsupported JSON structure in {source_name}. Expected object, list, or JSONL.")
 
 
-def _load_texts(args) -> list[str]:
-    texts = [value.strip() for value in (args.text or []) if value and value.strip()]
+def _load_rows(args) -> list[dict]:
+    rows = [{"text": value.strip(), "record_score": None} for value in (args.text or []) if value and value.strip()]
     if args.file:
         file_path = resolve_repo_artifact_path(__file__, args.file)
         if not file_path.exists():
             raise FileNotFoundError(f"Input file not found: {file_path}")
         payload = file_path.read_text(encoding="utf-8")
         if file_path.suffix.lower() in {".json", ".jsonl"}:
-            file_texts = _load_rows_from_json_payload(payload, str(file_path))
+            file_rows = _load_rows_from_json_payload(payload, str(file_path))
         else:
-            file_texts = [line.strip() for line in payload.splitlines() if line.strip()]
-        texts.extend(file_texts)
-    if not texts:
+            file_rows = [{"text": line.strip(), "record_score": None} for line in payload.splitlines() if line.strip()]
+        rows.extend(file_rows)
+    if not rows:
         raise ValueError("Provide at least one --text or a --file with readable text records.")
-    return texts
+    return rows
 
 
 def parse_args() -> argparse.Namespace:
@@ -128,7 +145,7 @@ def main() -> None:
     labels = _parse_csv(args.labels)
     if not labels:
         labels = list(DEFAULT_LABELS)
-    texts = _load_texts(args)
+    rows = _load_rows(args)
 
     model = load_gliner_model(
         str(resolve_repo_artifact_path(__file__, args.model_path)),
@@ -138,7 +155,9 @@ def main() -> None:
         context="probe",
     )
 
-    for index, text in enumerate(texts, start=1):
+    for index, row in enumerate(rows, start=1):
+        text = row["text"]
+        record_score = row.get("record_score")
         entities = predict_entities_for_text(
             model,
             text,
@@ -150,6 +169,8 @@ def main() -> None:
         print("=" * 80)
         print(f"Sample {index}")
         print("=" * 80)
+        if record_score is not None:
+            print(f"Record score: {record_score:.6f}")
         print(text)
         print("Model output:")
         if not entities:

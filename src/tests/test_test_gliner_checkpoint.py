@@ -4,7 +4,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from tools.test_gliner_checkpoint import _load_texts
+from tools.test_gliner_checkpoint import _load_rows
 
 
 class _Args:
@@ -14,26 +14,39 @@ class _Args:
 
 
 class TestTestGlinerCheckpoint(unittest.TestCase):
-    def test_load_texts_merges_cli_and_file_inputs(self):
+    def test_load_rows_merges_cli_and_file_inputs(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             input_path = Path(temp_dir) / "samples.txt"
             input_path.write_text("Ivete Sangalo\n\nXuxa Meneguel\n", encoding="utf-8")
             args = _Args(text=["Anitta"], file=str(input_path))
-            self.assertEqual(_load_texts(args), ["Anitta", "Ivete Sangalo", "Xuxa Meneguel"])
+            self.assertEqual(
+                _load_rows(args),
+                [
+                    {"text": "Anitta", "record_score": None},
+                    {"text": "Ivete Sangalo", "record_score": None},
+                    {"text": "Xuxa Meneguel", "record_score": None},
+                ],
+            )
 
-    def test_load_texts_reads_jsonl_records(self):
+    def test_load_rows_reads_jsonl_records(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             input_path = Path(temp_dir) / "samples.jsonl"
             input_path.write_text(
-                '{"text":"Ivete Sangalo"}\n{"relato":"Xuxa Meneguel"}\n{"foo":"bar"}\n',
+                '{"text":"Ivete Sangalo","record_score":0.75}\n{"relato":"Xuxa Meneguel","record_score_context_boosted":0.8}\n{"foo":"bar"}\n',
                 encoding="utf-8",
             )
             args = _Args(file=str(input_path))
-            self.assertEqual(_load_texts(args), ["Ivete Sangalo", "Xuxa Meneguel"])
+            self.assertEqual(
+                _load_rows(args),
+                [
+                    {"text": "Ivete Sangalo", "record_score": 0.75},
+                    {"text": "Xuxa Meneguel", "record_score": 0.8},
+                ],
+            )
 
-    def test_load_texts_rejects_missing_inputs(self):
+    def test_load_rows_rejects_missing_inputs(self):
         with self.assertRaises(ValueError):
-            _load_texts(_Args())
+            _load_rows(_Args())
 
 
 if __name__ == "__main__":
