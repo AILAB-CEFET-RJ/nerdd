@@ -4,7 +4,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from tools.test_gliner_checkpoint import _load_rows
+from tools.test_gliner_checkpoint import _load_rows, _resolve_model_path
 
 
 class _Args:
@@ -47,6 +47,9 @@ class TestTestGlinerCheckpoint(unittest.TestCase):
     def test_load_rows_rejects_missing_inputs(self):
         with self.assertRaises(ValueError):
             _load_rows(_Args())
+
+    def test_resolve_model_path_preserves_hf_repo_ids(self):
+        self.assertEqual(_resolve_model_path("birdred/glinerdd"), "birdred/glinerdd")
 
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ad-hoc inference utility for quickly probing a GLiNER checkpoint.
+"""Ad-hoc inference utility for quickly probing GLiNER and GLiNER2 checkpoints.
 
 This script is meant for fast qualitative checks on a handful of examples
 without generating the full HTML/JSON review artifacts.
@@ -15,6 +15,7 @@ Typical use cases:
 - inspect how a trained checkpoint behaves on a few problematic tips
 - compare outputs from two checkpoints on the same examples
 - re-run the model on ranked pseudolabel candidates stored as JSONL
+- probe either a classic GLiNER checkpoint or a GLiNER2 base/adapter setup
 """
 
 from __future__ import annotations
@@ -31,10 +32,20 @@ from base_model_training.paths import resolve_repo_artifact_path
 
 LOGGER = logging.getLogger(__name__)
 DEFAULT_LABELS = ["Person", "Location", "Organization"]
+DEFAULT_GLINER2_ENTITY_TYPES = ["person", "location", "organization"]
 
 
 def _parse_csv(raw_value: str) -> list[str]:
     return [item.strip() for item in str(raw_value).split(",") if item.strip()]
+
+
+def _resolve_model_path(raw_value: str) -> str:
+    candidate = Path(str(raw_value))
+    if candidate.is_absolute() or candidate.exists():
+        return str(candidate)
+    if "/" in str(raw_value) or "\\" in str(raw_value):
+        return str(raw_value)
+    return str(resolve_repo_artifact_path(__file__, raw_value))
 
 
 def _extract_text_from_record(record) -> str:
@@ -109,7 +120,14 @@ def _load_rows(args) -> list[dict]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Probe a GLiNER checkpoint on a few texts.")
+    parser.add_argument(
+        "--backend",
+        default="gliner",
+        choices=["gliner", "gliner2"],
+        help="Model family to use. 'gliner' loads classic GLiNER checkpoints; 'gliner2' loads GLiNER2.",
+    )
     parser.add_argument("--model-path", required=True, help="HF repo id or local GLiNER checkpoint path.")
+    parser.add_argument("--adapter-dir", default="", help="Optional GLiNER2 adapter directory when --backend gliner2 is used.")
     parser.add_argument(
         "--labels",
         default=",".join(DEFAULT_LABELS),
@@ -135,10 +153,21 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> None:
-    from base_model_training.evaluate import predict_entities_for_text
-    from gliner_loader import load_gliner_model
+def _normalize_gliner2_labels(labels: list[str]) -> list[str]:
+    mapping = {
+        "person": "person",
+        "location": "location",
+        "organization": "organization",
+    }
+    normalized = []
+    for label in labels:
+        mapped = mapping.get(str(label).strip().lower())
+        if mapped:
+            normalized.append(mapped)
+    return normalized or list(DEFAULT_GLINER2_ENTITY_TYPES)
 
+
+def main() -> None:
     args = parse_args()
     logging.basicConfig(level=getattr(logging, args.log_level), format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
 
@@ -147,25 +176,47 @@ def main() -> None:
         labels = list(DEFAULT_LABELS)
     rows = _load_rows(args)
 
-    model = load_gliner_model(
-        str(resolve_repo_artifact_path(__file__, args.model_path)),
-        model_max_length=args.model_max_length,
-        map_location=args.map_location,
-        logger=LOGGER,
-        context="probe",
-    )
+    if args.backend == "gliner":
+        from base_model_training.evaluate import predict_entities_for_text
+        from gliner_loader import load_gliner_model
+
+        model = load_gliner_model(
+            _resolve_model_path(args.model_path),
+            model_max_length=args.model_max_length,
+            map_location=args.map_location,
+            logger=LOGGER,
+            context="probe",
+        )
+
+        def run_inference(text: str):
+            return predict_entities_for_text(
+                model,
+                text,
+                labels,
+                threshold=args.prediction_threshold,
+                chunk_size=args.max_tokens,
+                batch_size=args.batch_size,
+            )
+
+    else:
+        from gliner2_inference import predict_entities_for_text as predict_gliner2_entities
+        from gliner2_loader import load_gliner2_model
+
+        entity_types = _normalize_gliner2_labels(labels)
+        model = load_gliner2_model(
+            _resolve_model_path(args.model_path),
+            adapter_dir=_resolve_model_path(args.adapter_dir) if args.adapter_dir else "",
+            logger=LOGGER,
+            context="probe",
+        )
+
+        def run_inference(text: str):
+            return predict_gliner2_entities(model, text, entity_types)
 
     for index, row in enumerate(rows, start=1):
         text = row["text"]
         record_score = row.get("record_score")
-        entities = predict_entities_for_text(
-            model,
-            text,
-            labels,
-            threshold=args.prediction_threshold,
-            chunk_size=args.max_tokens,
-            batch_size=args.batch_size,
-        )
+        entities = run_inference(text)
         print("=" * 80)
         print(f"Sample {index}")
         print("=" * 80)
