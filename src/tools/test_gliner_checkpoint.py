@@ -70,6 +70,18 @@ def _extract_record_score(record):
     return None
 
 
+def _extract_entity_score(entity):
+    if not isinstance(entity, dict):
+        return None
+    for key in ("score", "confidence", "probability"):
+        value = entity.get(key)
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
 def _load_rows_from_json_payload(payload: str, source_name: str) -> list[dict]:
     try:
         parsed = json.loads(payload)
@@ -228,7 +240,8 @@ def main() -> None:
             print("  (no entities)")
             continue
         for entity in entities:
-            score_suffix = f", score={entity.get('score'):.4f}" if args.show_scores and entity.get("score") is not None else ""
+            entity_score = _extract_entity_score(entity)
+            score_suffix = f", ner_score={entity_score:.4f}" if args.show_scores and entity_score is not None else ""
             print(f"  - text={entity.get('text')!r}, label={entity.get('label')!r}{score_suffix}")
 
 
