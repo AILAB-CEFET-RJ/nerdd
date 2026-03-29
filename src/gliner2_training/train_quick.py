@@ -41,6 +41,9 @@ class QuickTrainConfig:
     experiment_name: str = "gliner2_quick_lora"
     seed: int = 42
     keep_empty_examples: bool = False
+    tokenization_strategy: str = "whitespace"
+    max_length: int = 384
+    overlap: int = 100
     train_ratio: float = 0.8
     val_ratio: float = 0.2
     num_epochs: int = 8
@@ -72,6 +75,9 @@ def parse_args():
     parser.add_argument("--experiment-name", default=defaults.experiment_name)
     parser.add_argument("--seed", type=int, default=defaults.seed)
     parser.add_argument("--keep-empty-examples", action="store_true", default=defaults.keep_empty_examples)
+    parser.add_argument("--tokenization-strategy", choices=["whitespace", "regex"], default=defaults.tokenization_strategy)
+    parser.add_argument("--max-length", type=int, default=defaults.max_length)
+    parser.add_argument("--overlap", type=int, default=defaults.overlap)
     parser.add_argument("--train-ratio", type=float, default=defaults.train_ratio)
     parser.add_argument("--val-ratio", type=float, default=defaults.val_ratio)
     parser.add_argument("--num-epochs", type=int, default=defaults.num_epochs)
@@ -104,6 +110,9 @@ def build_config(args):
         experiment_name=args.experiment_name,
         seed=args.seed,
         keep_empty_examples=args.keep_empty_examples,
+        tokenization_strategy=args.tokenization_strategy,
+        max_length=args.max_length,
+        overlap=args.overlap,
         train_ratio=args.train_ratio,
         val_ratio=args.val_ratio,
         num_epochs=args.num_epochs,
@@ -150,6 +159,36 @@ def _convert_rows_to_gliner2_jsonl(rows, path):
             handle.write(json.dumps({"input": text, "output": {"entities": entities}}, ensure_ascii=False) + "\n")
 
 
+def _chunk_rows(rows, tokenization_strategy, max_length, overlap, keep_empty_examples):
+    from base_model_training.data import process_sample, split_long_sentences, token_spans_to_char_offsets
+
+    processed = []
+    for index, row in enumerate(rows):
+        enriched = dict(row)
+        enriched.setdefault("sample_id", f"sample_{index}")
+        processed.append(process_sample(enriched, tokenization_strategy=tokenization_strategy))
+
+    split_rows = split_long_sentences(
+        processed,
+        max_length=max_length,
+        overlap=overlap,
+        tokenizer=None,
+        keep_empty_chunks=keep_empty_examples,
+    )
+
+    converted = []
+    for sample in split_rows:
+        text, spans = token_spans_to_char_offsets(sample["tokenized_text"], sample["ner"])
+        converted.append(
+            {
+                "text": text,
+                "spans": spans,
+                "sample_id": sample.get("sample_id"),
+            }
+        )
+    return converted
+
+
 def _write_report(report_dir: Path, metrics, predictions):
     report_dir.mkdir(parents=True, exist_ok=True)
     (report_dir / "classification_report.txt").write_text(format_classification_report(metrics), encoding="utf-8")
@@ -184,7 +223,14 @@ def run_quick_experiment(config: QuickTrainConfig, script_path: str):
     if not test_path.exists():
         raise FileNotFoundError(f"Test dataset not found: {test_path}")
 
-    raw_rows = read_json_or_jsonl(str(train_path))
+    raw_rows_all = read_json_or_jsonl(str(train_path))
+    raw_rows = _chunk_rows(
+        raw_rows_all,
+        tokenization_strategy=config.tokenization_strategy,
+        max_length=config.max_length,
+        overlap=config.overlap,
+        keep_empty_examples=config.keep_empty_examples,
+    )
     if not config.keep_empty_examples:
         raw_rows = [row for row in raw_rows if row.get("spans")]
     if not raw_rows:
@@ -268,7 +314,7 @@ def run_quick_experiment(config: QuickTrainConfig, script_path: str):
         "runtime_seconds": runtime_seconds,
         "config": asdict(config),
         "dataset": {
-            "raw_train_rows": len(read_json_or_jsonl(str(train_path))),
+            "raw_train_rows": len(raw_rows_all),
             "filtered_train_rows": len(raw_rows),
             "train_rows": len(train_data.examples),
             "val_rows": len(val_data.examples),
