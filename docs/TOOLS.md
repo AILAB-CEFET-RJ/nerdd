@@ -367,6 +367,22 @@ Saídas:
 - HTML com baseline e GLiNER de comparação renderizados lado a lado
 - summary JSON opcional com contagens por label
 
+### `src/tools/compare_gliner2_predictions.py`
+
+Compara previsões existentes com GLiNER2 base e, opcionalmente, com GLiNER2 + LoRA.
+
+Use quando:
+
+- quer avaliar se GLiNER2 lida melhor com casos problemáticos do corpus
+- precisa comparar baseline atual do projeto contra `gliner2-base` e um adapter LoRA
+- quer um HTML reprodutível para decidir se vale migrar para GLiNER2
+
+Saídas:
+
+- JSONL com `baseline_entities`, `gliner2_base_entities` e `gliner2_adapter_entities`
+- HTML com renderização lado a lado
+- summary JSON opcional com contagens por label
+
 ### `src/tools/compare_tokenizers.py`
 
 Compara a tokenização `fast` e `slow` de um modelo HF para textos selecionados.
