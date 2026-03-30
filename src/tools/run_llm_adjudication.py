@@ -359,6 +359,10 @@ def validate_adjudication(adjudication: dict, source_row: dict) -> dict:
         cleaned_entities.append({"text": entity_text, "label": entity_label})
 
     if decision in {"accept", "accept_with_edits"}:
+        if not cleaned_entities:
+            raise AdjudicationValidationError(
+                f"decision={decision!r} must contain at least one final entity"
+            )
         invalid_seed_entities = [entity for entity in cleaned_entities if (entity["text"], entity["label"]) not in review_seed_pairs]
         if invalid_seed_entities:
             raise AdjudicationValidationError(

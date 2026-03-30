@@ -174,6 +174,24 @@ class TestRunLlmAdjudication(unittest.TestCase):
                 source_row,
             )
 
+    def test_validate_adjudication_rejects_empty_accept_with_edits(self):
+        source_row = {
+            "text": "CENTRO SÃO JOÃO MERITI",
+            "review_seed_entities": [
+                {"text": "são joão meriti", "label": "Location", "seed_origin": "baseline_high_score"}
+            ],
+        }
+        with self.assertRaises(ValueError):
+            validate_adjudication(
+                {
+                    "decision": "accept_with_edits",
+                    "review_confidence": "high",
+                    "entities_final": [],
+                    "justification": "removed everything",
+                },
+                source_row,
+            )
+
     def test_validate_adjudication_allows_multi_location_accept_with_edits(self):
         source_row = {
             "text": "São crias da Coreia. Rua Caruaru escadao.",
