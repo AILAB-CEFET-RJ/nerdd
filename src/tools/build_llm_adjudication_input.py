@@ -37,7 +37,11 @@ DEFAULT_LOCATION_METADATA_FIELDS = ("logradouroLocal", "bairroLocal", "cidadeLoc
 LOCATION_GENERIC_TOKENS = {
     "bairro",
     "cidade",
+    "centeo",
+    "centro",
+    "escadao",
     "estado",
+    "hurgente",
     "local",
     "logradouro",
     "endereco",
@@ -52,9 +56,13 @@ LOCATION_GENERIC_TOKENS = {
     "estrada",
     "rodovia",
     "praca",
+    "proximo",
+    "sj",
     "praça",
+    "urgente",
 }
-LOCATION_CONNECTOR_TOKENS = {"a", "e", "da", "das", "de", "do", "dos"}
+GENERIC_ENTITY_TOKENS = {"proximo", "urgente", "hurgente", "local"}
+LOCATION_CONNECTOR_TOKENS = {"a", "ao", "aos", "as", "e", "da", "das", "de", "do", "dos"}
 
 
 def _parse_csv(raw_value: str) -> list[str]:
@@ -139,13 +147,34 @@ def _is_viable_location_seed(entity: dict, *, location_metadata_terms: set[str],
         return False
     if any(token in LOCATION_GENERIC_TOKENS for token in tokens):
         return False
-    if len(tokens) <= 2 and tokens[0] in LOCATION_CONNECTOR_TOKENS:
+    if tokens[0] in LOCATION_CONNECTOR_TOKENS:
         return False
     if len(tokens) == 1:
         if len(tokens[0]) < 6:
             return False
         if require_exact_metadata_for_single_token and entity_norm not in location_metadata_terms:
             return False
+    return True
+
+
+def _is_viable_entity(entity: dict) -> bool:
+    text = str(entity.get("text", "")).strip()
+    text_norm = str(entity.get("text_norm", ""))
+    label = str(entity.get("label", "")).strip()
+    tokens = _normalized_tokens(text_norm)
+
+    if not text or not text_norm or not tokens:
+        return False
+    if len(text_norm) < 2:
+        return False
+    if len(tokens) == 1 and tokens[0] in GENERIC_ENTITY_TOKENS:
+        return False
+    if label == "Location":
+        return _is_viable_location_seed(
+            entity,
+            location_metadata_terms=set(),
+            require_exact_metadata_for_single_token=False,
+        )
     return True
 
 
@@ -199,7 +228,7 @@ def normalize_baseline_entities(entities: list[dict], allowed_labels: set[str]) 
         if not isinstance(entity, dict):
             continue
         normalized_entity = _normalize_entity(entity, source="baseline")
-        if normalized_entity["text"] and _label_allowed(normalized_entity, allowed_labels):
+        if _label_allowed(normalized_entity, allowed_labels) and _is_viable_entity(normalized_entity):
             normalized.append(normalized_entity)
     return normalized
 
@@ -210,7 +239,7 @@ def normalize_gliner2_entities(entities: list[dict], allowed_labels: set[str]) -
         if not isinstance(entity, dict):
             continue
         normalized_entity = _normalize_entity(entity, source="gliner2")
-        if normalized_entity["text"] and _label_allowed(normalized_entity, allowed_labels):
+        if _label_allowed(normalized_entity, allowed_labels) and _is_viable_entity(normalized_entity):
             normalized.append(normalized_entity)
     return normalized
 

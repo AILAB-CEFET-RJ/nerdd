@@ -9,6 +9,7 @@ from tools.build_llm_adjudication_input import (
     _matches_location_metadata,
     build_review_seed_entities,
     match_entities,
+    normalize_baseline_entities,
     normalize_entity_text,
 )
 
@@ -117,6 +118,19 @@ class TestBuildLlmAdjudicationInput(unittest.TestCase):
             gliner2_location_min_chars=5,
         )
         self.assertEqual([item["text"] for item in seeded], ["Cuiabá", "Trindade"])
+
+    def test_normalize_baseline_entities_drops_fragmentary_and_generic_noise(self):
+        normalized = normalize_baseline_entities(
+            [
+                {"text": ".", "label": "Location", "score": 0.9},
+                {"text": "PROXIMO", "label": "Person", "score": 0.9},
+                {"text": "Escadao", "label": "Location", "score": 0.9},
+                {"text": "ÃO JOÃO DE MERITI", "label": "Location", "score": 0.99},
+                {"text": "Mesquita", "label": "Location", "score": 0.99},
+            ],
+            {"Person", "Location", "Organization"},
+        )
+        self.assertEqual([item["text"] for item in normalized], ["Mesquita"])
 
 
 if __name__ == "__main__":
