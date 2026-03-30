@@ -19,6 +19,7 @@ import logging
 import os
 import sys
 import time
+import unicodedata
 from pathlib import Path
 
 import requests
@@ -81,6 +82,49 @@ def _safe_float(value):
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _collapse_spaces(text: str) -> str:
+    return " ".join(str(text).split())
+
+
+def _strip_accents(text: str) -> str:
+    normalized = unicodedata.normalize("NFKD", text)
+    return "".join(char for char in normalized if not unicodedata.combining(char))
+
+
+def normalize_entity_text(text: str) -> str:
+    text = _collapse_spaces(str(text).strip().lower())
+    text = _strip_accents(text)
+    return text.strip(" \t\r\n.,;:!?()[]{}\"'")
+
+
+def _normalized_tokens(text: str) -> list[str]:
+    normalized = normalize_entity_text(text)
+    if not normalized:
+        return []
+    return [token for token in normalized.split() if token]
+
+
+def _review_seed_index(source_row: dict) -> dict[tuple[str, str], dict]:
+    return {
+        (str(item.get("text", "")), str(item.get("label", ""))): item
+        for item in (source_row.get("review_seed_entities") or [])
+        if isinstance(item, dict)
+    }
+
+
+def _is_weak_single_location_accept(entities: list[dict], source_row: dict) -> bool:
+    if len(entities) != 1:
+        return False
+    entity = entities[0]
+    if entity.get("label") != "Location":
+        return False
+    if len(_normalized_tokens(entity.get("text", ""))) != 1:
+        return False
+    seed = _review_seed_index(source_row).get((entity["text"], entity["label"]), {})
+    seed_origin = str(seed.get("seed_origin", ""))
+    return not seed_origin.startswith("agreed_")
 
 
 def load_dotenv(path: Path) -> dict[str, str]:
@@ -309,6 +353,10 @@ def validate_adjudication(adjudication: dict, source_row: dict) -> dict:
             raise AdjudicationValidationError(
                 f"decision={decision!r} may only contain entities from review_seed_entities; "
                 f"got unsupported entities: {invalid_seed_entities}"
+            )
+        if _is_weak_single_location_accept(cleaned_entities, source_row):
+            raise AdjudicationValidationError(
+                f"decision={decision!r} is too weak semantically: single-token Location without agreement support"
             )
 
     validated = dict(adjudication)

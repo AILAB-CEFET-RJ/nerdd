@@ -156,6 +156,46 @@ class TestRunLlmAdjudication(unittest.TestCase):
                 source_row,
             )
 
+    def test_validate_adjudication_rejects_single_token_location_without_agreement_support(self):
+        source_row = {
+            "text": "rua alagoas proximo deposito de gas",
+            "review_seed_entities": [
+                {"text": "alagoas", "label": "Location", "seed_origin": "gliner2_location_metadata_match"}
+            ],
+        }
+        with self.assertRaises(ValueError):
+            validate_adjudication(
+                {
+                    "decision": "accept_with_edits",
+                    "review_confidence": "high",
+                    "entities_final": [{"text": "alagoas", "label": "Location"}],
+                    "justification": "single weak location",
+                },
+                source_row,
+            )
+
+    def test_validate_adjudication_allows_multi_location_accept_with_edits(self):
+        source_row = {
+            "text": "São crias da Coreia. Rua Caruaru escadao.",
+            "review_seed_entities": [
+                {"text": "Coreia", "label": "Location", "seed_origin": "gliner2_location_metadata_match"},
+                {"text": "Caruaru", "label": "Location", "seed_origin": "gliner2_location_metadata_match"},
+            ],
+        }
+        validated = validate_adjudication(
+            {
+                "decision": "accept_with_edits",
+                "review_confidence": "high",
+                "entities_final": [
+                    {"text": "Coreia", "label": "Location"},
+                    {"text": "Caruaru", "label": "Location"},
+                ],
+                "justification": "two specific locations",
+            },
+            source_row,
+        )
+        self.assertEqual(len(validated["entities_final"]), 2)
+
     def test_parse_adjudication_response_raises_validation_error_for_missing_output(self):
         with self.assertRaises(AdjudicationValidationError):
             parse_adjudication_response({})
