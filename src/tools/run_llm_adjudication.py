@@ -446,6 +446,12 @@ def main() -> None:
         )
     model_name = resolve_model_name(args.model, dotenv_values)
     temperature = resolve_temperature(args.temperature, dotenv_values)
+    LOGGER.info(
+        "Resolved adjudication config: model=%s temperature=%s dotenv=%s",
+        model_name,
+        temperature,
+        args.dotenv_path,
+    )
 
     input_path = resolve_repo_artifact_path(__file__, args.input)
     rows = read_json_or_jsonl(input_path)

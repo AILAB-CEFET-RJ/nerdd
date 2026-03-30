@@ -96,6 +96,12 @@ class TestRunLlmAdjudication(unittest.TestCase):
             self.assertEqual(resolve_model_name("", values), "gpt-4o-mini")
             self.assertEqual(resolve_temperature(None, values), 0.7)
 
+    def test_resolve_model_name_prefers_cli_over_dotenv(self):
+        self.assertEqual(
+            resolve_model_name("gpt-5-mini", {"OPENAI_DEFAULT_MODEL": "gpt-4o-mini"}),
+            "gpt-5-mini",
+        )
+
     def test_validate_adjudication_requires_literal_substrings(self):
         source_row = {
             "text": "Belford Roxo rj",
