@@ -13,6 +13,7 @@ from tools.run_llm_adjudication import (
     parse_adjudication_response,
     resolve_model_name,
     resolve_temperature,
+    validate_adjudication,
 )
 
 
@@ -79,6 +80,41 @@ class TestRunLlmAdjudication(unittest.TestCase):
             self.assertEqual(values["OTHER"], " spaced value ")
             self.assertEqual(resolve_model_name("", values), "gpt-4o-mini")
             self.assertEqual(resolve_temperature(None, values), 0.7)
+
+    def test_validate_adjudication_requires_literal_substrings(self):
+        source_row = {
+            "text": "Belford Roxo rj",
+            "review_seed_entities": [],
+        }
+        with self.assertRaises(ValueError):
+            validate_adjudication(
+                {
+                    "decision": "accept_with_edits",
+                    "review_confidence": "medium",
+                    "entities_final": [{"text": "Belford Roxo RJ", "label": "Location"}],
+                    "justification": "bad normalization",
+                },
+                source_row,
+            )
+
+    def test_validate_adjudication_accept_must_stay_within_review_seed_entities(self):
+        source_row = {
+            "text": "Ivete Sangalo em Salvador",
+            "review_seed_entities": [{"text": "Ivete Sangalo", "label": "Person"}],
+        }
+        with self.assertRaises(ValueError):
+            validate_adjudication(
+                {
+                    "decision": "accept",
+                    "review_confidence": "high",
+                    "entities_final": [
+                        {"text": "Ivete Sangalo", "label": "Person"},
+                        {"text": "Salvador", "label": "Location"},
+                    ],
+                    "justification": "too liberal",
+                },
+                source_row,
+            )
 
 
 if __name__ == "__main__":

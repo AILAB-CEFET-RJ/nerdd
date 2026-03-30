@@ -36,6 +36,8 @@ DEFAULT_ALLOWED_LABELS = ["Person", "Location", "Organization"]
 DEFAULT_TIMEOUT_SECONDS = 120
 DEFAULT_DOTENV_PATH = ".env"
 DEFAULT_TEMPERATURE = 0.0
+ALLOWED_DECISIONS = {"accept", "accept_with_edits", "reject"}
+ALLOWED_LABELS = set(DEFAULT_ALLOWED_LABELS)
 
 ADJUDICATION_SCHEMA = {
     "type": "object",
@@ -181,10 +183,15 @@ def build_messages(row: dict) -> list[dict]:
     system_message = (
         "You are a reviewer of Portuguese NER annotations.\n"
         "Return JSON only.\n"
-        "You must use only literal spans that appear exactly in the input text.\n"
-        "Do not invent entities. Do not normalize or correct spelling in entity text.\n"
-        "Allowed labels: Person, Location, Organization.\n"
-        "If the case is too noisy or incomplete to trust, return decision='reject'."
+        "Hard rules:\n"
+        "1. Every entity text must be an exact literal substring of the input text.\n"
+        "2. Do not normalize, simplify, shorten, translate, or correct spelling in entity text.\n"
+        "3. Allowed labels: Person, Location, Organization.\n"
+        "4. Prefer reject over speculative completion.\n"
+        "5. decision='accept' is only allowed when every final entity comes directly from review_seed_entities.\n"
+        "6. decision='accept_with_edits' may edit or add entities only when they are strongly supported by the candidate data and remain exact substrings of the text.\n"
+        "7. Do not promote noisy gliner2-only entities unless the text support is very clear.\n"
+        "8. If the case is noisy, incomplete, or ambiguous, return decision='reject'."
     )
     user_message = (
         "Review the NER suggestions for the text below and produce a final adjudicated annotation.\n\n"
@@ -247,6 +254,56 @@ def parse_adjudication_response(response_payload: dict) -> dict:
     return parsed
 
 
+def validate_adjudication(adjudication: dict, source_row: dict) -> dict:
+    if not isinstance(adjudication, dict):
+        raise ValueError("Adjudication payload must be a JSON object.")
+
+    decision = adjudication.get("decision")
+    if decision not in ALLOWED_DECISIONS:
+        raise ValueError(f"Invalid adjudication decision: {decision}")
+
+    entities = adjudication.get("entities_final")
+    if not isinstance(entities, list):
+        raise ValueError("entities_final must be a list.")
+
+    text = str(source_row.get("text", ""))
+    review_seed_entities = source_row.get("review_seed_entities") or []
+    review_seed_pairs = {
+        (str(item.get("text", "")), str(item.get("label", "")))
+        for item in review_seed_entities
+        if isinstance(item, dict)
+    }
+
+    cleaned_entities = []
+    seen = set()
+    for entity in entities:
+        if not isinstance(entity, dict):
+            raise ValueError("Each entity in entities_final must be an object.")
+        entity_text = str(entity.get("text", ""))
+        entity_label = str(entity.get("label", ""))
+        if not entity_text or entity_label not in ALLOWED_LABELS:
+            raise ValueError(f"Invalid entity returned by adjudicator: {entity}")
+        if entity_text not in text:
+            raise ValueError(f"Entity text is not an exact substring of the source text: {entity_text!r}")
+        key = (entity_text, entity_label)
+        if key in seen:
+            continue
+        seen.add(key)
+        cleaned_entities.append({"text": entity_text, "label": entity_label})
+
+    if decision == "accept":
+        invalid_accept_entities = [entity for entity in cleaned_entities if (entity["text"], entity["label"]) not in review_seed_pairs]
+        if invalid_accept_entities:
+            raise ValueError(
+                "decision='accept' may only contain entities from review_seed_entities; "
+                f"got unsupported entities: {invalid_accept_entities}"
+            )
+
+    validated = dict(adjudication)
+    validated["entities_final"] = cleaned_entities
+    return validated
+
+
 def call_responses_api(
     row: dict,
     *,
@@ -288,7 +345,7 @@ def adjudicate_row(
                 api_base=api_base,
                 timeout_seconds=timeout_seconds,
             )
-            adjudication = parse_adjudication_response(response_payload)
+            adjudication = validate_adjudication(parse_adjudication_response(response_payload), row)
             return {
                 "source_id": row.get("source_id"),
                 "model": model,
