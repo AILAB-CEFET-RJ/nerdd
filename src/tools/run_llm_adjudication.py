@@ -34,6 +34,8 @@ DEFAULT_MODEL = "gpt-5"
 DEFAULT_API_BASE = "https://api.openai.com/v1/responses"
 DEFAULT_ALLOWED_LABELS = ["Person", "Location", "Organization"]
 DEFAULT_TIMEOUT_SECONDS = 120
+DEFAULT_DOTENV_PATH = ".env"
+DEFAULT_TEMPERATURE = 0.0
 
 ADJUDICATION_SCHEMA = {
     "type": "object",
@@ -73,6 +75,48 @@ def _safe_float(value):
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def load_dotenv(path: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    if not path.exists():
+        return values
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key:
+            values[key] = value
+    return values
+
+
+def resolve_api_key(*, env_name: str, dotenv_values: dict[str, str]) -> str:
+    return os.environ.get(env_name, "").strip() or dotenv_values.get(env_name, "").strip()
+
+
+def resolve_model_name(cli_value: str, dotenv_values: dict[str, str]) -> str:
+    cli_value = str(cli_value or "").strip()
+    if cli_value:
+        return cli_value
+    return dotenv_values.get("OPENAI_DEFAULT_MODEL", "").strip() or DEFAULT_MODEL
+
+
+def resolve_temperature(cli_value, dotenv_values: dict[str, str]) -> float:
+    if cli_value is not None:
+        parsed = _safe_float(cli_value)
+        if parsed is None:
+            raise ValueError(f"Invalid CLI temperature: {cli_value}")
+        return parsed
+    env_value = dotenv_values.get("OPENAI_DEFAULT_TEMPERATURE", "").strip()
+    if env_value:
+        parsed = _safe_float(env_value)
+        if parsed is None:
+            raise ValueError(f"Invalid OPENAI_DEFAULT_TEMPERATURE in .env: {env_value}")
+        return parsed
+    return DEFAULT_TEMPERATURE
 
 
 def _compact_entity(entity: dict) -> dict:
@@ -154,8 +198,8 @@ def build_messages(row: dict) -> list[dict]:
     ]
 
 
-def build_request_body(row: dict, *, model: str) -> dict:
-    return {
+def build_request_body(row: dict, *, model: str, temperature: float | None = None) -> dict:
+    body = {
         "model": model,
         "input": build_messages(row),
         "text": {
@@ -167,6 +211,9 @@ def build_request_body(row: dict, *, model: str) -> dict:
             }
         },
     }
+    if temperature is not None:
+        body["temperature"] = temperature
+    return body
 
 
 def _extract_output_text(response_payload: dict) -> str:
@@ -204,6 +251,7 @@ def call_responses_api(
     row: dict,
     *,
     model: str,
+    temperature: float | None,
     api_key: str,
     api_base: str,
     timeout_seconds: int,
@@ -212,7 +260,7 @@ def call_responses_api(
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
-    body = build_request_body(row, model=model)
+    body = build_request_body(row, model=model, temperature=temperature)
     response = requests.post(api_base, headers=headers, json=body, timeout=timeout_seconds)
     response.raise_for_status()
     return response.json()
@@ -222,6 +270,7 @@ def adjudicate_row(
     row: dict,
     *,
     model: str,
+    temperature: float | None,
     api_key: str,
     api_base: str,
     timeout_seconds: int,
@@ -234,6 +283,7 @@ def adjudicate_row(
             response_payload = call_responses_api(
                 row,
                 model=model,
+                temperature=temperature,
                 api_key=api_key,
                 api_base=api_base,
                 timeout_seconds=timeout_seconds,
@@ -242,6 +292,7 @@ def adjudicate_row(
             return {
                 "source_id": row.get("source_id"),
                 "model": model,
+                "temperature": temperature,
                 "adjudication": adjudication,
                 "_source": row,
             }
@@ -281,8 +332,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-jsonl", required=True, help="Output JSONL with adjudication results.")
     parser.add_argument("--errors-jsonl", default="", help="Optional JSONL with per-record errors.")
     parser.add_argument("--summary-json", default="", help="Optional summary JSON.")
-    parser.add_argument("--model", default=DEFAULT_MODEL, help="OpenAI model name. Default: gpt-5")
+    parser.add_argument("--model", default="", help="OpenAI model name. Defaults to OPENAI_DEFAULT_MODEL from .env, then gpt-5.")
+    parser.add_argument("--temperature", type=float, default=None, help="Sampling temperature. Defaults to OPENAI_DEFAULT_TEMPERATURE from .env, then 0.0.")
     parser.add_argument("--api-key-env", default="OPENAI_API_KEY", help="Environment variable holding the OpenAI API key.")
+    parser.add_argument("--dotenv-path", default=DEFAULT_DOTENV_PATH, help="Path to the .env file used to load the API key.")
     parser.add_argument("--api-base", default=DEFAULT_API_BASE, help="Responses API endpoint.")
     parser.add_argument("--timeout-seconds", type=int, default=DEFAULT_TIMEOUT_SECONDS)
     parser.add_argument("--max-retries", type=int, default=3)
@@ -296,9 +349,14 @@ def main() -> None:
     args = parse_args()
     logging.basicConfig(level=getattr(logging, args.log_level), format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
 
-    api_key = os.environ.get(args.api_key_env, "").strip()
+    dotenv_values = load_dotenv(resolve_repo_artifact_path(__file__, args.dotenv_path))
+    api_key = resolve_api_key(env_name=args.api_key_env, dotenv_values=dotenv_values)
     if not api_key:
-        raise RuntimeError(f"Missing API key in environment variable: {args.api_key_env}")
+        raise RuntimeError(
+            f"Missing API key '{args.api_key_env}' in environment or .env file: {args.dotenv_path}"
+        )
+    model_name = resolve_model_name(args.model, dotenv_values)
+    temperature = resolve_temperature(args.temperature, dotenv_values)
 
     input_path = resolve_repo_artifact_path(__file__, args.input)
     rows = read_json_or_jsonl(input_path)
@@ -312,7 +370,8 @@ def main() -> None:
             success_rows.append(
                 adjudicate_row(
                     row,
-                    model=args.model,
+                    model=model_name,
+                    temperature=temperature,
                     api_key=api_key,
                     api_base=args.api_base,
                     timeout_seconds=args.timeout_seconds,
@@ -348,7 +407,7 @@ def main() -> None:
                 build_summary(
                     success_rows,
                     error_rows,
-                    model=args.model,
+                    model=model_name,
                     input_path=str(input_path),
                     output_path=str(output_path),
                 ),

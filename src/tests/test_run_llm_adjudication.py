@@ -1,6 +1,7 @@
 import unittest
 from pathlib import Path
 import sys
+import tempfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -8,7 +9,10 @@ from tools.run_llm_adjudication import (
     ADJUDICATION_SCHEMA,
     build_messages,
     build_request_body,
+    load_dotenv,
     parse_adjudication_response,
+    resolve_model_name,
+    resolve_temperature,
 )
 
 
@@ -33,8 +37,9 @@ class TestRunLlmAdjudication(unittest.TestCase):
         self.assertIn("baseline_entities", messages[1]["content"])
 
     def test_build_request_body_uses_json_schema(self):
-        body = build_request_body({"text": "abc"}, model="gpt-5")
+        body = build_request_body({"text": "abc"}, model="gpt-5", temperature=0.7)
         self.assertEqual(body["model"], "gpt-5")
+        self.assertEqual(body["temperature"], 0.7)
         self.assertEqual(body["text"]["format"]["type"], "json_schema")
         self.assertEqual(body["text"]["format"]["schema"], ADJUDICATION_SCHEMA)
 
@@ -61,6 +66,19 @@ class TestRunLlmAdjudication(unittest.TestCase):
         }
         parsed = parse_adjudication_response(payload)
         self.assertEqual(parsed["decision"], "reject")
+
+    def test_load_dotenv_reads_simple_key_values(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / ".env"
+            path.write_text(
+                "# comment\nOPENAI_API_KEY=test-key\nOPENAI_DEFAULT_MODEL=gpt-4o-mini\nOPENAI_DEFAULT_TEMPERATURE='0.7'\nOTHER=' spaced value '\n",
+                encoding="utf-8",
+            )
+            values = load_dotenv(path)
+            self.assertEqual(values["OPENAI_API_KEY"], "test-key")
+            self.assertEqual(values["OTHER"], " spaced value ")
+            self.assertEqual(resolve_model_name("", values), "gpt-4o-mini")
+            self.assertEqual(resolve_temperature(None, values), 0.7)
 
 
 if __name__ == "__main__":
