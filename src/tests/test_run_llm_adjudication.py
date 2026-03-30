@@ -7,6 +7,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from tools.run_llm_adjudication import (
     ADJUDICATION_SCHEMA,
+    AdjudicationValidationError,
+    adjudicate_row,
     build_messages,
     build_request_body,
     load_dotenv,
@@ -134,6 +136,43 @@ class TestRunLlmAdjudication(unittest.TestCase):
                 },
                 source_row,
             )
+
+    def test_parse_adjudication_response_raises_validation_error_for_missing_output(self):
+        with self.assertRaises(AdjudicationValidationError):
+            parse_adjudication_response({})
+
+    def test_adjudicate_row_downgrades_validation_failures_to_reject(self):
+        from tools import run_llm_adjudication as module
+
+        original_call = module.call_responses_api
+        try:
+            module.call_responses_api = lambda *args, **kwargs: {
+                "output_text": (
+                    '{"decision":"accept_with_edits","review_confidence":"medium",'
+                    '"entities_final":[{"text":"Ivete Sangalo","label":"Person"},{"text":"Salvador","label":"Location"}],'
+                    '"justification":"too liberal"}'
+                )
+            }
+            result = adjudicate_row(
+                {
+                    "source_id": "tip-1",
+                    "text": "Ivete Sangalo em Salvador",
+                    "review_seed_entities": [{"text": "Ivete Sangalo", "label": "Person"}],
+                },
+                model="gpt-4o-mini",
+                temperature=0.0,
+                api_key="test-key",
+                api_base="https://example.invalid/v1/responses",
+                timeout_seconds=1,
+                max_retries=3,
+                retry_sleep_seconds=0.0,
+            )
+        finally:
+            module.call_responses_api = original_call
+
+        self.assertEqual(result["adjudication"]["decision"], "reject")
+        self.assertEqual(result["adjudication"]["entities_final"], [])
+        self.assertIn("Validation downgrade:", result["adjudication"]["justification"])
 
 
 if __name__ == "__main__":

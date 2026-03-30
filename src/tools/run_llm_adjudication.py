@@ -72,6 +72,10 @@ ADJUDICATION_SCHEMA = {
 }
 
 
+class AdjudicationValidationError(ValueError):
+    """Raised when model output violates semantic adjudication constraints."""
+
+
 def _safe_float(value):
     try:
         return float(value)
@@ -244,28 +248,28 @@ def _extract_output_text(response_payload: dict) -> str:
                 if isinstance(text, str) and text.strip():
                     return text.strip()
 
-    raise ValueError("Could not extract model output text from Responses API payload.")
+    raise AdjudicationValidationError("Could not extract model output text from Responses API payload.")
 
 
 def parse_adjudication_response(response_payload: dict) -> dict:
     output_text = _extract_output_text(response_payload)
     parsed = json.loads(output_text)
     if not isinstance(parsed, dict):
-        raise ValueError("Structured output is not a JSON object.")
+        raise AdjudicationValidationError("Structured output is not a JSON object.")
     return parsed
 
 
 def validate_adjudication(adjudication: dict, source_row: dict) -> dict:
     if not isinstance(adjudication, dict):
-        raise ValueError("Adjudication payload must be a JSON object.")
+        raise AdjudicationValidationError("Adjudication payload must be a JSON object.")
 
     decision = adjudication.get("decision")
     if decision not in ALLOWED_DECISIONS:
-        raise ValueError(f"Invalid adjudication decision: {decision}")
+        raise AdjudicationValidationError(f"Invalid adjudication decision: {decision}")
 
     entities = adjudication.get("entities_final")
     if not isinstance(entities, list):
-        raise ValueError("entities_final must be a list.")
+        raise AdjudicationValidationError("entities_final must be a list.")
 
     text = str(source_row.get("text", ""))
     review_seed_entities = source_row.get("review_seed_entities") or []
@@ -279,13 +283,13 @@ def validate_adjudication(adjudication: dict, source_row: dict) -> dict:
     seen = set()
     for entity in entities:
         if not isinstance(entity, dict):
-            raise ValueError("Each entity in entities_final must be an object.")
+            raise AdjudicationValidationError("Each entity in entities_final must be an object.")
         entity_text = str(entity.get("text", ""))
         entity_label = str(entity.get("label", ""))
         if not entity_text or entity_label not in ALLOWED_LABELS:
-            raise ValueError(f"Invalid entity returned by adjudicator: {entity}")
+            raise AdjudicationValidationError(f"Invalid entity returned by adjudicator: {entity}")
         if entity_text not in text:
-            raise ValueError(f"Entity text is not an exact substring of the source text: {entity_text!r}")
+            raise AdjudicationValidationError(f"Entity text is not an exact substring of the source text: {entity_text!r}")
         key = (entity_text, entity_label)
         if key in seen:
             continue
@@ -295,7 +299,7 @@ def validate_adjudication(adjudication: dict, source_row: dict) -> dict:
     if decision in {"accept", "accept_with_edits"}:
         invalid_seed_entities = [entity for entity in cleaned_entities if (entity["text"], entity["label"]) not in review_seed_pairs]
         if invalid_seed_entities:
-            raise ValueError(
+            raise AdjudicationValidationError(
                 f"decision={decision!r} may only contain entities from review_seed_entities; "
                 f"got unsupported entities: {invalid_seed_entities}"
             )
@@ -352,6 +356,26 @@ def adjudicate_row(
                 "model": model,
                 "temperature": temperature,
                 "adjudication": adjudication,
+                "_source": row,
+            }
+        except AdjudicationValidationError as exc:
+            LOGGER.warning(
+                "Validation downgrade to reject for source_id=%s on attempt %s/%s: %s",
+                row.get("source_id"),
+                attempt,
+                max_retries,
+                exc,
+            )
+            return {
+                "source_id": row.get("source_id"),
+                "model": model,
+                "temperature": temperature,
+                "adjudication": {
+                    "decision": "reject",
+                    "review_confidence": "low",
+                    "entities_final": [],
+                    "justification": f"Validation downgrade: {exc}",
+                },
                 "_source": row,
             }
         except Exception as exc:  # pragma: no cover - exercised in integration
