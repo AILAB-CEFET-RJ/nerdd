@@ -116,6 +116,25 @@ class TestRunLlmAdjudication(unittest.TestCase):
                 source_row,
             )
 
+    def test_validate_adjudication_accept_with_edits_must_stay_within_review_seed_entities(self):
+        source_row = {
+            "text": "Ivete Sangalo em Salvador",
+            "review_seed_entities": [{"text": "Ivete Sangalo", "label": "Person"}],
+        }
+        with self.assertRaises(ValueError):
+            validate_adjudication(
+                {
+                    "decision": "accept_with_edits",
+                    "review_confidence": "medium",
+                    "entities_final": [
+                        {"text": "Ivete Sangalo", "label": "Person"},
+                        {"text": "Salvador", "label": "Location"},
+                    ],
+                    "justification": "too liberal",
+                },
+                source_row,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

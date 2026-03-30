@@ -189,9 +189,10 @@ def build_messages(row: dict) -> list[dict]:
         "3. Allowed labels: Person, Location, Organization.\n"
         "4. Prefer reject over speculative completion.\n"
         "5. decision='accept' is only allowed when every final entity comes directly from review_seed_entities.\n"
-        "6. decision='accept_with_edits' may edit or add entities only when they are strongly supported by the candidate data and remain exact substrings of the text.\n"
-        "7. Do not promote noisy gliner2-only entities unless the text support is very clear.\n"
-        "8. If the case is noisy, incomplete, or ambiguous, return decision='reject'."
+        "6. decision='accept_with_edits' is only allowed when every final entity comes directly from review_seed_entities.\n"
+        "7. For accept_with_edits, you may remove entities from the seed set, but do not add new entities outside review_seed_entities.\n"
+        "8. Do not promote noisy gliner2-only entities unless they are already present in review_seed_entities.\n"
+        "9. If the case is noisy, incomplete, or ambiguous, return decision='reject'."
     )
     user_message = (
         "Review the NER suggestions for the text below and produce a final adjudicated annotation.\n\n"
@@ -291,12 +292,12 @@ def validate_adjudication(adjudication: dict, source_row: dict) -> dict:
         seen.add(key)
         cleaned_entities.append({"text": entity_text, "label": entity_label})
 
-    if decision == "accept":
-        invalid_accept_entities = [entity for entity in cleaned_entities if (entity["text"], entity["label"]) not in review_seed_pairs]
-        if invalid_accept_entities:
+    if decision in {"accept", "accept_with_edits"}:
+        invalid_seed_entities = [entity for entity in cleaned_entities if (entity["text"], entity["label"]) not in review_seed_pairs]
+        if invalid_seed_entities:
             raise ValueError(
-                "decision='accept' may only contain entities from review_seed_entities; "
-                f"got unsupported entities: {invalid_accept_entities}"
+                f"decision={decision!r} may only contain entities from review_seed_entities; "
+                f"got unsupported entities: {invalid_seed_entities}"
             )
 
     validated = dict(adjudication)
