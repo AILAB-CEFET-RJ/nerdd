@@ -125,6 +125,13 @@ def resolve_temperature(cli_value, dotenv_values: dict[str, str]) -> float:
     return DEFAULT_TEMPERATURE
 
 
+def model_supports_temperature(model: str) -> bool:
+    model_name = str(model or "").strip().lower()
+    if model_name.startswith("gpt-5") and not model_name.startswith("gpt-5.1"):
+        return False
+    return True
+
+
 def _compact_entity(entity: dict) -> dict:
     compact = {
         "text": entity.get("text", ""),
@@ -223,7 +230,7 @@ def build_request_body(row: dict, *, model: str, temperature: float | None = Non
             }
         },
     }
-    if temperature is not None:
+    if temperature is not None and model_supports_temperature(model):
         body["temperature"] = temperature
     return body
 

@@ -12,6 +12,7 @@ from tools.run_llm_adjudication import (
     build_messages,
     build_request_body,
     load_dotenv,
+    model_supports_temperature,
     parse_adjudication_response,
     resolve_model_name,
     resolve_temperature,
@@ -40,11 +41,23 @@ class TestRunLlmAdjudication(unittest.TestCase):
         self.assertIn("baseline_entities", messages[1]["content"])
 
     def test_build_request_body_uses_json_schema(self):
-        body = build_request_body({"text": "abc"}, model="gpt-5", temperature=0.7)
-        self.assertEqual(body["model"], "gpt-5")
+        body = build_request_body({"text": "abc"}, model="gpt-4o-mini", temperature=0.7)
+        self.assertEqual(body["model"], "gpt-4o-mini")
         self.assertEqual(body["temperature"], 0.7)
         self.assertEqual(body["text"]["format"]["type"], "json_schema")
         self.assertEqual(body["text"]["format"]["schema"], ADJUDICATION_SCHEMA)
+
+    def test_build_request_body_omits_temperature_for_gpt5_models(self):
+        body = build_request_body({"text": "abc"}, model="gpt-5-mini", temperature=0.7)
+        self.assertEqual(body["model"], "gpt-5-mini")
+        self.assertNotIn("temperature", body)
+
+    def test_model_supports_temperature_matches_gpt5_rules(self):
+        self.assertFalse(model_supports_temperature("gpt-5"))
+        self.assertFalse(model_supports_temperature("gpt-5-mini"))
+        self.assertFalse(model_supports_temperature("gpt-5-nano"))
+        self.assertTrue(model_supports_temperature("gpt-5.1"))
+        self.assertTrue(model_supports_temperature("gpt-4o-mini"))
 
     def test_parse_adjudication_response_reads_output_text(self):
         payload = {
