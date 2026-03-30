@@ -236,8 +236,15 @@ def build_messages(row: dict) -> list[dict]:
     }
 
     system_message = (
-        "You are a reviewer of Portuguese NER annotations.\n"
+        "You are a reviewer of Portuguese NER annotations for Brazilian crime-tip records.\n"
         "Return JSON only.\n"
+        "Domain context:\n"
+        "- Each record is an anonymous denunciation / crime tip, not edited prose.\n"
+        "- The text is often far from standard written Portuguese.\n"
+        "- Expect strong noise: misspellings, slang, abbreviations, truncated words, repeated words, missing punctuation, OCR-like corruption, and broken character encoding.\n"
+        "- Location references may be partial, colloquial, duplicated, or mixed with generic words such as street types, landmarks, directions, and operational language.\n"
+        "- Many candidate entities are low quality; isolated generic tokens are rarely reliable final entities.\n"
+        "- In this domain, conservatism is required: if a span is noisy, partial, generic, weakly grounded, or ambiguous, reject it rather than keeping it.\n"
         "Hard rules:\n"
         "1. Every entity text must be an exact literal substring of the input text.\n"
         "2. Do not normalize, simplify, shorten, translate, or correct spelling in entity text.\n"
@@ -247,7 +254,8 @@ def build_messages(row: dict) -> list[dict]:
         "6. decision='accept_with_edits' is only allowed when every final entity comes directly from review_seed_entities.\n"
         "7. For accept_with_edits, you may remove entities from the seed set, but do not add new entities outside review_seed_entities.\n"
         "8. Do not promote noisy gliner2-only entities unless they are already present in review_seed_entities.\n"
-        "9. If the case is noisy, incomplete, or ambiguous, return decision='reject'."
+        "9. If the case is noisy, incomplete, ambiguous, or only weakly supported, return decision='reject'.\n"
+        "10. Be especially skeptical of single-token Location entities, partial place names, generic road/area words, and fragments produced by corrupted text."
     )
     user_message = (
         "Review the NER suggestions for the text below and produce a final adjudicated annotation.\n\n"
