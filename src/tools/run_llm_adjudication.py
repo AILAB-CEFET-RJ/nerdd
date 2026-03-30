@@ -256,7 +256,12 @@ def build_messages(row: dict) -> list[dict]:
         "11. If in doubt, reject."
     )
     user_message = (
-        "Review the NER suggestions for the text below and produce a final adjudicated annotation.\n\n"
+        "Review this single Brazilian crime-tip record and adjudicate the proposed NER annotation.\n\n"
+        "Task:\n"
+        "- Decide whether the review_seed_entities for this record should be accepted as-is, accepted with removals, or rejected.\n"
+        "- Do not perform open-ended entity extraction.\n"
+        "- Only keep entities that are exact literal substrings of the TEXT and already present in review_seed_entities.\n"
+        "- If the seed set is noisy, weak, generic, partial, corrupted, or ambiguous, reject.\n\n"
         f"TEXT:\n{text}\n\n"
         "CANDIDATE DATA:\n"
         f"{json.dumps(payload, ensure_ascii=False, indent=2)}"
