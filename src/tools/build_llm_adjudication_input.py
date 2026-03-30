@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import re
 import sys
 import unicodedata
 from collections import Counter
@@ -32,6 +33,7 @@ LOGGER = logging.getLogger(__name__)
 DEFAULT_LABELS = ["Person", "Location", "Organization"]
 DEFAULT_ENTITY_TYPES = ["person", "location", "organization"]
 DEFAULT_SOURCE_ID_FIELDS = ("sample_id", "id", "source_id")
+DEFAULT_LOCATION_METADATA_FIELDS = ("logradouroLocal", "bairroLocal", "cidadeLocal", "pontodeReferenciaLocal")
 
 
 def _parse_csv(raw_value: str) -> list[str]:
@@ -60,6 +62,41 @@ def normalize_entity_text(text: str) -> str:
     text = _collapse_spaces(str(text).strip().lower())
     text = _strip_accents(text)
     return text.strip(" \t\r\n.,;:!?()[]{}\"'")
+
+
+def _extract_location_metadata_terms(row: dict) -> set[str]:
+    terms: set[str] = set()
+    for key in DEFAULT_LOCATION_METADATA_FIELDS:
+        value = row.get(key)
+        if not isinstance(value, str) or not value.strip():
+            continue
+        raw_parts = [value]
+        raw_parts.extend(part for part in re.split(r"[\n,;()]+", value) if part and part.strip())
+        for part in raw_parts:
+            normalized = normalize_entity_text(part)
+            if len(normalized) >= 4:
+                terms.add(normalized)
+    return terms
+
+
+def _matches_location_metadata(entity: dict, metadata_terms: set[str], *, min_chars: int) -> bool:
+    if entity.get("label") != "Location":
+        return False
+    entity_norm = str(entity.get("text_norm", ""))
+    if len(entity_norm) < min_chars:
+        return False
+    for term in metadata_terms:
+        if entity_norm == term:
+            return True
+        if entity_norm in term:
+            return True
+        shorter = min(len(entity_norm), len(term))
+        longer = max(len(entity_norm), len(term))
+        if shorter < min_chars:
+            continue
+        if shorter / max(longer, 1) >= 0.6 and term in entity_norm:
+            return True
+    return False
 
 
 def _entity_score(entity: dict) -> float | None:
@@ -238,7 +275,10 @@ def build_review_seed_entities(
     *,
     agreed_entities: list[dict],
     baseline_only_entities: list[dict],
+    gliner2_only_entities: list[dict],
+    location_metadata_terms: set[str],
     baseline_seed_score_threshold: float,
+    gliner2_location_min_chars: int,
 ) -> list[dict]:
     seeded = []
     seen = set()
@@ -256,6 +296,16 @@ def build_review_seed_entities(
             continue
         seeded_entity = dict(entity)
         seeded_entity["seed_origin"] = "baseline_high_score"
+        key = (seeded_entity.get("label"), seeded_entity.get("text_norm"))
+        if key in seen:
+            continue
+        seen.add(key)
+        seeded.append(seeded_entity)
+    for entity in gliner2_only_entities:
+        if not _matches_location_metadata(entity, location_metadata_terms, min_chars=gliner2_location_min_chars):
+            continue
+        seeded_entity = dict(entity)
+        seeded_entity["seed_origin"] = "gliner2_location_metadata_match"
         key = (seeded_entity.get("label"), seeded_entity.get("text_norm"))
         if key in seen:
             continue
@@ -304,8 +354,10 @@ def build_adjudication_row(
     allowed_labels: set[str],
     soft_match_min_chars: int,
     baseline_seed_score_threshold: float,
+    gliner2_location_min_chars: int,
 ) -> dict:
     text = get_text(row)
+    location_metadata_terms = _extract_location_metadata_terms(row)
     baseline_entities = normalize_baseline_entities(get_spans(row), allowed_labels)
     gliner2_entities = normalize_gliner2_entities(gliner2_entities, allowed_labels)
     matched = match_entities(
@@ -320,7 +372,10 @@ def build_adjudication_row(
     review_seed_entities = build_review_seed_entities(
         agreed_entities=agreed_entities,
         baseline_only_entities=baseline_only_entities,
+        gliner2_only_entities=gliner2_only_entities,
+        location_metadata_terms=location_metadata_terms,
         baseline_seed_score_threshold=baseline_seed_score_threshold,
+        gliner2_location_min_chars=gliner2_location_min_chars,
     )
 
     union_count = len(agreed_entities) + len(baseline_only_entities) + len(gliner2_only_entities)
@@ -351,6 +406,7 @@ def build_adjudication_row(
             "agreement_ratio": agreement_ratio,
             "baseline_coverage_proxy": baseline_coverage_proxy,
             "gliner2_noise_proxy": gliner2_noise_proxy,
+            "location_metadata_terms": sorted(location_metadata_terms),
         },
         "_source": row,
     }
@@ -392,6 +448,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-records", type=int, default=0, help="Optional maximum number of input records to process.")
     parser.add_argument("--soft-match-min-chars", type=int, default=4, help="Minimum normalized entity length for soft matches.")
     parser.add_argument("--baseline-seed-score-threshold", type=float, default=0.80, help="Minimum baseline score for baseline-only entities to seed review.")
+    parser.add_argument("--gliner2-location-min-chars", type=int, default=5, help="Minimum normalized length for gliner2-only location entities to be promoted via metadata match.")
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     return parser.parse_args()
 
@@ -433,6 +490,7 @@ def main() -> None:
                 allowed_labels=allowed_labels,
                 soft_match_min_chars=args.soft_match_min_chars,
                 baseline_seed_score_threshold=args.baseline_seed_score_threshold,
+                gliner2_location_min_chars=args.gliner2_location_min_chars,
             )
         )
         counters["records_total"] += 1

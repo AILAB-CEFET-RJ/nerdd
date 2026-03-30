@@ -5,6 +5,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from tools.build_llm_adjudication_input import (
+    _extract_location_metadata_terms,
     build_review_seed_entities,
     match_entities,
     normalize_entity_text,
@@ -48,9 +49,36 @@ class TestBuildLlmAdjudicationInput(unittest.TestCase):
         seeded = build_review_seed_entities(
             agreed_entities=agreed,
             baseline_only_entities=baseline_only,
+            gliner2_only_entities=[],
+            location_metadata_terms=set(),
             baseline_seed_score_threshold=0.80,
+            gliner2_location_min_chars=5,
         )
         self.assertEqual([item["text"] for item in seeded], ["Rua Piauí", "Ivete Sangalo"])
+
+    def test_extract_location_metadata_terms_and_promote_matching_gliner2_locations(self):
+        row = {
+            "bairroLocal": "Trindade",
+            "cidadeLocal": "Sao Gonçalo",
+            "pontodeReferenciaLocal": "Rua Cuiabá esquina com Uruguaiana",
+        }
+        terms = _extract_location_metadata_terms(row)
+        self.assertIn("trindade", terms)
+        self.assertIn("sao goncalo", terms)
+        gliner2_only = [
+            {"text": "Cuiabá", "label": "Location", "text_norm": "cuiaba"},
+            {"text": "Trindade", "label": "Location", "text_norm": "trindade"},
+            {"text": "polícia", "label": "Organization", "text_norm": "policia"},
+        ]
+        seeded = build_review_seed_entities(
+            agreed_entities=[],
+            baseline_only_entities=[],
+            gliner2_only_entities=gliner2_only,
+            location_metadata_terms=terms,
+            baseline_seed_score_threshold=0.80,
+            gliner2_location_min_chars=5,
+        )
+        self.assertEqual([item["text"] for item in seeded], ["Cuiabá", "Trindade"])
 
 
 if __name__ == "__main__":
