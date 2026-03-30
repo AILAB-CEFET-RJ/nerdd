@@ -1,0 +1,364 @@
+#!/usr/bin/env python3
+"""Run LLM-assisted adjudication over structured NER candidate review inputs.
+
+This utility consumes the JSONL produced by `build_llm_adjudication_input.py`,
+calls the OpenAI Responses API with Structured Outputs, and writes a per-record
+JSONL containing the model's adjudication decision plus the original source row.
+
+It is intentionally narrow:
+- input rows already contain baseline/GLiNER2 suggestions and matching metadata
+- the LLM must only decide among `accept`, `accept_with_edits`, or `reject`
+- the LLM must return only literal spans present in the input text
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import logging
+import os
+import sys
+import time
+from pathlib import Path
+
+import requests
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from base_model_training.paths import resolve_repo_artifact_path
+from tools.inspect_dense_tips import read_json_or_jsonl, write_jsonl
+
+LOGGER = logging.getLogger(__name__)
+
+DEFAULT_MODEL = "gpt-5"
+DEFAULT_API_BASE = "https://api.openai.com/v1/responses"
+DEFAULT_ALLOWED_LABELS = ["Person", "Location", "Organization"]
+DEFAULT_TIMEOUT_SECONDS = 120
+
+ADJUDICATION_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "decision": {
+            "type": "string",
+            "enum": ["accept", "accept_with_edits", "reject"],
+        },
+        "review_confidence": {
+            "type": "string",
+            "enum": ["high", "medium", "low"],
+        },
+        "entities_final": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "text": {"type": "string"},
+                    "label": {
+                        "type": "string",
+                        "enum": list(DEFAULT_ALLOWED_LABELS),
+                    },
+                },
+                "required": ["text", "label"],
+            },
+        },
+        "justification": {"type": "string"},
+    },
+    "required": ["decision", "review_confidence", "entities_final", "justification"],
+}
+
+
+def _safe_float(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _compact_entity(entity: dict) -> dict:
+    compact = {
+        "text": entity.get("text", ""),
+        "label": entity.get("label", ""),
+    }
+    ner_score = _safe_float(entity.get("ner_score"))
+    if ner_score is not None:
+        compact["ner_score"] = round(ner_score, 6)
+    seed_origin = entity.get("seed_origin")
+    if seed_origin:
+        compact["seed_origin"] = seed_origin
+    match_type = entity.get("match_type")
+    if match_type:
+        compact["match_type"] = match_type
+    return compact
+
+
+def _serialize_entities(entities) -> list[dict]:
+    rows = []
+    for entity in entities or []:
+        if isinstance(entity, dict):
+            rows.append(_compact_entity(entity))
+    return rows
+
+
+def build_messages(row: dict) -> list[dict]:
+    text = str(row.get("text", "")).strip()
+    payload = {
+        "source_id": row.get("source_id"),
+        "record_score": row.get("record_score"),
+        "candidate_quality_score": row.get("candidate_quality_score"),
+        "metadata": row.get("metadata", {}),
+        "baseline_entities": _serialize_entities(row.get("baseline_entities")),
+        "gliner2_entities": _serialize_entities(row.get("gliner2_entities")),
+        "agreed_entities": [
+            {
+                "text": item.get("text", ""),
+                "label": item.get("label", ""),
+                "match_type": item.get("match_type", ""),
+                "consensus_score": item.get("consensus_score"),
+            }
+            for item in (row.get("agreed_entities") or [])
+            if isinstance(item, dict)
+        ],
+        "baseline_only_entities": _serialize_entities(row.get("baseline_only_entities")),
+        "gliner2_only_entities": _serialize_entities(row.get("gliner2_only_entities")),
+        "conflicts": [
+            {
+                "text": item.get("text", ""),
+                "baseline_label": item.get("baseline_label", ""),
+                "gliner2_label": item.get("gliner2_label", ""),
+                "conflict_type": item.get("conflict_type", ""),
+            }
+            for item in (row.get("conflicts") or [])
+            if isinstance(item, dict)
+        ],
+        "review_seed_entities": _serialize_entities(row.get("review_seed_entities")),
+    }
+
+    system_message = (
+        "You are a reviewer of Portuguese NER annotations.\n"
+        "Return JSON only.\n"
+        "You must use only literal spans that appear exactly in the input text.\n"
+        "Do not invent entities. Do not normalize or correct spelling in entity text.\n"
+        "Allowed labels: Person, Location, Organization.\n"
+        "If the case is too noisy or incomplete to trust, return decision='reject'."
+    )
+    user_message = (
+        "Review the NER suggestions for the text below and produce a final adjudicated annotation.\n\n"
+        f"TEXT:\n{text}\n\n"
+        "CANDIDATE DATA:\n"
+        f"{json.dumps(payload, ensure_ascii=False, indent=2)}"
+    )
+    return [
+        {"role": "system", "content": system_message},
+        {"role": "user", "content": user_message},
+    ]
+
+
+def build_request_body(row: dict, *, model: str) -> dict:
+    return {
+        "model": model,
+        "input": build_messages(row),
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "ner_adjudication",
+                "strict": True,
+                "schema": ADJUDICATION_SCHEMA,
+            }
+        },
+    }
+
+
+def _extract_output_text(response_payload: dict) -> str:
+    output_text = response_payload.get("output_text")
+    if isinstance(output_text, str) and output_text.strip():
+        return output_text.strip()
+
+    output = response_payload.get("output")
+    if isinstance(output, list):
+        for item in output:
+            if not isinstance(item, dict):
+                continue
+            content = item.get("content")
+            if not isinstance(content, list):
+                continue
+            for content_item in content:
+                if not isinstance(content_item, dict):
+                    continue
+                text = content_item.get("text")
+                if isinstance(text, str) and text.strip():
+                    return text.strip()
+
+    raise ValueError("Could not extract model output text from Responses API payload.")
+
+
+def parse_adjudication_response(response_payload: dict) -> dict:
+    output_text = _extract_output_text(response_payload)
+    parsed = json.loads(output_text)
+    if not isinstance(parsed, dict):
+        raise ValueError("Structured output is not a JSON object.")
+    return parsed
+
+
+def call_responses_api(
+    row: dict,
+    *,
+    model: str,
+    api_key: str,
+    api_base: str,
+    timeout_seconds: int,
+) -> dict:
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    body = build_request_body(row, model=model)
+    response = requests.post(api_base, headers=headers, json=body, timeout=timeout_seconds)
+    response.raise_for_status()
+    return response.json()
+
+
+def adjudicate_row(
+    row: dict,
+    *,
+    model: str,
+    api_key: str,
+    api_base: str,
+    timeout_seconds: int,
+    max_retries: int,
+    retry_sleep_seconds: float,
+) -> dict:
+    last_error = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            response_payload = call_responses_api(
+                row,
+                model=model,
+                api_key=api_key,
+                api_base=api_base,
+                timeout_seconds=timeout_seconds,
+            )
+            adjudication = parse_adjudication_response(response_payload)
+            return {
+                "source_id": row.get("source_id"),
+                "model": model,
+                "adjudication": adjudication,
+                "_source": row,
+            }
+        except Exception as exc:  # pragma: no cover - exercised in integration
+            last_error = exc
+            LOGGER.warning(
+                "Adjudication failed for source_id=%s on attempt %s/%s: %s",
+                row.get("source_id"),
+                attempt,
+                max_retries,
+                exc,
+            )
+            if attempt < max_retries:
+                time.sleep(retry_sleep_seconds)
+    raise RuntimeError(f"Adjudication failed for source_id={row.get('source_id')}: {last_error}") from last_error
+
+
+def build_summary(success_rows: list[dict], error_rows: list[dict], *, model: str, input_path: str, output_path: str) -> dict:
+    decisions = {}
+    for row in success_rows:
+        decision = (((row.get("adjudication") or {}).get("decision")) or "")
+        decisions[decision] = decisions.get(decision, 0) + 1
+    return {
+        "input": input_path,
+        "output_jsonl": output_path,
+        "model": model,
+        "records_total": len(success_rows) + len(error_rows),
+        "records_succeeded": len(success_rows),
+        "records_failed": len(error_rows),
+        "decision_counts": decisions,
+    }
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run LLM-assisted adjudication over pseudolabel candidate review inputs.")
+    parser.add_argument("--input", required=True, help="Input JSON/JSONL from build_llm_adjudication_input.py.")
+    parser.add_argument("--output-jsonl", required=True, help="Output JSONL with adjudication results.")
+    parser.add_argument("--errors-jsonl", default="", help="Optional JSONL with per-record errors.")
+    parser.add_argument("--summary-json", default="", help="Optional summary JSON.")
+    parser.add_argument("--model", default=DEFAULT_MODEL, help="OpenAI model name. Default: gpt-5")
+    parser.add_argument("--api-key-env", default="OPENAI_API_KEY", help="Environment variable holding the OpenAI API key.")
+    parser.add_argument("--api-base", default=DEFAULT_API_BASE, help="Responses API endpoint.")
+    parser.add_argument("--timeout-seconds", type=int, default=DEFAULT_TIMEOUT_SECONDS)
+    parser.add_argument("--max-retries", type=int, default=3)
+    parser.add_argument("--retry-sleep-seconds", type=float, default=2.0)
+    parser.add_argument("--max-records", type=int, default=0, help="Optional cap on input rows.")
+    parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    logging.basicConfig(level=getattr(logging, args.log_level), format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
+
+    api_key = os.environ.get(args.api_key_env, "").strip()
+    if not api_key:
+        raise RuntimeError(f"Missing API key in environment variable: {args.api_key_env}")
+
+    input_path = resolve_repo_artifact_path(__file__, args.input)
+    rows = read_json_or_jsonl(input_path)
+    if args.max_records > 0:
+        rows = rows[: args.max_records]
+
+    success_rows = []
+    error_rows = []
+    for index, row in enumerate(rows, start=1):
+        try:
+            success_rows.append(
+                adjudicate_row(
+                    row,
+                    model=args.model,
+                    api_key=api_key,
+                    api_base=args.api_base,
+                    timeout_seconds=args.timeout_seconds,
+                    max_retries=args.max_retries,
+                    retry_sleep_seconds=args.retry_sleep_seconds,
+                )
+            )
+            LOGGER.info("Adjudicated %s/%s source_id=%s", index, len(rows), row.get("source_id"))
+        except Exception as exc:  # pragma: no cover - exercised in integration
+            error_rows.append(
+                {
+                    "source_id": row.get("source_id"),
+                    "error": str(exc),
+                    "_source": row,
+                }
+            )
+            LOGGER.error("Failed adjudication for source_id=%s: %s", row.get("source_id"), exc)
+
+    output_path = resolve_repo_artifact_path(__file__, args.output_jsonl)
+    write_jsonl(output_path, success_rows)
+    LOGGER.info("Saved adjudication JSONL: %s", args.output_jsonl)
+
+    if args.errors_jsonl:
+        errors_path = resolve_repo_artifact_path(__file__, args.errors_jsonl)
+        write_jsonl(errors_path, error_rows)
+        LOGGER.info("Saved adjudication errors JSONL: %s", args.errors_jsonl)
+
+    if args.summary_json:
+        summary_path = resolve_repo_artifact_path(__file__, args.summary_json)
+        summary_path.parent.mkdir(parents=True, exist_ok=True)
+        summary_path.write_text(
+            json.dumps(
+                build_summary(
+                    success_rows,
+                    error_rows,
+                    model=args.model,
+                    input_path=str(input_path),
+                    output_path=str(output_path),
+                ),
+                indent=2,
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        LOGGER.info("Saved adjudication summary JSON: %s", args.summary_json)
+
+
+if __name__ == "__main__":
+    main()
