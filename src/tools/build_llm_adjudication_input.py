@@ -34,6 +34,27 @@ DEFAULT_LABELS = ["Person", "Location", "Organization"]
 DEFAULT_ENTITY_TYPES = ["person", "location", "organization"]
 DEFAULT_SOURCE_ID_FIELDS = ("sample_id", "id", "source_id")
 DEFAULT_LOCATION_METADATA_FIELDS = ("logradouroLocal", "bairroLocal", "cidadeLocal", "pontodeReferenciaLocal")
+LOCATION_GENERIC_TOKENS = {
+    "bairro",
+    "cidade",
+    "estado",
+    "local",
+    "logradouro",
+    "endereco",
+    "endereço",
+    "numero",
+    "número",
+    "quadra",
+    "lote",
+    "rua",
+    "avenida",
+    "travessa",
+    "estrada",
+    "rodovia",
+    "praca",
+    "praça",
+}
+LOCATION_CONNECTOR_TOKENS = {"a", "e", "da", "das", "de", "do", "dos"}
 
 
 def _parse_csv(raw_value: str) -> list[str]:
@@ -64,6 +85,13 @@ def normalize_entity_text(text: str) -> str:
     return text.strip(" \t\r\n.,;:!?()[]{}\"'")
 
 
+def _normalized_tokens(text: str) -> list[str]:
+    normalized = normalize_entity_text(text)
+    if not normalized:
+        return []
+    return [token for token in normalized.split() if token]
+
+
 def _extract_location_metadata_terms(row: dict) -> set[str]:
     terms: set[str] = set()
     for key in DEFAULT_LOCATION_METADATA_FIELDS:
@@ -79,24 +107,55 @@ def _extract_location_metadata_terms(row: dict) -> set[str]:
     return terms
 
 
+def _tokens_are_subsequence(needle_tokens: list[str], haystack_tokens: list[str]) -> bool:
+    if not needle_tokens or len(needle_tokens) > len(haystack_tokens):
+        return False
+    window = len(needle_tokens)
+    for start in range(len(haystack_tokens) - window + 1):
+        if haystack_tokens[start : start + window] == needle_tokens:
+            return True
+    return False
+
+
+def _metadata_supports_entity(entity_norm: str, metadata_terms: set[str]) -> bool:
+    entity_tokens = _normalized_tokens(entity_norm)
+    if not entity_tokens:
+        return False
+    for term in metadata_terms:
+        term_tokens = _normalized_tokens(term)
+        if entity_norm == term:
+            return True
+        if _tokens_are_subsequence(entity_tokens, term_tokens):
+            return True
+        if _tokens_are_subsequence(term_tokens, entity_tokens):
+            return True
+    return False
+
+
+def _is_viable_location_seed(entity: dict, *, location_metadata_terms: set[str], require_exact_metadata_for_single_token: bool) -> bool:
+    entity_norm = str(entity.get("text_norm", ""))
+    tokens = _normalized_tokens(entity_norm)
+    if not tokens:
+        return False
+    if any(token in LOCATION_GENERIC_TOKENS for token in tokens):
+        return False
+    if len(tokens) <= 2 and tokens[0] in LOCATION_CONNECTOR_TOKENS:
+        return False
+    if len(tokens) == 1:
+        if len(tokens[0]) < 6:
+            return False
+        if require_exact_metadata_for_single_token and entity_norm not in location_metadata_terms:
+            return False
+    return True
+
+
 def _matches_location_metadata(entity: dict, metadata_terms: set[str], *, min_chars: int) -> bool:
     if entity.get("label") != "Location":
         return False
     entity_norm = str(entity.get("text_norm", ""))
     if len(entity_norm) < min_chars:
         return False
-    for term in metadata_terms:
-        if entity_norm == term:
-            return True
-        if entity_norm in term:
-            return True
-        shorter = min(len(entity_norm), len(term))
-        longer = max(len(entity_norm), len(term))
-        if shorter < min_chars:
-            continue
-        if shorter / max(longer, 1) >= 0.6 and term in entity_norm:
-            return True
-    return False
+    return _metadata_supports_entity(entity_norm, metadata_terms)
 
 
 def _entity_score(entity: dict) -> float | None:
@@ -284,6 +343,12 @@ def build_review_seed_entities(
     seen = set()
     for item in agreed_entities:
         entity = dict(item.get("baseline_entity", {}))
+        if entity.get("label") == "Location" and not _is_viable_location_seed(
+            entity,
+            location_metadata_terms=location_metadata_terms,
+            require_exact_metadata_for_single_token=False,
+        ):
+            continue
         entity["seed_origin"] = f"agreed_{item.get('match_type', 'exact')}"
         key = (entity.get("label"), entity.get("text_norm"))
         if key in seen:
@@ -294,6 +359,12 @@ def build_review_seed_entities(
         ner_score = _safe_float(entity.get("ner_score"))
         if ner_score is None or ner_score < baseline_seed_score_threshold:
             continue
+        if entity.get("label") == "Location" and not _is_viable_location_seed(
+            entity,
+            location_metadata_terms=location_metadata_terms,
+            require_exact_metadata_for_single_token=True,
+        ):
+            continue
         seeded_entity = dict(entity)
         seeded_entity["seed_origin"] = "baseline_high_score"
         key = (seeded_entity.get("label"), seeded_entity.get("text_norm"))
@@ -303,6 +374,12 @@ def build_review_seed_entities(
         seeded.append(seeded_entity)
     for entity in gliner2_only_entities:
         if not _matches_location_metadata(entity, location_metadata_terms, min_chars=gliner2_location_min_chars):
+            continue
+        if not _is_viable_location_seed(
+            entity,
+            location_metadata_terms=location_metadata_terms,
+            require_exact_metadata_for_single_token=False,
+        ):
             continue
         seeded_entity = dict(entity)
         seeded_entity["seed_origin"] = "gliner2_location_metadata_match"

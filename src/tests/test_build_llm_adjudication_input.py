@@ -6,6 +6,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from tools.build_llm_adjudication_input import (
     _extract_location_metadata_terms,
+    _matches_location_metadata,
     build_review_seed_entities,
     match_entities,
     normalize_entity_text,
@@ -43,18 +44,18 @@ class TestBuildLlmAdjudicationInput(unittest.TestCase):
             }
         ]
         baseline_only = [
-            {"text": "Rua Piauí", "label": "Location", "text_norm": "rua piaui", "ner_score": 0.91},
+            {"text": "Trindade", "label": "Location", "text_norm": "trindade", "ner_score": 0.91},
             {"text": "P2", "label": "Organization", "text_norm": "p2", "ner_score": 0.55},
         ]
         seeded = build_review_seed_entities(
             agreed_entities=agreed,
             baseline_only_entities=baseline_only,
             gliner2_only_entities=[],
-            location_metadata_terms=set(),
+            location_metadata_terms={"trindade"},
             baseline_seed_score_threshold=0.80,
             gliner2_location_min_chars=5,
         )
-        self.assertEqual([item["text"] for item in seeded], ["Rua Piauí", "Ivete Sangalo"])
+        self.assertEqual([item["text"] for item in seeded], ["Trindade", "Ivete Sangalo"])
 
     def test_extract_location_metadata_terms_and_promote_matching_gliner2_locations(self):
         row = {
@@ -75,6 +76,43 @@ class TestBuildLlmAdjudicationInput(unittest.TestCase):
             baseline_only_entities=[],
             gliner2_only_entities=gliner2_only,
             location_metadata_terms=terms,
+            baseline_seed_score_threshold=0.80,
+            gliner2_location_min_chars=5,
+        )
+        self.assertEqual([item["text"] for item in seeded], ["Cuiabá", "Trindade"])
+
+    def test_matches_location_metadata_requires_token_boundaries(self):
+        terms = {"pavuna", "rua cuiaba esquina com uruguaiana"}
+        self.assertTrue(
+            _matches_location_metadata(
+                {"text": "Cuiabá", "label": "Location", "text_norm": "cuiaba"},
+                terms,
+                min_chars=5,
+            )
+        )
+        self.assertFalse(
+            _matches_location_metadata(
+                {"text": "AVUNA", "label": "Location", "text_norm": "avuna"},
+                terms,
+                min_chars=5,
+            )
+        )
+
+    def test_build_review_seed_entities_filters_noisy_location_seeds(self):
+        seeded = build_review_seed_entities(
+            agreed_entities=[],
+            baseline_only_entities=[
+                {"text": "Gonçalo", "label": "Location", "text_norm": "goncalo", "ner_score": 0.95},
+                {"text": "bairro", "label": "Location", "text_norm": "bairro", "ner_score": 0.95},
+                {"text": "Rua Piauí", "label": "Location", "text_norm": "rua piaui", "ner_score": 0.95},
+                {"text": "Trindade", "label": "Location", "text_norm": "trindade", "ner_score": 0.95},
+            ],
+            gliner2_only_entities=[
+                {"text": "paulo", "label": "Location", "text_norm": "paulo"},
+                {"text": "Cuiabá", "label": "Location", "text_norm": "cuiaba"},
+                {"text": "da vala", "label": "Location", "text_norm": "da vala"},
+            ],
+            location_metadata_terms={"trindade", "rua cuiaba esquina com uruguaiana", "rua avenida paulo damasceno"},
             baseline_seed_score_threshold=0.80,
             gliner2_location_min_chars=5,
         )
