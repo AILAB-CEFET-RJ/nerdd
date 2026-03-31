@@ -20,6 +20,7 @@ import os
 import sys
 import time
 import unicodedata
+from collections import Counter
 from pathlib import Path
 
 import requests
@@ -478,6 +479,29 @@ def build_summary(success_rows: list[dict], error_rows: list[dict], *, model: st
     }
 
 
+def _append_jsonl_row(path: Path, row: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(row, ensure_ascii=False))
+        handle.write("\n")
+
+
+def _load_existing_rows(path: Path) -> list[dict]:
+    if not path.exists():
+        return []
+    rows = read_json_or_jsonl(path)
+    return [row for row in rows if isinstance(row, dict)]
+
+
+def _processed_source_ids(success_rows: list[dict], error_rows: list[dict]) -> set[str]:
+    processed: set[str] = set()
+    for row in success_rows + error_rows:
+        source_id = row.get("source_id")
+        if source_id is not None:
+            processed.add(str(source_id))
+    return processed
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run LLM-assisted adjudication over pseudolabel candidate review inputs.")
     parser.add_argument("--input", required=True, help="Input JSON/JSONL from build_llm_adjudication_input.py.")
@@ -517,44 +541,64 @@ def main() -> None:
     )
 
     input_path = resolve_repo_artifact_path(__file__, args.input)
+    output_path = resolve_repo_artifact_path(__file__, args.output_jsonl)
+    errors_path = resolve_repo_artifact_path(__file__, args.errors_jsonl) if args.errors_jsonl else None
+
     rows = read_json_or_jsonl(input_path)
     if args.max_records > 0:
         rows = rows[: args.max_records]
 
-    success_rows = []
-    error_rows = []
-    for index, row in enumerate(rows, start=1):
+    success_rows = _load_existing_rows(output_path)
+    error_rows = _load_existing_rows(errors_path) if errors_path else []
+    processed_source_ids = _processed_source_ids(success_rows, error_rows)
+    remaining_rows = [
+        row for row in rows if str(row.get("source_id")) not in processed_source_ids
+    ]
+
+    if processed_source_ids:
+        LOGGER.info(
+            "Resume mode: loaded %s completed rows and %s error rows; %s/%s rows remaining",
+            len(success_rows),
+            len(error_rows),
+            len(remaining_rows),
+            len(rows),
+        )
+
+    for index, row in enumerate(remaining_rows, start=1):
         try:
-            success_rows.append(
-                adjudicate_row(
-                    row,
-                    model=model_name,
-                    temperature=temperature,
-                    api_key=api_key,
-                    api_base=args.api_base,
-                    timeout_seconds=args.timeout_seconds,
-                    max_retries=args.max_retries,
-                    retry_sleep_seconds=args.retry_sleep_seconds,
-                )
+            result = adjudicate_row(
+                row,
+                model=model_name,
+                temperature=temperature,
+                api_key=api_key,
+                api_base=args.api_base,
+                timeout_seconds=args.timeout_seconds,
+                max_retries=args.max_retries,
+                retry_sleep_seconds=args.retry_sleep_seconds,
             )
-            LOGGER.info("Adjudicated %s/%s source_id=%s", index, len(rows), row.get("source_id"))
+            success_rows.append(result)
+            _append_jsonl_row(output_path, result)
+            LOGGER.info(
+                "Adjudicated %s/%s remaining; total completed=%s source_id=%s",
+                index,
+                len(remaining_rows),
+                len(success_rows),
+                row.get("source_id"),
+            )
         except Exception as exc:  # pragma: no cover - exercised in integration
-            error_rows.append(
-                {
-                    "source_id": row.get("source_id"),
-                    "error": str(exc),
-                    "_source": row,
-                }
-            )
+            error_row = {
+                "source_id": row.get("source_id"),
+                "error": str(exc),
+                "_source": row,
+            }
+            error_rows.append(error_row)
+            if errors_path:
+                _append_jsonl_row(errors_path, error_row)
             LOGGER.error("Failed adjudication for source_id=%s: %s", row.get("source_id"), exc)
 
-    output_path = resolve_repo_artifact_path(__file__, args.output_jsonl)
-    write_jsonl(output_path, success_rows)
     LOGGER.info("Saved adjudication JSONL: %s", args.output_jsonl)
 
     if args.errors_jsonl:
-        errors_path = resolve_repo_artifact_path(__file__, args.errors_jsonl)
-        write_jsonl(errors_path, error_rows)
         LOGGER.info("Saved adjudication errors JSONL: %s", args.errors_jsonl)
 
     if args.summary_json:

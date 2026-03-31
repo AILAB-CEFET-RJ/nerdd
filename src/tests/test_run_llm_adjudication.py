@@ -8,6 +8,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from tools.run_llm_adjudication import (
     ADJUDICATION_SCHEMA,
     AdjudicationValidationError,
+    _load_existing_rows,
+    _processed_source_ids,
     adjudicate_row,
     build_messages,
     build_request_body,
@@ -95,6 +97,22 @@ class TestRunLlmAdjudication(unittest.TestCase):
             self.assertEqual(values["OTHER"], " spaced value ")
             self.assertEqual(resolve_model_name("", values), "gpt-4o-mini")
             self.assertEqual(resolve_temperature(None, values), 0.7)
+
+    def test_resume_helpers_load_existing_rows_and_processed_ids(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "out.jsonl"
+            output_path.write_text(
+                (
+                    '{"source_id":"tip-1","adjudication":{"decision":"reject"}}\n'
+                    '{"source_id":"tip-2","adjudication":{"decision":"accept_with_edits"}}\n'
+                ),
+                encoding="utf-8",
+            )
+            error_rows = [{"source_id": "tip-3", "error": "boom"}]
+            success_rows = _load_existing_rows(output_path)
+            processed = _processed_source_ids(success_rows, error_rows)
+            self.assertEqual(len(success_rows), 2)
+            self.assertEqual(processed, {"tip-1", "tip-2", "tip-3"})
 
     def test_resolve_model_name_prefers_cli_over_dotenv(self):
         self.assertEqual(
