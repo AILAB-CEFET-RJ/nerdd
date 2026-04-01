@@ -167,6 +167,18 @@ def render_text_with_spans(text, spans, label_colors):
     return "".join(parts)
 
 
+def render_entity_list(text, spans):
+    if not spans:
+        return "<div class='entity-list muted'>No valid entities.</div>"
+
+    items = []
+    for span in spans:
+        mention = escape(text[span["start"]:span["end"]])
+        label = escape(span["label"])
+        items.append(f"<li><code>{mention}</code> <span class='entity-kind'>({label})</span></li>")
+    return f"<div class='entity-list'><b>Entities</b><ul>{''.join(items)}</ul></div>"
+
+
 def build_html(title, rows_html, legend_html, summary_html):
     tpl = Template(
         """<!doctype html>
@@ -186,6 +198,10 @@ def build_html(title, rows_html, legend_html, summary_html):
     .report h3 { margin: 0 0 8px 0; font-size: 14px; color: #111827; }
     .report .meta { font-size: 12px; color: #6b7280; margin-bottom: 8px; }
     .report .text { line-height: 1.7; white-space: pre-wrap; }
+    .entity-list { margin-top: 10px; font-size: 13px; }
+    .entity-list ul { margin: 6px 0 0 18px; padding: 0; }
+    .entity-list li { margin: 2px 0; }
+    .entity-kind { color: #6b7280; }
     .entity { color: #fff; border-radius: 4px; padding: 0 4px; margin: 0 1px; display: inline-block; }
     .entity .tag { font-size: 10px; margin-left: 6px; opacity: 0.9; }
     .swatch { width: 28px; height: 14px; border-radius: 3px; display: inline-block; border: 1px solid #11111133; }
@@ -251,11 +267,20 @@ def render_html(rows, output_path, title, max_reports):
         text = get_text(row)
         spans = sanitize_spans(text, get_spans(row))
         rendered_text = render_text_with_spans(text, spans, label_colors)
+        entity_list_html = render_entity_list(text, spans)
+        source_id = escape(str(row.get("source_id", ""))).strip()
+        decision = escape(str(row.get("decision", ""))).strip()
+        header_bits = [f"Record #{idx}"]
+        if source_id:
+            header_bits.append(f"source_id={source_id}")
+        if decision:
+            header_bits.append(f"decision={decision}")
         rendered_rows.append(
             "<section class='report'>"
-            f"<h3>Record #{idx}</h3>"
+            f"<h3>{' | '.join(header_bits)}</h3>"
             f"<div class='meta'>entities={len(spans)}</div>"
             f"<div class='text'>{rendered_text}</div>"
+            f"{entity_list_html}"
             "</section>"
         )
 
