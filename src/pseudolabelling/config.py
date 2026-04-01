@@ -11,23 +11,14 @@ class CorpusPredictConfig:
     output_jsonl: str = "dd_corpus_large_predicted_entities.jsonl"
     stats_json: str = "corpus_prediction_stats.json"
     labels: list[str] = field(default_factory=lambda: ["Person", "Location", "Organization"])
-    text_fields: list[str] = field(
-        default_factory=lambda: [
-            "assunto",
-            "relato",
-            "bairroLocal",
-            "logradouroLocal",
-            "cidadeLocal",
-            "pontodeReferenciaLocal",
-        ]
-    )
+    text_fields: list[str] = field(default_factory=lambda: ["relato"])
     join_separator: str = ". "
     batch_size: int = 4
     max_tokens: int = 384
     score_threshold: float = 0.0
     output_score_field: str = "score_calibrated"
     preserve_original_score_field: str = "score_original"
-    keep_inference_text: bool = False
+    keep_inference_text: bool = True
 
 
 @dataclass

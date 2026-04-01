@@ -94,16 +94,7 @@ class IterativeCycleConfig:
     prediction_map_location: str = ""
     input_jsonl: str = "dd_corpus_large.json"
     labels: list[str] = field(default_factory=lambda: ["Person", "Location", "Organization"])
-    text_fields: list[str] = field(
-        default_factory=lambda: [
-            "assunto",
-            "relato",
-            "bairroLocal",
-            "logradouroLocal",
-            "cidadeLocal",
-            "pontodeReferenciaLocal",
-        ]
-    )
+    text_fields: list[str] = field(default_factory=lambda: ["relato"])
     prediction_batch_size: int = 4
     prediction_max_tokens: int = 384
     prediction_model_max_length: int = 0
@@ -214,7 +205,7 @@ def run_iterative_cycle(config: IterativeCycleConfig, script_path: str):
         score_threshold=config.prediction_threshold,
         output_score_field=config.prediction_output_score_field,
         preserve_original_score_field=config.prediction_preserve_original_score_field,
-        keep_inference_text=False,
+        keep_inference_text=True,
     )
     _run_corpus_prediction(prediction_cfg, script_path=script_path)
 

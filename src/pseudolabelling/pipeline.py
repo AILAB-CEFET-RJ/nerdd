@@ -211,6 +211,11 @@ def run_corpus_prediction(config, script_path):
 
     rows = load_jsonl(str(input_jsonl))
     LOGGER.info("Loaded %s input samples from %s", len(rows), input_jsonl)
+    if config.text_fields != ["relato"]:
+        LOGGER.warning(
+            "Non-canonical text_fields=%s detected. For this project, inference should run on relato only.",
+            config.text_fields,
+        )
 
     output_rows = []
     label_counts = Counter()
@@ -278,6 +283,7 @@ def run_corpus_prediction(config, script_path):
                 total_entities += len(entities)
 
                 output_entry = dict(row)
+                output_entry["text"] = inference_text
                 output_entry["entities"] = entities
                 if config.keep_inference_text:
                     output_entry["inference_text"] = inference_text

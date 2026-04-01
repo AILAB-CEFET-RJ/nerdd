@@ -49,7 +49,7 @@ python3 pseudolabelling/generate_corpus_predictions.py \
   --output-jsonl ./artifacts/pseudolabelling/iter01/01_predictions.jsonl \
   --stats-json ./artifacts/pseudolabelling/iter01/01_predictions_stats.json \
   --labels Person,Location,Organization \
-  --text-fields assunto,relato,bairroLocal,logradouroLocal,cidadeLocal,pontodeReferenciaLocal \
+  --text-fields relato \
   --max-tokens 384 \
   --batch-size 4 \
   --score-threshold 0.0 \
@@ -68,7 +68,7 @@ python3 pseudolabelling/run_iterative_cycle.py \
   --prediction-calibrator-path ./artifacts/calibration/base_model/calibrator.json \
   --input-jsonl dd_corpus_large.json \
   --labels Person,Location,Organization \
-  --text-fields assunto,relato,bairroLocal,logradouroLocal,cidadeLocal,pontodeReferenciaLocal \
+  --text-fields relato \
   --prediction-batch-size 4 \
   --prediction-max-tokens 384 \
   --prediction-model-max-length 384 \
@@ -250,7 +250,7 @@ Use when you want predictions based only on the report narrative.
 2. `contextual` profile (legacy-compatible / metadata-aware)
 
 ```bash
---text-fields assunto,relato,bairroLocal,logradouroLocal,cidadeLocal,pontodeReferenciaLocal
+--text-fields relato
 ```
 
 Use when downstream pseudolabelling stages also depend on metadata context from those fields.
@@ -262,7 +262,7 @@ Use when downstream pseudolabelling stages also depend on metadata context from 
 - `--output-jsonl`: output with predicted `entities`.
 - `--stats-json`: run statistics and metadata.
 - `--labels`: entity labels to predict.
-- `--text-fields`: source fields to compose inference text.
+- `--text-fields`: source fields to compose inference text. For this project, use only `relato`.
 - `--max-tokens`: tokenizer chunk size.
 - `--batch-size`: prediction batch size.
 - `--score-threshold`: minimum entity score.

@@ -26,7 +26,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from base_model_training.paths import resolve_repo_artifact_path
-from tools.inspect_dense_tips import get_spans, get_text, read_json_or_jsonl, write_jsonl
+from tools.inspect_dense_tips import get_spans, read_json_or_jsonl, write_jsonl
 
 LOGGER = logging.getLogger(__name__)
 
@@ -76,6 +76,17 @@ def _safe_float(value):
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _require_canonical_text(row: dict) -> str:
+    text = row.get("text")
+    if isinstance(text, str) and text.strip():
+        return text
+    source_id = row.get("source_id") or row.get("id") or row.get("sample_id") or "<unknown>"
+    raise ValueError(
+        f"Missing canonical 'text' field for source row {source_id}. "
+        "Upstream pseudolabelling prediction must persist text=relato so offsets remain aligned."
+    )
 
 
 def _collapse_spaces(text: str) -> str:
@@ -462,7 +473,7 @@ def build_adjudication_row(
     baseline_seed_score_threshold: float,
     gliner2_location_min_chars: int,
 ) -> dict:
-    text = get_text(row)
+    text = _require_canonical_text(row)
     location_metadata_terms = _extract_location_metadata_terms(row)
     baseline_entities = normalize_baseline_entities(get_spans(row), allowed_labels)
     gliner2_entities = normalize_gliner2_entities(gliner2_entities, allowed_labels)
