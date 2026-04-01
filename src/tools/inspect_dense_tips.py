@@ -60,7 +60,7 @@ def get_spans(row):
 
 
 def get_text(row):
-    for key in ("relato", "text", "texto", "description", "descricao"):
+    for key in ("text", "relato", "texto", "description", "descricao"):
         value = row.get(key)
         if isinstance(value, str) and value.strip():
             return value
