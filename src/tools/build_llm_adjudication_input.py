@@ -594,10 +594,7 @@ def main() -> None:
     enriched_rows = []
     counters = Counter()
     for row_index, row in enumerate(rows, start=1):
-        text = get_text(row)
-        if not text:
-            counters["skipped_no_text"] += 1
-            continue
+        text = _require_canonical_text(row)
         gliner2_entities = predict_gliner2_entities(model, text, entity_types)
         enriched_rows.append(
             build_adjudication_row(
