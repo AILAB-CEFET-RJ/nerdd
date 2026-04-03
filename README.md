@@ -47,7 +47,9 @@ pip install -r requirements.txt
 Operational note:
 
 - `data/dd_corpus_large.json` is the raw corpus.
+- `data/` should contain only canonical input datasets.
 - `artifacts/corpus_sanitization/dd_corpus_large_sanitized.jsonl` is the official pseudolabelling input.
+- derived outputs such as calibration CSVs, model checkpoints, prediction JSONL files, summaries, and HTML inspections belong under `artifacts/`
 
 ## Contributing
 

@@ -196,6 +196,7 @@ Recommended interpretation for dissertation experiments:
 - Training outputs: `artifacts/base_model_training/`
 - Pseudolabelling outputs: `artifacts/pseudolabelling/`
 - Calibration outputs: `artifacts/calibration/`
+- Canonical input datasets only: `data/`
 
 Examples:
 - `artifacts/base_model_training/smoke/run_nested_tiny/best_overall_gliner_model/`

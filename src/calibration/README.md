@@ -68,7 +68,7 @@ python3 calibration/evaluate_calibration.py \
 ## Artifact Convention
 
 Write calibration outputs under:
-- `src/artifacts/calibration/`
+- `artifacts/calibration/`
 
 ## Outputs
 

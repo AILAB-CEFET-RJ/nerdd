@@ -33,7 +33,7 @@ This folder now contains multiple subpipelines with separate documentation.
 
 ## Artifact Convention
 
-- Runtime outputs should be written under `src/artifacts/`.
+- Runtime outputs should be written under `artifacts/`.
 - Recommended training paths:
   - smoke: `artifacts/base_model_training/smoke/`
   - experiments: `artifacts/base_model_training/experiments/`

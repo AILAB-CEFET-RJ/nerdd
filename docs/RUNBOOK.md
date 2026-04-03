@@ -8,9 +8,32 @@ Operational rules for this repository:
 
 1. Prefer running commands from the repository root whenever practical.
 2. `artifacts/` is the only official artifact root.
-3. `src/artifacts/` is treated as legacy or accidental output and should not receive new runs.
-4. When running from inside `src/`, always point artifact paths to `../artifacts/...`.
-5. Prefer `python3 -m ...` for project modules such as `pseudolabelling` and `base_model_training`.
+3. When running from inside `src/`, always point artifact paths to `../artifacts/...`.
+4. Prefer `python3 -m ...` for project modules such as `pseudolabelling` and `base_model_training`.
+
+## Data Convention
+
+Operational rules for dataset and artifact ownership:
+
+1. `data/` stores only canonical input datasets.
+2. `artifacts/` stores every derived output.
+3. Never write prediction CSVs, calibration CSVs, reports, summaries, HTML viewers, JSONL predictions, or model outputs into `data/`.
+4. If a file can be regenerated from code plus canonical inputs, it belongs in `artifacts/`, not `data/`.
+
+Canonical datasets currently expected in `data/`:
+
+- `data/dd_corpus_large.json`
+- `data/dd_corpus_small_train.json`
+- `data/dd_corpus_small_calibration.json`
+- `data/dd_corpus_small_test.json`
+
+Examples of files that must go under `artifacts/`:
+
+- calibration prediction CSVs
+- calibration prediction JSONL files
+- calibrator JSON artifacts
+- training outputs and checkpoints
+- pseudolabelling predictions, rankings, adjudication outputs, and summaries
 
 ## 1) First Run
 

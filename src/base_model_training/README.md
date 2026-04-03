@@ -82,4 +82,4 @@ The nested-CV training path in `src/base_model_training/cv.py` still keeps its o
 - `nested_cv_results.json`
 - `best_overall_gliner_model/`
 - `loss_fold*_trial*.png`
-- Recommended base output root: `src/artifacts/base_model_training/`
+- Recommended base output root: `artifacts/base_model_training/`
