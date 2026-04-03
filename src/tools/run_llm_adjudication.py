@@ -21,6 +21,7 @@ import sys
 import time
 import unicodedata
 from collections import Counter
+from statistics import median
 from pathlib import Path
 
 import requests
@@ -322,6 +323,41 @@ def parse_adjudication_response(response_payload: dict) -> dict:
     return parsed
 
 
+def _extract_usage(response_payload: dict) -> dict:
+    usage = response_payload.get("usage")
+    if not isinstance(usage, dict):
+        return {}
+
+    input_tokens = _safe_float(usage.get("input_tokens"))
+    output_tokens = _safe_float(usage.get("output_tokens"))
+    total_tokens = _safe_float(usage.get("total_tokens"))
+
+    output_details = usage.get("output_tokens_details")
+    reasoning_tokens = None
+    if isinstance(output_details, dict):
+        reasoning_tokens = _safe_float(output_details.get("reasoning_tokens"))
+
+    input_details = usage.get("input_tokens_details")
+    cached_input_tokens = None
+    if isinstance(input_details, dict):
+        cached_input_tokens = _safe_float(input_details.get("cached_tokens"))
+
+    cleaned = {}
+    if input_tokens is not None:
+        cleaned["input_tokens"] = int(input_tokens)
+    if output_tokens is not None:
+        cleaned["output_tokens"] = int(output_tokens)
+    if total_tokens is not None:
+        cleaned["total_tokens"] = int(total_tokens)
+    elif input_tokens is not None or output_tokens is not None:
+        cleaned["total_tokens"] = int((input_tokens or 0) + (output_tokens or 0))
+    if reasoning_tokens is not None:
+        cleaned["reasoning_tokens"] = int(reasoning_tokens)
+    if cached_input_tokens is not None:
+        cleaned["cached_input_tokens"] = int(cached_input_tokens)
+    return cleaned
+
+
 def validate_adjudication(adjudication: dict, source_row: dict) -> dict:
     if not isinstance(adjudication, dict):
         raise AdjudicationValidationError("Adjudication payload must be a JSON object.")
@@ -426,6 +462,7 @@ def adjudicate_row(
                 "source_id": row.get("source_id"),
                 "model": model,
                 "temperature": temperature,
+                "usage": _extract_usage(response_payload),
                 "adjudication": adjudication,
                 "_source": row,
             }
@@ -441,6 +478,7 @@ def adjudicate_row(
                 "source_id": row.get("source_id"),
                 "model": model,
                 "temperature": temperature,
+                "usage": {},
                 "adjudication": {
                     "decision": "reject",
                     "review_confidence": "low",
@@ -463,6 +501,70 @@ def adjudicate_row(
     raise RuntimeError(f"Adjudication failed for source_id={row.get('source_id')}: {last_error}") from last_error
 
 
+def _usage_totals(rows: list[dict]) -> dict:
+    totals = {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cached_input_tokens": 0,
+    }
+    for row in rows:
+        usage = row.get("usage")
+        if not isinstance(usage, dict):
+            continue
+        for key in totals:
+            value = _safe_float(usage.get(key))
+            if value is not None:
+                totals[key] += int(value)
+    return totals
+
+
+def _usage_summary(rows: list[dict]) -> dict:
+    totals = _usage_totals(rows)
+    total_values = []
+    top_rows = []
+    for row in rows:
+        usage = row.get("usage")
+        if not isinstance(usage, dict):
+            continue
+        total_tokens = _safe_float(usage.get("total_tokens"))
+        if total_tokens is None:
+            continue
+        total_tokens = int(total_tokens)
+        total_values.append(total_tokens)
+        top_rows.append(
+            {
+                "source_id": row.get("source_id"),
+                "total_tokens": total_tokens,
+                "input_tokens": int(_safe_float(usage.get("input_tokens")) or 0),
+                "output_tokens": int(_safe_float(usage.get("output_tokens")) or 0),
+            }
+        )
+
+    top_rows.sort(key=lambda item: item["total_tokens"], reverse=True)
+    usage_summary = {
+        "totals": totals,
+        "records_with_usage": len(total_values),
+    }
+    if total_values:
+        usage_summary["averages"] = {
+            "input_tokens": totals["input_tokens"] / len(total_values),
+            "output_tokens": totals["output_tokens"] / len(total_values),
+            "total_tokens": totals["total_tokens"] / len(total_values),
+        }
+        sorted_totals = sorted(total_values)
+        p95_index = min(len(sorted_totals) - 1, max(0, int(len(sorted_totals) * 0.95) - 1))
+        usage_summary["distribution"] = {
+            "min_total_tokens": sorted_totals[0],
+            "median_total_tokens": int(median(sorted_totals)),
+            "p95_total_tokens": sorted_totals[p95_index],
+            "max_total_tokens": sorted_totals[-1],
+        }
+        usage_summary["top_expensive_records"] = top_rows[:20]
+    return usage_summary
+
+
 def build_summary(success_rows: list[dict], error_rows: list[dict], *, model: str, input_path: str, output_path: str) -> dict:
     decisions = {}
     for row in success_rows:
@@ -476,6 +578,7 @@ def build_summary(success_rows: list[dict], error_rows: list[dict], *, model: st
         "records_succeeded": len(success_rows),
         "records_failed": len(error_rows),
         "decision_counts": decisions,
+        "usage": _usage_summary(success_rows),
     }
 
 
@@ -517,6 +620,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-retries", type=int, default=3)
     parser.add_argument("--retry-sleep-seconds", type=float, default=2.0)
     parser.add_argument("--max-records", type=int, default=0, help="Optional cap on input rows.")
+    parser.add_argument(
+        "--budget-max-total-tokens",
+        type=int,
+        default=0,
+        help="Optional cap on cumulative total_tokens across successful records (0 = unlimited).",
+    )
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     return parser.parse_args()
 
@@ -564,7 +673,25 @@ def main() -> None:
             len(rows),
         )
 
+    usage_totals = _usage_totals(success_rows)
+    if args.budget_max_total_tokens > 0 and usage_totals["total_tokens"] >= args.budget_max_total_tokens:
+        LOGGER.warning(
+            "Token budget already exhausted before processing: used=%s budget=%s",
+            usage_totals["total_tokens"],
+            args.budget_max_total_tokens,
+        )
+        remaining_rows = []
+
     for index, row in enumerate(remaining_rows, start=1):
+        if args.budget_max_total_tokens > 0 and usage_totals["total_tokens"] >= args.budget_max_total_tokens:
+            LOGGER.warning(
+                "Stopping early due to token budget: used=%s budget=%s completed=%s remaining=%s",
+                usage_totals["total_tokens"],
+                args.budget_max_total_tokens,
+                len(success_rows),
+                len(remaining_rows) - index + 1,
+            )
+            break
         try:
             result = adjudicate_row(
                 row,
@@ -578,12 +705,19 @@ def main() -> None:
             )
             success_rows.append(result)
             _append_jsonl_row(output_path, result)
+            result_usage = result.get("usage")
+            if isinstance(result_usage, dict):
+                for key in usage_totals:
+                    value = _safe_float(result_usage.get(key))
+                    if value is not None:
+                        usage_totals[key] += int(value)
             LOGGER.info(
-                "Adjudicated %s/%s remaining; total completed=%s source_id=%s",
+                "Adjudicated %s/%s remaining; total completed=%s source_id=%s total_tokens_used=%s",
                 index,
                 len(remaining_rows),
                 len(success_rows),
                 row.get("source_id"),
+                usage_totals["total_tokens"],
             )
         except Exception as exc:  # pragma: no cover - exercised in integration
             error_row = {
