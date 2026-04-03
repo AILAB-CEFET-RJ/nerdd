@@ -635,7 +635,7 @@ Os exemplos abaixo priorizam os scripts mais operacionais do repositório.
 cd src
 python3 tools/build_calibration_dataset.py \
   --model-path ../artifacts/base_model_training/experiments/multi_lr_wd_grid_bs16_with_negatives/best_overall_gliner_model \
-  --input ../data/dd_corpus_small_test_final.json \
+  --input ../data/dd_corpus_small_calibration.json \
   --output-csv ../artifacts/calibration/multi_with_negatives/calibration_dataset.csv \
   --output-predictions-jsonl ../artifacts/calibration/multi_with_negatives/calibration_predictions.jsonl \
   --labels Person,Location,Organization \

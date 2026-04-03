@@ -66,7 +66,7 @@ It should describe calibration as:
 
 ### Context
 
-A held-out calibration subset was created from `data/dd_corpus_small_test.json`, and a global temperature-scaling calibrator was fit and then evaluated on a separate held-out final test subset.
+A held-out calibration subset is maintained as `data/dd_corpus_small_calibration.json`, and final evaluation is run on `data/dd_corpus_small_test.json`.
 
 ### Decision
 

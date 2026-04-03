@@ -48,6 +48,8 @@ This document summarizes the refactor from legacy scripts to the current modular
 ## Dataset Convention
 - Dataset is JSONL (one JSON object per line), even when extension is `.json`.
 - Current default training dataset: `../data/dd_corpus_small_train.json`.
+- Current default calibration dataset: `../data/dd_corpus_small_calibration.json`.
+- Current default final evaluation dataset: `../data/dd_corpus_small_test.json`.
 
 ## Migration Checklist
 1. Use only `python3 -m base_model_training.train_nested_kfold` and `base_model_training/evaluate_gliner.py` for training/evaluation.

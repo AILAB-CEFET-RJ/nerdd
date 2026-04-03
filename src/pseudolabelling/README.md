@@ -86,7 +86,7 @@ python3 -m pseudolabelling.run_iterative_cycle \
   --refit-epochs 10 \
   --refit-batch-size 8 \
   --evaluate-refit \
-  --eval-gt-jsonl ../data/dd_corpus_small_test_final.json \
+  --eval-gt-jsonl ../data/dd_corpus_small_test.json \
   --eval-model-max-length 384 \
   --prepare-next-iteration \
   --log-level INFO
@@ -205,7 +205,7 @@ cd src
 python3 -m pseudolabelling.evaluate_refit \
   --model-path ../artifacts/pseudolabelling/iter01/05_refit_model \
   --model-max-length 384 \
-  --gt-jsonl ../data/dd_corpus_small_test_final.json \
+  --gt-jsonl ../data/dd_corpus_small_test.json \
   --out-dir ../artifacts/pseudolabelling/iter01/06_eval_refit \
   --labels Person,Location,Organization \
   --prediction-threshold 0.05 \

@@ -40,9 +40,9 @@ HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python3 -m base_model_training.train_nes
 ```
 
 Expected outputs:
-- `../artifacts/base_model_training/smoke/run_nested_tiny/nested_cv_results.txt`
-- `../artifacts/base_model_training/smoke/run_nested_tiny/nested_cv_results.json`
-- `../artifacts/base_model_training/smoke/run_nested_tiny/best_overall_gliner_model/`
+- `artifacts/base_model_training/smoke/run_nested_tiny/nested_cv_results.txt`
+- `artifacts/base_model_training/smoke/run_nested_tiny/nested_cv_results.json`
+- `artifacts/base_model_training/smoke/run_nested_tiny/best_overall_gliner_model/`
 
 ## 3) Server Training (example with batch-size 16)
 ```bash
@@ -67,7 +67,7 @@ python3 -m base_model_training.train_nested_kfold \
 cd src
 python3 base_model_training/evaluate_gliner.py \
   --model-path ../artifacts/base_model_training/experiments/run_batch16/best_overall_gliner_model \
-  --gt-jsonl ../data/dd_corpus_small_test_final.json \
+  --gt-jsonl ../data/dd_corpus_small_test.json \
   --pred-jsonl ../artifacts/base_model_training/experiments/run_batch16/eval/pred.jsonl \
   --report-path ../artifacts/base_model_training/experiments/run_batch16/eval/report.txt \
   --calibrated-thresholds-json ../artifacts/base_model_training/experiments/run_batch16/eval/thresholds.json \
@@ -96,13 +96,19 @@ python3 -m pseudolabelling.generate_corpus_predictions \
 ```
 
 ## 6) Split Holdout For Calibration
+
+This step is only needed when rebuilding calibration and final-test splits from a pre-split dataset. In the current cleaned `data/` layout, the canonical files already exist as:
+
+- `../data/dd_corpus_small_calibration.json`
+- `../data/dd_corpus_small_test.json`
+
 ```bash
 cd src
 python3 tools/split_dataset_for_calibration.py \
   --input ../data/dd_corpus_small_test.json \
-  --calibration-output ../data/dd_corpus_small_test_calibration.json \
-  --final-test-output ../data/dd_corpus_small_test_final.json \
-  --summary-json ../data/dd_corpus_small_test_split_summary.json \
+  --calibration-output ../data/dd_corpus_small_calibration.json \
+  --final-test-output ../data/dd_corpus_small_test.json \
+  --summary-json ../data/dd_corpus_small_split_summary.json \
   --calibration-ratio 0.2 \
   --seed 42 \
   --mode random
@@ -113,8 +119,8 @@ python3 tools/split_dataset_for_calibration.py \
 cd src
 python3 tools/build_calibration_dataset.py \
   --model-path ../artifacts/base_model_training/experiments/run_batch16/best_overall_gliner_model \
-  --input ../data/dd_corpus_small_test_calibration.json \
-  --output-csv ../data/dd_corpus_small_test_calibration_predictions.csv \
+  --input ../data/dd_corpus_small_calibration.json \
+  --output-csv ../data/dd_corpus_small_calibration_predictions.csv \
   --output-predictions-jsonl ../artifacts/calibration/base_model/calibration_predictions.jsonl \
   --labels Person,Location,Organization \
   --batch-size 4 \
@@ -127,7 +133,7 @@ python3 tools/build_calibration_dataset.py \
 cd src
 python3 calibration/fit_calibrator.py \
   --method temperature-per-class \
-  --calibration-csv ../data/dd_corpus_small_test_calibration_predictions.csv \
+  --calibration-csv ../data/dd_corpus_small_calibration_predictions.csv \
   --output-calibrator ../artifacts/calibration/base_model/calibrator.json \
   --stats-json ../artifacts/calibration/base_model/fit_stats.json \
   --score-col Score \
@@ -355,7 +361,7 @@ python3 -m pseudolabelling.run_iterative_cycle \
   --refit-lr 1e-5 \
   --refit-weight-decay 0.01 \
   --evaluate-refit \
-  --eval-gt-jsonl ../data/dd_corpus_small_test_final.json \
+  --eval-gt-jsonl ../data/dd_corpus_small_test.json \
   --eval-prediction-threshold 0.05 \
   --eval-batch-size 16 \
   --eval-max-tokens 512 \
@@ -375,7 +381,7 @@ Operational note:
 
 ## 13) Controlled Refit Comparison For Dissertation Experiments
 
-Use the same final holdout `../data/dd_corpus_small_test_final.json` for both runs below.
+Use the same final holdout `../data/dd_corpus_small_test.json` for both runs below.
 
 First, measure the gain from additional supervised refit only:
 
@@ -385,7 +391,7 @@ python3 -m pseudolabelling.run_iterative_cycle \
   --run-dir ../artifacts/pseudolabelling/iter_cycle_supervised_only_t050 \
   --model-path ../artifacts/base_model_training/experiments/baseline_real_bs16_ml512/best_overall_gliner_model \
   --prediction-calibrator-path ../artifacts/calibration/base_model/calibrator.json \
-  --input-jsonl ../data/dd_corpus_small_test_calibration.jsonl \
+  --input-jsonl ../data/dd_corpus_small_calibration.json \
   --labels Person,Location,Organization \
   --text-fields text \
   --prediction-batch-size 16 \
@@ -404,7 +410,7 @@ python3 -m pseudolabelling.run_iterative_cycle \
   --refit-lr 1e-5 \
   --refit-weight-decay 0.01 \
   --evaluate-refit \
-  --eval-gt-jsonl ../data/dd_corpus_small_test_final.json \
+  --eval-gt-jsonl ../data/dd_corpus_small_test.json \
   --eval-prediction-threshold 0.05 \
   --eval-batch-size 16 \
   --eval-max-tokens 512 \
@@ -420,7 +426,7 @@ python3 -m pseudolabelling.run_iterative_cycle \
   --run-dir ../artifacts/pseudolabelling/iter_cycle_supervised_plus_pseudolabels_t050 \
   --model-path ../artifacts/base_model_training/experiments/baseline_real_bs16_ml512/best_overall_gliner_model \
   --prediction-calibrator-path ../artifacts/calibration/base_model/calibrator.json \
-  --input-jsonl ../data/dd_corpus_small_test_calibration.jsonl \
+  --input-jsonl ../data/dd_corpus_small_calibration.json \
   --labels Person,Location,Organization \
   --text-fields text \
   --prediction-batch-size 16 \
@@ -439,7 +445,7 @@ python3 -m pseudolabelling.run_iterative_cycle \
   --refit-lr 1e-5 \
   --refit-weight-decay 0.01 \
   --evaluate-refit \
-  --eval-gt-jsonl ../data/dd_corpus_small_test_final.json \
+  --eval-gt-jsonl ../data/dd_corpus_small_test.json \
   --eval-prediction-threshold 0.05 \
   --eval-batch-size 16 \
   --eval-max-tokens 512 \
