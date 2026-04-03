@@ -21,6 +21,7 @@ Regra prática:
 | `src/tools/audit_calibration_by_label.py` | auditoria | CSV de calibração | sobrescreve saída | auditar scores brutos vs calibrados por label e por validade |
 | `src/tools/build_calibration_dataset.py` | calibração | JSON, JSONL | sobrescreve saída | montar dataset de calibração a partir de previsões do modelo |
 | `src/tools/clean_generic_spans.py` | limpeza | JSON, JSONL | cuidado com `--inplace` | remover spans genéricos por banlist |
+| `src/tools/build_refit_pseudolabel_dataset.py` | conversão | JSONL de adjudicação | sobrescreve saída | projetar `06_llm_adjudicated` para um `pseudolabel_path` compatível com refit |
 | `src/tools/compare_spacy_predictions.py` | auditoria | JSON, JSONL | sobrescreve saída | comparar previsões existentes contra spaCy no mesmo conjunto |
 | `src/tools/compare_gliner_predictions.py` | auditoria | JSON, JSONL | sobrescreve saída | comparar previsões existentes contra outro modelo GLiNER no mesmo conjunto |
 | `src/tools/convert_sanity_jsonl_to_bio_csv.py` | conversão | JSONL | sobrescreve saída | converter JSONL de sanidade para CSV BIO |
@@ -232,6 +233,30 @@ Use quando:
 Dependência relevante:
 
 - `nltk`
+
+### `src/tools/build_refit_pseudolabel_dataset.py`
+
+Converte a saída de `src/tools/run_llm_adjudication.py` em um JSONL pronto para `--pseudolabel-path` do refit.
+
+Use quando:
+
+- você já tem `06_llm_adjudicated`
+- quer treinar com `small_train + pseudolabels` sem materializar um dataset combinado
+- precisa filtrar apenas decisões aprovadas pelo LLM
+
+Saídas:
+
+- JSONL com:
+  - `text`
+  - `entities`
+- summary JSON opcional com contagens por decisão e por label
+
+Entradas principais:
+
+- `--input`
+- `--output-jsonl`
+- `--summary-json` opcional
+- `--allowed-decisions` com default `accept,accept_with_edits`
 
 ## Inspeção E Profiling
 

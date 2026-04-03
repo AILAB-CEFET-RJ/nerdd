@@ -429,6 +429,41 @@ Operational note:
 - accumulation of `kept_acc_0N.jsonl` is still an external step
 - the current code now supports that artifact cleanly, but does not yet build it automatically
 
+## 12a) Converting `06_llm_adjudicated` Into Refit Pseudolabels
+
+`06_llm_adjudicated` is not yet the final refit input. The refit stage expects a JSONL with:
+
+- `text`
+- `entities`
+
+Use the converter below to keep only approved adjudications and project `adjudication.entities_final` into `entities`.
+
+```bash
+cd .
+python3 src/tools/build_refit_pseudolabel_dataset.py \
+  --input artifacts/pseudolabelling/baseline_quick_2026-04-03/06_llm_adjudicated_t06_top1000.jsonl \
+  --output-jsonl artifacts/pseudolabelling/baseline_quick_2026-04-03/07_refit_pseudolabels_t06_top1000.jsonl \
+  --summary-json artifacts/pseudolabelling/baseline_quick_2026-04-03/07_refit_pseudolabels_t06_top1000_summary.json
+```
+
+Recommended defaults:
+
+- keep `accept` and `accept_with_edits`
+- do not materialize a merged `small_train + pseudolabels` dataset
+- pass the emitted file directly through `--pseudolabel-path`
+
+Example refit invocation:
+
+```bash
+cd src
+python3 -m pseudolabelling.refit_model \
+  --pseudolabel-path ../artifacts/pseudolabelling/baseline_quick_2026-04-03/07_refit_pseudolabels_t06_top1000.jsonl \
+  --supervised-train-path ../data/dd_corpus_small_train.json \
+  --refit-mode supervised_plus_pseudolabels \
+  --base-model ../artifacts/base_model_training/experiments/baseline_quick_2026-04-03/best_quick_gliner_model \
+  --output-model-dir ../artifacts/pseudolabelling/baseline_quick_2026-04-03/08_refit_model_t06_top1000
+```
+
 ## 13) Controlled Refit Comparison For Dissertation Experiments
 
 Use the same final holdout `../data/dd_corpus_small_test.json` for both runs below.
