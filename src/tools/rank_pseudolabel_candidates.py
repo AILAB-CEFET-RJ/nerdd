@@ -5,6 +5,7 @@ import argparse
 import csv
 import json
 import sys
+import unicodedata
 from collections import Counter
 from html import escape
 from pathlib import Path
@@ -16,6 +17,16 @@ from tools.render_ner_html import build_html, build_label_colors, render_text_wi
 
 DEFAULT_RECORD_SCORE_FIELDS = ("record_score", "record_score_context_boosted", "score_relato_confianca")
 DEFAULT_ENTITY_SCORE_FIELDS = ("score_context_boosted", "score_calibrated", "score", "score_ts")
+DEFAULT_GENERIC_ENTITY_TEXTS = (
+    ".",
+    ",",
+    "urgente",
+    "hurgente",
+    "batalhao",
+    "batalhão",
+    "p2",
+    "comandante geral",
+)
 
 
 def _safe_float(value):
@@ -29,6 +40,20 @@ def _parse_csv(raw_value):
     if not raw_value:
         return []
     return [piece.strip() for piece in str(raw_value).split(",") if piece.strip()]
+
+
+def _strip_accents(text):
+    normalized = unicodedata.normalize("NFKD", str(text))
+    return "".join(char for char in normalized if not unicodedata.combining(char))
+
+
+def _normalize_entity_text(text):
+    text = " ".join(str(text).strip().lower().split())
+    text = _strip_accents(text)
+    return text.strip(" \t\r\n.,;:!?()[]{}\"'")
+
+
+DEFAULT_GENERIC_ENTITY_TEXTS_NORMALIZED = {_normalize_entity_text(value) for value in DEFAULT_GENERIC_ENTITY_TEXTS}
 
 
 def _pick_record_score(row, score_fields):
@@ -130,7 +155,16 @@ def build_candidate(
     short_span_ratio = (short_span_count / entity_count) if entity_count else 0.0
     entity_density_per_1k_chars = (entity_count * 1000.0 / text_length) if text_length > 0 else 0.0
     organization_ratio = (label_counts.get("Organization", 0) / entity_count) if entity_count else 0.0
+    location_ratio = (label_counts.get("Location", 0) / entity_count) if entity_count else 0.0
     location_max_score = max(location_scores) if location_scores else 0.0
+    generic_entity_texts = sorted(
+        {
+            normalized
+            for entity in entities
+            for normalized in [_normalize_entity_text(entity.get("text", ""))]
+            if normalized and normalized in DEFAULT_GENERIC_ENTITY_TEXTS_NORMALIZED
+        }
+    )
 
     effective_record_score = record_score if record_score is not None else mean_entity_score
     quality_score = _compute_candidate_quality(
@@ -162,6 +196,8 @@ def build_candidate(
         "short_span_ratio": short_span_ratio,
         "location_max_score": location_max_score,
         "organization_ratio": organization_ratio,
+        "location_ratio": location_ratio,
+        "generic_entity_texts": generic_entity_texts,
         "label_counts": dict(label_counts),
     }
     return candidate
@@ -174,7 +210,10 @@ def keep_candidate(
     min_entities,
     max_entities,
     min_text_length,
+    max_low_score_share,
+    max_location_ratio,
     max_short_span_ratio,
+    drop_generic_entity_texts,
     required_labels,
 ):
     meta = candidate["_candidate_rank"]
@@ -189,8 +228,14 @@ def keep_candidate(
         return False, "entity_count"
     if min_text_length > 0 and meta["text_length"] < min_text_length:
         return False, "text_length"
+    if meta["low_score_share"] > max_low_score_share:
+        return False, "low_score_share"
+    if meta["location_ratio"] > max_location_ratio:
+        return False, "location_ratio"
     if meta["short_span_ratio"] > max_short_span_ratio:
         return False, "short_span_ratio"
+    if drop_generic_entity_texts and meta["generic_entity_texts"]:
+        return False, "generic_entity_texts"
     if required_labels and not any(label_counts.get(label, 0) > 0 for label in required_labels):
         return False, "required_labels"
     return True, ""
@@ -206,7 +251,10 @@ def rank_candidates(
     min_entities,
     max_entities,
     min_text_length,
+    max_low_score_share,
+    max_location_ratio,
     max_short_span_ratio,
+    drop_generic_entity_texts,
     short_span_max_chars,
     high_entity_score_threshold,
     low_entity_score_threshold,
@@ -232,7 +280,10 @@ def rank_candidates(
             min_entities=min_entities,
             max_entities=max_entities,
             min_text_length=min_text_length,
+            max_low_score_share=max_low_score_share,
+            max_location_ratio=max_location_ratio,
             max_short_span_ratio=max_short_span_ratio,
+            drop_generic_entity_texts=drop_generic_entity_texts,
             required_labels=required_labels,
         )
         if not ok:
@@ -378,7 +429,10 @@ def build_summary(rows, counters, args):
             "min_entities": args.min_entities,
             "max_entities": args.max_entities,
             "min_text_length": args.min_text_length,
+            "max_low_score_share": args.max_low_score_share,
+            "max_location_ratio": args.max_location_ratio,
             "max_short_span_ratio": args.max_short_span_ratio,
+            "drop_generic_entity_texts": args.drop_generic_entity_texts,
             "required_labels": _parse_csv(args.required_labels),
         },
         "ranking": {
@@ -393,7 +447,10 @@ def build_summary(rows, counters, args):
             "min_entities": counters["dropped_min_entities"],
             "entity_count": counters["dropped_entity_count"],
             "text_length": counters["dropped_text_length"],
+            "low_score_share": counters["dropped_low_score_share"],
+            "location_ratio": counters["dropped_location_ratio"],
             "short_span_ratio": counters["dropped_short_span_ratio"],
+            "generic_entity_texts": counters["dropped_generic_entity_texts"],
             "required_labels": counters["dropped_required_labels"],
         },
         "selected_stats": {
@@ -429,6 +486,8 @@ def parse_args():
     parser.add_argument("--min-entities", type=int, default=0, help="Minimum entities per tip required to keep (0 = disabled).")
     parser.add_argument("--max-entities", type=int, default=0, help="Maximum entities per tip allowed before dropping (0 = unlimited).")
     parser.add_argument("--min-text-length", type=int, default=0, help="Minimum text length in characters required to keep (0 = disabled).")
+    parser.add_argument("--max-low-score-share", type=float, default=1.0, help="Maximum allowed share of low-score entities before dropping.")
+    parser.add_argument("--max-location-ratio", type=float, default=1.0, help="Maximum allowed share of Location entities before dropping.")
     parser.add_argument(
         "--max-short-span-ratio",
         type=float,
@@ -453,6 +512,11 @@ def parse_args():
         default="",
         help="Optional comma-separated labels; candidate must contain at least one of them.",
     )
+    parser.add_argument(
+        "--drop-generic-entity-texts",
+        action="store_true",
+        help="Drop candidates containing generic normalized entity texts such as urgente, batalhao, p2, or punctuation-only spans.",
+    )
     return parser.parse_args()
 
 
@@ -468,7 +532,10 @@ def main():
         min_entities=args.min_entities,
         max_entities=args.max_entities,
         min_text_length=args.min_text_length,
+        max_low_score_share=args.max_low_score_share,
+        max_location_ratio=args.max_location_ratio,
         max_short_span_ratio=args.max_short_span_ratio,
+        drop_generic_entity_texts=args.drop_generic_entity_texts,
         short_span_max_chars=args.short_span_max_chars,
         high_entity_score_threshold=args.high_entity_score_threshold,
         low_entity_score_threshold=args.low_entity_score_threshold,
