@@ -330,6 +330,8 @@ Saídas:
 
 Executa um modelo GLiNER2 base ou GLiNER2 + LoRA em um dataset anotado e gera revisão lado a lado.
 
+Aceita `--model-path` como repo id do Hugging Face ou caminho local real.
+
 Use quando:
 
 - quer comparar GLiNER2 com o baseline atual usando o mesmo holdout anotado

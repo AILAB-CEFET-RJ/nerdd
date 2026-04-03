@@ -43,6 +43,15 @@ def _normalize_entity_types(labels):
     return entity_types
 
 
+def _resolve_model_path(raw_value):
+    candidate = Path(str(raw_value))
+    if candidate.is_absolute() or candidate.exists():
+        return str(candidate)
+    if "/" in str(raw_value) or "\\" in str(raw_value):
+        return str(raw_value)
+    return str(resolve_repo_artifact_path(__file__, raw_value))
+
+
 def predict_entities_for_texts(model, texts, entity_types):
     return [predict_entities_for_text(model, text, entity_types) for text in texts]
 
@@ -79,8 +88,8 @@ def main():
     gt_path = resolve_repo_artifact_path(__file__, args.gt_jsonl)
     rows = load_gt_jsonl_strict(str(gt_path))
     model = load_gliner2_model(
-        str(resolve_repo_artifact_path(__file__, args.model_path)),
-        adapter_dir=str(resolve_repo_artifact_path(__file__, args.adapter_dir)) if args.adapter_dir else "",
+        _resolve_model_path(args.model_path),
+        adapter_dir=_resolve_model_path(args.adapter_dir) if args.adapter_dir else "",
         logger=LOGGER,
         context="review",
     )
