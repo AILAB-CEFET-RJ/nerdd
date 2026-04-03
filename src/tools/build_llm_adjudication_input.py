@@ -6,8 +6,10 @@ It treats the existing predictions in the input rows as the baseline and augment
 each record with GLiNER2 base predictions plus agreement/conflict metadata.
 
 Typical use case:
-- input: ranked pseudolabel candidates JSONL produced from the baseline pipeline
-- process: run GLiNER2 base on the same texts, match entities conservatively
+- input: ranked pseudolabel candidates JSONL produced from the baseline pipeline,
+  optionally already enriched with explicit `gliner2_entities`
+- process: reuse explicit GLiNER2 predictions when available, otherwise run GLiNER2
+  on the same texts and match entities conservatively
 - output: JSONL containing baseline entities, GLiNER2 entities, agreements,
   conflicts, review seeds, and per-record summary metrics
 """
@@ -540,6 +542,7 @@ def build_summary(rows: list[dict], counters: Counter, args: argparse.Namespace)
         "records_total": counters["records_total"],
         "records_emitted": len(rows),
         "gliner2_model": args.gliner2_model,
+        "gliner2_source": counters.get("gliner2_source", "inline_inference"),
         "labels": _parse_csv(args.labels) or list(DEFAULT_LABELS),
         "entity_types": _parse_csv(args.entity_types) or list(DEFAULT_ENTITY_TYPES),
         "summary": {
@@ -558,7 +561,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--input", required=True, help="Input JSON or JSONL with baseline candidate rows and entities.")
     parser.add_argument("--output-jsonl", required=True, help="Output JSONL enriched with GLiNER2 predictions and matching metadata.")
     parser.add_argument("--summary-json", default="", help="Optional summary JSON.")
-    parser.add_argument("--gliner2-model", default="fastino/gliner2-base-v1", help="HF repo id or local path for GLiNER2 base.")
+    parser.add_argument("--gliner2-model", default="fastino/gliner2-base-v1", help="HF repo id or local path for GLiNER2 base. Used only when input rows do not already carry gliner2_entities.")
     parser.add_argument("--entity-types", default="person,location,organization", help="Comma-separated GLiNER2 entity types.")
     parser.add_argument("--labels", default="Person,Location,Organization", help="Comma-separated allowed output labels.")
     parser.add_argument("--adapter-dir", default="", help="Optional GLiNER2 adapter directory.")
@@ -580,22 +583,34 @@ def main() -> None:
 
     allowed_labels = set(_parse_csv(args.labels) or DEFAULT_LABELS)
     entity_types = _parse_csv(args.entity_types) or list(DEFAULT_ENTITY_TYPES)
+    counters = Counter()
 
-    from gliner2_inference import predict_entities_for_text as predict_gliner2_entities
-    from gliner2_loader import load_gliner2_model
+    use_precomputed_gliner2 = any(isinstance(row.get("gliner2_entities"), list) for row in rows)
+    model = None
+    predict_gliner2_entities = None
 
-    model = load_gliner2_model(
-        args.gliner2_model,
-        adapter_dir=args.adapter_dir,
-        logger=LOGGER,
-        context="llm adjudication input",
-    )
+    if use_precomputed_gliner2:
+        counters["gliner2_source"] = "precomputed_entities"
+        LOGGER.info("Using precomputed gliner2_entities from input rows.")
+    else:
+        counters["gliner2_source"] = "inline_inference"
+        from gliner2_inference import predict_entities_for_text as predict_gliner2_entities
+        from gliner2_loader import load_gliner2_model
+
+        model = load_gliner2_model(
+            args.gliner2_model,
+            adapter_dir=args.adapter_dir,
+            logger=LOGGER,
+            context="llm adjudication input",
+        )
 
     enriched_rows = []
-    counters = Counter()
     for row_index, row in enumerate(rows, start=1):
         text = _require_canonical_text(row)
-        gliner2_entities = predict_gliner2_entities(model, text, entity_types)
+        if isinstance(row.get("gliner2_entities"), list):
+            gliner2_entities = row.get("gliner2_entities") or []
+        else:
+            gliner2_entities = predict_gliner2_entities(model, text, entity_types)
         enriched_rows.append(
             build_adjudication_row(
                 row,
