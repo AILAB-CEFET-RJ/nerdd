@@ -74,11 +74,11 @@ cd src
 python3 pseudolabelling/generate_corpus_predictions.py \
   --model-path ./artifacts/base_model_training/experiments/run_batch16/best_overall_gliner_model \
   --model-max-length 384 \
-  --input-jsonl ../data/dd_corpus_large.json \
+  --input-jsonl ../artifacts/corpus_sanitization/dd_corpus_large_sanitized.jsonl \
   --output-jsonl ./artifacts/pseudolabelling/iter01/01_predictions.jsonl \
   --stats-json ./artifacts/pseudolabelling/iter01/01_predictions_stats.json \
   --labels Person,Location,Organization \
-  --text-fields assunto,relato,bairroLocal,logradouroLocal,cidadeLocal,pontodeReferenciaLocal \
+  --text-fields relato \
   --max-tokens 384 \
   --batch-size 4 \
   --score-threshold 0.0 \
@@ -134,34 +134,54 @@ python3 pseudolabelling/generate_corpus_predictions.py \
   --model-path ./artifacts/base_model_training/experiments/run_batch16/best_overall_gliner_model \
   --model-max-length 384 \
   --calibrator-path ./artifacts/calibration/base_model/calibrator.json \
-  --input-jsonl ../data/dd_corpus_large.json \
+  --input-jsonl ../artifacts/corpus_sanitization/dd_corpus_large_sanitized.jsonl \
   --output-jsonl ./artifacts/pseudolabelling/iter01/01_predictions.jsonl \
   --stats-json ./artifacts/pseudolabelling/iter01/01_predictions_stats.json \
   --labels Person,Location,Organization \
-  --text-fields assunto,relato,bairroLocal,logradouroLocal,cidadeLocal,pontodeReferenciaLocal \
+  --text-fields relato \
   --max-tokens 384 \
   --batch-size 4 \
   --score-threshold 0.0 \
   --log-level INFO
 ```
 
-## 10) Sample A Reproducible Fraction Of The Large Corpus
+## 10) Sanitize The Large Corpus Before Pseudolabelling
+
+Promote a deduplicated and conservatively filtered corpus before running expensive large-corpus inference.
+
+```bash
+cd .
+python3 src/tools/sanitize_dd_corpus.py \
+  --input data/dd_corpus_large.json \
+  --output-sanitized-jsonl artifacts/corpus_sanitization/dd_corpus_large_sanitized.jsonl \
+  --output-dropped-jsonl artifacts/corpus_sanitization/dd_corpus_large_dropped_safe.jsonl \
+  --output-flagged-jsonl artifacts/corpus_sanitization/dd_corpus_large_flagged_review.jsonl \
+  --summary-json artifacts/corpus_sanitization/dd_corpus_large_sanitization_summary.json
+```
+
+Operational convention:
+
+- `data/dd_corpus_large.json` remains the raw corpus.
+- `artifacts/corpus_sanitization/dd_corpus_large_sanitized.jsonl` is the official pseudolabelling input.
+- `artifacts/corpus_sanitization/dd_corpus_large_flagged_review.jsonl` is held out for later inspection.
+
+## 11) Sample A Reproducible Fraction Of The Large Corpus
 
 Before running expensive pseudolabelling experiments on the full large corpus, create a fixed sample to study the score distribution and choose a threshold budget more safely.
 
 ```bash
 cd .
 python3 src/tools/sample_large_corpus.py \
-  --input data/dd_corpus_large.json \
-  --output-jsonl data/dd_corpus_large_sample_10k.jsonl \
+  --input artifacts/corpus_sanitization/dd_corpus_large_sanitized.jsonl \
+  --output-jsonl artifacts/corpus_sanitization/dd_corpus_large_sanitized_sample_10k.jsonl \
   --sample-size 10000 \
   --seed 42 \
-  --summary-json data/dd_corpus_large_sample_10k_summary.json
+  --summary-json artifacts/corpus_sanitization/dd_corpus_large_sanitized_sample_10k_summary.json
 ```
 
 Recommended use:
 
-- run prediction, context boost, and record scoring on `data/dd_corpus_large_sample_10k.jsonl`
+- run prediction, context boost, and record scoring on `artifacts/corpus_sanitization/dd_corpus_large_sanitized_sample_10k.jsonl`
 - inspect the resulting score distribution
 - choose the kept/discarded threshold based on the observed volume of candidate reports
 
@@ -184,9 +204,9 @@ cd src
 python3 tools/profile_pseudolabelling_inference.py \
   --model-path ./artifacts/base_model_training/experiments/baseline_real_bs16_ml512/best_overall_gliner_model \
   --model-max-length 384 \
-  --input-jsonl ../data/dd_corpus_large_sample_10k.jsonl \
+  --input-jsonl ../artifacts/corpus_sanitization/dd_corpus_large_sanitized_sample_10k.jsonl \
   --labels Person,Location,Organization \
-  --text-fields assunto,relato,bairroLocal,logradouroLocal,cidadeLocal,pontodeReferenciaLocal \
+  --text-fields relato \
   --batch-size 16 \
   --max-tokens 512 \
   --score-threshold 0.0 \
@@ -210,18 +230,18 @@ Inference knobs:
 - `--max-tokens`
   - used by the pseudolabelling pipeline to chunk long texts before calling GLiNER
 
-## 11) Split The Large Corpus Into Fixed Chunks For Iterative Experiments
+## 12) Split The Large Corpus Into Fixed Chunks For Iterative Experiments
 
 When comparing single-shot pseudolabelling against iterative pseudolabelling, split the large corpus into fixed JSONL chunks first. This keeps chunk boundaries reproducible and prevents ad hoc slicing during long-running experiments.
 
 ```bash
 cd .
 python3 src/tools/split_large_corpus_into_chunks.py \
-  --input data/dd_corpus_large.json \
-  --output-dir data/dd_corpus_large_chunks_50k \
+  --input artifacts/corpus_sanitization/dd_corpus_large_sanitized.jsonl \
+  --output-dir artifacts/corpus_sanitization/dd_corpus_large_sanitized_chunks_50k \
   --chunk-size 50000 \
-  --chunk-prefix dd_corpus_large_chunk \
-  --summary-json data/dd_corpus_large_chunks_50k_summary.json
+  --chunk-prefix dd_corpus_large_sanitized_chunk \
+  --summary-json artifacts/corpus_sanitization/dd_corpus_large_sanitized_chunks_50k_summary.json
 ```
 
 Recommended use:
@@ -252,9 +272,9 @@ Chunk summary expectations:
 Recommended artifact convention for iterative experiments:
 
 - raw chunks:
-  - `data/dd_corpus_large_chunks_50k/dd_corpus_large_chunk_01.jsonl`
-  - `data/dd_corpus_large_chunks_50k/dd_corpus_large_chunk_02.jsonl`
-  - `data/dd_corpus_large_chunks_50k/dd_corpus_large_chunk_03.jsonl`
+  - `artifacts/corpus_sanitization/dd_corpus_large_sanitized_chunks_50k/dd_corpus_large_sanitized_chunk_01.jsonl`
+  - `artifacts/corpus_sanitization/dd_corpus_large_sanitized_chunks_50k/dd_corpus_large_sanitized_chunk_02.jsonl`
+  - `artifacts/corpus_sanitization/dd_corpus_large_sanitized_chunks_50k/dd_corpus_large_sanitized_chunk_03.jsonl`
 - per-iteration runs:
   - `src/artifacts/pseudolabelling/iterative_chunks_t030/iter_01/`
   - `src/artifacts/pseudolabelling/iterative_chunks_t030/iter_02/`
@@ -305,9 +325,9 @@ python3 -m pseudolabelling.run_iterative_cycle \
   --run-dir ./artifacts/pseudolabelling/iterative_chunks_t030/iter_02 \
   --model-path ./artifacts/base_model_training/experiments/baseline_real_bs16_ml512/best_overall_gliner_model \
   --prediction-calibrator-path ./artifacts/calibration/base_model/calibrator.json \
-  --input-jsonl ../data/dd_corpus_large_chunks_50k/dd_corpus_large_chunk_02.jsonl \
+  --input-jsonl ../artifacts/corpus_sanitization/dd_corpus_large_sanitized_chunks_50k/dd_corpus_large_sanitized_chunk_02.jsonl \
   --labels Person,Location,Organization \
-  --text-fields assunto,relato,bairroLocal,logradouroLocal,cidadeLocal,pontodeReferenciaLocal \
+  --text-fields relato \
   --prediction-batch-size 16 \
   --prediction-max-tokens 512 \
   --prediction-threshold 0.0 \

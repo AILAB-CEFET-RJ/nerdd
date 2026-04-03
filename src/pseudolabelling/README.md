@@ -2,6 +2,12 @@
 
 Inference-only pipeline to label a large unlabeled corpus using a trained model.
 
+For this project, large-corpus pseudolabelling should run over the sanitized artifact:
+
+- `../artifacts/corpus_sanitization/dd_corpus_large_sanitized.jsonl`
+
+The raw corpus `../data/dd_corpus_large.json` remains a source artifact, not the official pseudolabelling input.
+
 ## Entrypoint
 
 - `run_iterative_cycle.py` (new unified orchestrator)
@@ -45,7 +51,7 @@ python3 pseudolabelling/generate_corpus_predictions.py \
   --model-path ./artifacts/base_model_training/smoke/run_nested_tiny/best_overall_gliner_model \
   --model-max-length 384 \
   --calibrator-path ./artifacts/calibration/base_model/calibrator.json \
-  --input-jsonl dd_corpus_large.json \
+  --input-jsonl ../artifacts/corpus_sanitization/dd_corpus_large_sanitized.jsonl \
   --output-jsonl ./artifacts/pseudolabelling/iter01/01_predictions.jsonl \
   --stats-json ./artifacts/pseudolabelling/iter01/01_predictions_stats.json \
   --labels Person,Location,Organization \
@@ -66,7 +72,7 @@ python3 pseudolabelling/run_iterative_cycle.py \
   --run-dir ./artifacts/pseudolabelling/iter_cycle_01 \
   --model-path ./artifacts/base_model_training/experiments/run_batch16/best_overall_gliner_model \
   --prediction-calibrator-path ./artifacts/calibration/base_model/calibrator.json \
-  --input-jsonl dd_corpus_large.json \
+  --input-jsonl ../artifacts/corpus_sanitization/dd_corpus_large_sanitized.jsonl \
   --labels Person,Location,Organization \
   --text-fields relato \
   --prediction-batch-size 4 \

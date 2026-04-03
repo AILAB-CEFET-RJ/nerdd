@@ -40,11 +40,30 @@
 3. Calibrate thresholds by label.
 4. Generate classification report and per-class TP/FP/FN summary.
 
+## Corpus Sanitization Flow (`src/tools/sanitize_dd_corpus.py`)
+1. Read the raw large corpus from `data/dd_corpus_large.json`.
+2. Use `relato` as the canonical narrative field for sanitization decisions.
+3. Route rows into:
+   - sanitized kept rows,
+   - safe drops,
+   - flagged-review rows.
+4. Remove low-risk waste before pseudolabelling:
+   - empty or punctuation-only reports,
+   - exact duplicates,
+   - normalized duplicates,
+   - extreme-length rows.
+5. Preserve suspicious but potentially useful rows in a separate flagged artifact.
+6. Save:
+   - `artifacts/corpus_sanitization/dd_corpus_large_sanitized.jsonl`
+   - `artifacts/corpus_sanitization/dd_corpus_large_dropped_safe.jsonl`
+   - `artifacts/corpus_sanitization/dd_corpus_large_flagged_review.jsonl`
+   - `artifacts/corpus_sanitization/dd_corpus_large_sanitization_summary.json`
+
 ## Pseudolabelling Flow (`pseudolabelling/generate_corpus_predictions.py`)
 1. Load trained model from nested-CV output.
 2. Optionally load a persisted calibrator artifact.
-3. Read large input corpus (JSONL).
-4. Build inference text from configured source fields.
+3. Read the official sanitized large-corpus input JSONL.
+4. Build inference text from the configured source fields. For this project, the canonical inference text is `relato`.
 5. Chunk long texts by tokenizer length and run entity prediction.
 6. Merge chunk-level offsets into full-text offsets.
 7. Optionally write calibrated score fields alongside raw scores.
@@ -118,7 +137,7 @@ Supporting utility:
 
 Typical iterative structure:
 
-1. split `data/dd_corpus_large.json` into fixed chunks
+1. split `artifacts/corpus_sanitization/dd_corpus_large_sanitized.jsonl` into fixed chunks
 2. run prediction, context boost, scoring, and split on `chunk_01`
 3. save `kept_acc_01.jsonl`
 4. refit on `supervised + kept_acc_01`

@@ -11,6 +11,7 @@ NER pipeline for the Disque Denúncia context, organized into training, calibrat
 - `src/tools/`: auxiliary utilities.
 - `docs/`: operational and architectural documentation.
 - `data/`: training, test, and calibration datasets.
+- `artifacts/corpus_sanitization/`: derived large-corpus artifacts promoted for pseudolabelling input.
 
 ## Prerequisites
 
@@ -40,7 +41,13 @@ pip install -r requirements.txt
 
 1. Train the base model in `src/base_model_training/`.
 2. Build a labeled calibration subset and fit a reusable calibrator artifact in `src/calibration/`.
-3. Run large-corpus prediction in `src/pseudolabelling/`, optionally applying the calibrator during inference.
+3. Sanitize the raw large corpus with `src/tools/sanitize_dd_corpus.py`.
+4. Run large-corpus prediction in `src/pseudolabelling/`, optionally applying the calibrator during inference, using `artifacts/corpus_sanitization/dd_corpus_large_sanitized.jsonl`.
+
+Operational note:
+
+- `data/dd_corpus_large.json` is the raw corpus.
+- `artifacts/corpus_sanitization/dd_corpus_large_sanitized.jsonl` is the official pseudolabelling input.
 
 ## Contributing
 
