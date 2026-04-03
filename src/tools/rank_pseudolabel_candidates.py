@@ -167,15 +167,28 @@ def build_candidate(
     return candidate
 
 
-def keep_candidate(candidate, *, min_record_score, max_entities, max_short_span_ratio, required_labels):
+def keep_candidate(
+    candidate,
+    *,
+    min_record_score,
+    min_entities,
+    max_entities,
+    min_text_length,
+    max_short_span_ratio,
+    required_labels,
+):
     meta = candidate["_candidate_rank"]
     label_counts = meta["label_counts"]
     record_score = meta["record_score"]
 
     if record_score is not None and record_score < min_record_score:
         return False, "record_score"
+    if min_entities > 0 and meta["entity_count"] < min_entities:
+        return False, "min_entities"
     if max_entities > 0 and meta["entity_count"] > max_entities:
         return False, "entity_count"
+    if min_text_length > 0 and meta["text_length"] < min_text_length:
+        return False, "text_length"
     if meta["short_span_ratio"] > max_short_span_ratio:
         return False, "short_span_ratio"
     if required_labels and not any(label_counts.get(label, 0) > 0 for label in required_labels):
@@ -190,7 +203,9 @@ def rank_candidates(
     entity_score_fields,
     label_field,
     min_record_score,
+    min_entities,
     max_entities,
+    min_text_length,
     max_short_span_ratio,
     short_span_max_chars,
     high_entity_score_threshold,
@@ -214,7 +229,9 @@ def rank_candidates(
         ok, reason = keep_candidate(
             candidate,
             min_record_score=min_record_score,
+            min_entities=min_entities,
             max_entities=max_entities,
+            min_text_length=min_text_length,
             max_short_span_ratio=max_short_span_ratio,
             required_labels=required_labels,
         )
@@ -358,7 +375,9 @@ def build_summary(rows, counters, args):
         "top_n": args.top_n,
         "filters": {
             "min_record_score": args.min_record_score,
+            "min_entities": args.min_entities,
             "max_entities": args.max_entities,
+            "min_text_length": args.min_text_length,
             "max_short_span_ratio": args.max_short_span_ratio,
             "required_labels": _parse_csv(args.required_labels),
         },
@@ -371,7 +390,9 @@ def build_summary(rows, counters, args):
         },
         "dropped": {
             "record_score": counters["dropped_record_score"],
+            "min_entities": counters["dropped_min_entities"],
             "entity_count": counters["dropped_entity_count"],
+            "text_length": counters["dropped_text_length"],
             "short_span_ratio": counters["dropped_short_span_ratio"],
             "required_labels": counters["dropped_required_labels"],
         },
@@ -405,7 +426,9 @@ def parse_args():
     )
     parser.add_argument("--label-field", default="label", help="Entity label field.")
     parser.add_argument("--min-record-score", type=float, default=0.0, help="Minimum record score to keep when present.")
+    parser.add_argument("--min-entities", type=int, default=0, help="Minimum entities per tip required to keep (0 = disabled).")
     parser.add_argument("--max-entities", type=int, default=0, help="Maximum entities per tip allowed before dropping (0 = unlimited).")
+    parser.add_argument("--min-text-length", type=int, default=0, help="Minimum text length in characters required to keep (0 = disabled).")
     parser.add_argument(
         "--max-short-span-ratio",
         type=float,
@@ -442,7 +465,9 @@ def main():
         entity_score_fields=_parse_csv(args.entity_score_fields) or list(DEFAULT_ENTITY_SCORE_FIELDS),
         label_field=args.label_field,
         min_record_score=args.min_record_score,
+        min_entities=args.min_entities,
         max_entities=args.max_entities,
+        min_text_length=args.min_text_length,
         max_short_span_ratio=args.max_short_span_ratio,
         short_span_max_chars=args.short_span_max_chars,
         high_entity_score_threshold=args.high_entity_score_threshold,
