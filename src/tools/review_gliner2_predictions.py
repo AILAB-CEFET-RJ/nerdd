@@ -2,7 +2,6 @@
 """Run a GLiNER2 model on labeled data and generate side-by-side review artifacts."""
 
 import argparse
-import json
 import logging
 import sys
 from pathlib import Path
@@ -10,7 +9,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from base_model_training.paths import resolve_repo_artifact_path
-from base_model_training.io_utils import save_jsonl
 from gliner2_inference import predict_entities_for_text
 from gliner2_loader import load_gliner2_model
 from pseudolabelling.evaluate_refit_pipeline import (
@@ -18,7 +16,7 @@ from pseudolabelling.evaluate_refit_pipeline import (
     format_classification_report,
     load_gt_jsonl_strict,
 )
-from tools.review_model_predictions import build_html, enrich_rows, _summary
+from tools.review_prediction_utils import enrich_rows, write_review_artifacts
 
 LOGGER = logging.getLogger(__name__)
 
@@ -102,20 +100,11 @@ def main():
     if args.max_records > 0:
         enriched_rows = enriched_rows[: args.max_records]
 
-    comparison_jsonl = out_dir / "comparison.jsonl"
-    metrics_json = out_dir / "metrics.json"
-    summary_json = out_dir / "summary.json"
-    html_path = out_dir / "review.html"
-
-    save_jsonl(str(comparison_jsonl), enriched_rows)
-    metrics_json.write_text(json.dumps(metrics, indent=2, ensure_ascii=False), encoding="utf-8")
-    summary_json.write_text(json.dumps(_summary(enriched_rows, metrics), indent=2, ensure_ascii=False), encoding="utf-8")
-    html_path.write_text(build_html(enriched_rows, args.title, metrics), encoding="utf-8")
-
-    LOGGER.info("Saved comparison JSONL: %s", comparison_jsonl)
-    LOGGER.info("Saved metrics JSON: %s", metrics_json)
-    LOGGER.info("Saved summary JSON: %s", summary_json)
-    LOGGER.info("Saved HTML review: %s", html_path)
+    outputs = write_review_artifacts(out_dir, enriched_rows, metrics, args.title)
+    LOGGER.info("Saved comparison JSONL: %s", outputs["comparison_jsonl"])
+    LOGGER.info("Saved metrics JSON: %s", outputs["metrics_json"])
+    LOGGER.info("Saved summary JSON: %s", outputs["summary_json"])
+    LOGGER.info("Saved HTML review: %s", outputs["html_path"])
     LOGGER.info("Classification report:\n%s", format_classification_report(metrics))
 
 
