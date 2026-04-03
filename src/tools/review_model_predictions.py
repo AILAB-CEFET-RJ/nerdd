@@ -8,12 +8,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from base_model_training.evaluate import predict_entities_for_text
 from pseudolabelling.evaluate_refit_pipeline import (
     _load_gliner_model,
     compute_span_metrics,
     format_classification_report,
     load_gt_jsonl_strict,
-    predict_entities_for_texts,
 )
 from tools.review_prediction_utils import enrich_rows, write_review_artifacts
 
@@ -51,16 +51,12 @@ def main():
 
     rows = load_gt_jsonl_strict(args.gt_jsonl)
     model = _load_gliner_model(args.model_path, args.model_max_length, args.map_location)
-    texts = [row["text"] for row in rows]
     gold_spans = [row["spans"] for row in rows]
-    pred_spans = predict_entities_for_texts(
-        model=model,
-        texts=texts,
-        labels=labels,
-        batch_size=args.batch_size,
-        max_tokens=args.max_tokens,
-        threshold=args.prediction_threshold,
-    )
+    if args.batch_size != 8 or args.max_tokens != 512:
+        LOGGER.info(
+            "Ignoring --batch-size and --max-tokens to match the exact baseline final-evaluation inference path."
+        )
+    pred_spans = [predict_entities_for_text(model, row["text"], labels, args.prediction_threshold) for row in rows]
 
     metrics = compute_span_metrics(gold_spans, pred_spans, labels)
     enriched_rows = enrich_rows(rows, pred_spans)
