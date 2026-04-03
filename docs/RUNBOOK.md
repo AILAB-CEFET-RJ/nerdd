@@ -566,6 +566,108 @@ Interpretation of the `t020` result:
   - `micro_f1 +0.0308`
   - `macro_f1 +0.0324`
 
+## 13a) Operational Protocol For Experimental Pseudolabel Comparisons
+
+Use this protocol whenever a run is intended to support the experimental claim
+that pseudolabel augmentation improves NER performance.
+
+### Required Experimental Conditions
+
+Every controlled comparison must include:
+
+1. `base`
+2. `supervised_only`
+3. `supervised_plus_pseudolabels`
+
+Interpret them as:
+
+- `base -> supervised_only`
+  - effect of additional supervised fine-tuning from the baseline checkpoint
+- `base -> supervised_plus_pseudolabels`
+  - total effect of the semisupervised recipe
+- `supervised_only -> supervised_plus_pseudolabels`
+  - marginal effect of pseudolabel augmentation
+
+Do not attribute all post-refit gain over `base` to pseudolabelling.
+
+### Fixed Protocol Requirements
+
+Keep the following fixed across `supervised_only` and `supervised_plus_pseudolabels`:
+
+- same starting checkpoint
+- same supervised training corpus
+- same supervised validation split or same explicit `val_jsonl`
+- same seed
+- same learning rate
+- same batch size
+- same max length
+- same overlap
+- same patience
+- same epoch budget
+- same holdout for final evaluation
+
+Only the pseudolabel input should vary.
+
+### Refit Semantics
+
+The controlled refit comparison is not a train-from-scratch comparison.
+
+It is a paired comparison where both conditions:
+
+- start from the same baseline checkpoint
+- split supervised data first
+- keep validation supervised-only
+- append pseudolabels only to the training side
+
+### Pseudolabel Volume Schedule
+
+When the goal is to characterize the gain curve rather than just detect any
+positive signal, run more than one pseudolabel volume. Recommended schedule:
+
+- `+100`
+- `+250`
+- `+500`
+- `+1000`
+
+For the full schedule, keep the adjudicator fixed:
+
+- same adjudication model
+- same prompt
+- same schema
+- same acceptance policy
+
+### Required Reporting Per Run
+
+For each controlled run, preserve and report:
+
+- supervised train size
+- supervised validation size
+- pseudolabel rows emitted
+- pseudolabel rows actually merged into train
+- pseudolabel rows dropped by deduplication
+- pseudolabel label distribution
+- final holdout metrics
+
+Prefer keeping these artifacts:
+
+- refit stats JSON
+- train manifest JSONL
+- validation manifest JSONL
+- evaluation metrics JSON
+- evaluation summary JSON
+
+### Provisional vs Final Evidence
+
+If a run was executed before corpus cleanup, before protocol stabilization, or
+before the supervised-only control was included, mark it explicitly as:
+
+- exploratory
+- provisional
+- not final experimental evidence
+
+Those runs are still useful for deciding whether to scale adjudication or refit,
+but they should not be treated as the final answer to the research question.
+
 ## Troubleshooting
 - `Killed`: reduce `batch-size`, `max-length`, number of folds/trials.
 - HF timeout/network instability: run after cache warmup with offline env vars.

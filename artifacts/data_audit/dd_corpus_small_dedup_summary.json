@@ -1,0 +1,49 @@
+{
+  "policy": {
+    "deduplicate_key": "whitespace-collapsed + lowercase + accent-insensitive text",
+    "split_priority": [
+      "data/dd_corpus_small_test.json",
+      "data/dd_corpus_small_calibration.json",
+      "data/dd_corpus_small_train.json"
+    ],
+    "annotation_resolution": "majority span signature inside surviving duplicate group; ties broken by preferred split then earliest row"
+  },
+  "before": {
+    "data/dd_corpus_small_train.json": {
+      "rows": 4682
+    },
+    "data/dd_corpus_small_calibration.json": {
+      "rows": 212
+    },
+    "data/dd_corpus_small_test.json": {
+      "rows": 850
+    }
+  },
+  "after": {
+    "data/dd_corpus_small_train.json": {
+      "rows": 4226,
+      "rows_removed": 456
+    },
+    "data/dd_corpus_small_calibration.json": {
+      "rows": 190,
+      "rows_removed": 22
+    },
+    "data/dd_corpus_small_test.json": {
+      "rows": 792,
+      "rows_removed": 58
+    }
+  },
+  "dedup": {
+    "duplicate_text_groups_total": 141,
+    "duplicate_text_groups_with_conflict": 84,
+    "rows_removed_total": 536,
+    "rows_reannotated_total": 0,
+    "removed_by_file": {
+      "data/dd_corpus_small_train.json": 456,
+      "data/dd_corpus_small_calibration.json": 22,
+      "data/dd_corpus_small_test.json": 58
+    },
+    "reannotated_by_file": {},
+    "cross_split_text_groups": 40
+  }
+}

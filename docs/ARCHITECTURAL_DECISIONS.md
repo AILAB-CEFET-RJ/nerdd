@@ -231,6 +231,38 @@ Every pseudolabelling experiment intended to support the main dissertation hypot
 
 The third comparison is the clean estimate of the marginal contribution of pseudolabelled examples.
 
+The operational protocol for future experimental runs should therefore fix:
+
+- same starting checkpoint
+- same supervised training corpus
+- same supervised validation split or explicit `val_jsonl`
+- same seed
+- same optimizer hyperparameters
+- same final holdout
+
+Only the pseudolabel input is allowed to vary between:
+
+- `supervised_only`
+- `supervised_plus_pseudolabels`
+
+When the goal is to characterize the effect of pseudolabel volume, experiments
+should also be run as a fixed schedule such as:
+
+- `+100`
+- `+250`
+- `+500`
+- `+1000`
+
+with the adjudicator frozen across the schedule:
+
+- same adjudication model
+- same prompt
+- same schema
+- same acceptance policy
+
+This prevents the marginal effect of pseudolabel volume from being confounded
+with changes in the adjudication mechanism.
+
 ### Implications For Dissertation Wording
 
 The dissertation should not attribute all post-refit gains to pseudolabelling.
@@ -239,6 +271,13 @@ It should distinguish:
 
 - gains from additional supervised refit
 - gains from adding pseudolabelled examples on top of that supervised refit baseline
+
+Exploratory runs executed before corpus cleanup, before protocol stabilization,
+or before the supervised-only control is included should be described as:
+
+- exploratory
+- provisional
+- not final experimental evidence
 
 ### First Controlled Result
 
