@@ -177,8 +177,6 @@ def classify_row(
         dropped_reasons.append("duplicate_normalized_relato")
     elif len(relato) > max_relato_chars:
         dropped_reasons.append("relato_too_long")
-    elif _looks_like_mojibake(relato):
-        dropped_reasons.append("mojibake_suspected")
 
     if dropped_reasons:
         return "dropped_safe", dropped_reasons, record_meta
@@ -198,6 +196,8 @@ def classify_row(
         flagged_reasons.append("looks_like_document")
     if _looks_like_uppercase_short(relato):
         flagged_reasons.append("uppercase_short_relato")
+    if _looks_like_mojibake(relato):
+        flagged_reasons.append("mojibake_suspected")
 
     if flagged_reasons:
         return "flagged_review", flagged_reasons, record_meta
