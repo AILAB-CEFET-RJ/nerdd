@@ -2,6 +2,16 @@
 
 Assumes the environment from `docs/INSTALL.md` is already set up.
 
+## Artifact Convention
+
+Operational rules for this repository:
+
+1. Prefer running commands from the repository root whenever practical.
+2. `artifacts/` is the only official artifact root.
+3. `src/artifacts/` is treated as legacy or accidental output and should not receive new runs.
+4. When running from inside `src/`, always point artifact paths to `../artifacts/...`.
+5. Prefer `python3 -m ...` for project modules such as `pseudolabelling` and `base_model_training`.
+
 ## 1) First Run
 
 Use this smoke test first to validate the training stack end-to-end on a tiny dataset.
@@ -25,14 +35,14 @@ HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python3 -m base_model_training.train_nes
   --weight-decay-values 0.01 \
   --thresholds 0.6 \
   --refit-val-size 0.5 \
-  --output-dir ./artifacts/base_model_training/smoke/run_nested_tiny \
+  --output-dir ../artifacts/base_model_training/smoke/run_nested_tiny \
   --log-level INFO
 ```
 
 Expected outputs:
-- `./artifacts/base_model_training/smoke/run_nested_tiny/nested_cv_results.txt`
-- `./artifacts/base_model_training/smoke/run_nested_tiny/nested_cv_results.json`
-- `./artifacts/base_model_training/smoke/run_nested_tiny/best_overall_gliner_model/`
+- `../artifacts/base_model_training/smoke/run_nested_tiny/nested_cv_results.txt`
+- `../artifacts/base_model_training/smoke/run_nested_tiny/nested_cv_results.json`
+- `../artifacts/base_model_training/smoke/run_nested_tiny/best_overall_gliner_model/`
 
 ## 3) Server Training (example with batch-size 16)
 ```bash
@@ -48,7 +58,7 @@ python3 -m base_model_training.train_nested_kfold \
   --lr-values 1e-6,2e-6,5e-6,1e-5,2e-5,3e-5,5e-5,8e-5,1e-4,2e-4,3e-4 \
   --weight-decay-values 0.0,0.01,0.05 \
   --thresholds 0.5,0.6 \
-  --output-dir ./artifacts/base_model_training/experiments/run_batch16 \
+  --output-dir ../artifacts/base_model_training/experiments/run_batch16 \
   --log-level INFO
 ```
 
@@ -56,11 +66,11 @@ python3 -m base_model_training.train_nested_kfold \
 ```bash
 cd src
 python3 base_model_training/evaluate_gliner.py \
-  --model-path ./artifacts/base_model_training/experiments/run_batch16/best_overall_gliner_model \
+  --model-path ../artifacts/base_model_training/experiments/run_batch16/best_overall_gliner_model \
   --gt-jsonl ../data/dd_corpus_small_test_final.json \
-  --pred-jsonl ./artifacts/base_model_training/experiments/run_batch16/eval/pred.jsonl \
-  --report-path ./artifacts/base_model_training/experiments/run_batch16/eval/report.txt \
-  --calibrated-thresholds-json ./artifacts/base_model_training/experiments/run_batch16/eval/thresholds.json \
+  --pred-jsonl ../artifacts/base_model_training/experiments/run_batch16/eval/pred.jsonl \
+  --report-path ../artifacts/base_model_training/experiments/run_batch16/eval/report.txt \
+  --calibrated-thresholds-json ../artifacts/base_model_training/experiments/run_batch16/eval/thresholds.json \
   --labels Person,Location,Organization \
   --chunk-size 128 \
   --batch-size 1 \
@@ -71,12 +81,12 @@ python3 base_model_training/evaluate_gliner.py \
 ## 5) Large Corpus Prediction (inference-only)
 ```bash
 cd src
-python3 pseudolabelling/generate_corpus_predictions.py \
-  --model-path ./artifacts/base_model_training/experiments/run_batch16/best_overall_gliner_model \
+python3 -m pseudolabelling.generate_corpus_predictions \
+  --model-path ../artifacts/base_model_training/experiments/run_batch16/best_overall_gliner_model \
   --model-max-length 384 \
   --input-jsonl ../artifacts/corpus_sanitization/dd_corpus_large_sanitized.jsonl \
-  --output-jsonl ./artifacts/pseudolabelling/iter01/01_predictions.jsonl \
-  --stats-json ./artifacts/pseudolabelling/iter01/01_predictions_stats.json \
+  --output-jsonl ../artifacts/pseudolabelling/iter01/01_predictions.jsonl \
+  --stats-json ../artifacts/pseudolabelling/iter01/01_predictions_stats.json \
   --labels Person,Location,Organization \
   --text-fields relato \
   --max-tokens 384 \
@@ -102,10 +112,10 @@ python3 tools/split_dataset_for_calibration.py \
 ```bash
 cd src
 python3 tools/build_calibration_dataset.py \
-  --model-path ./artifacts/base_model_training/experiments/run_batch16/best_overall_gliner_model \
+  --model-path ../artifacts/base_model_training/experiments/run_batch16/best_overall_gliner_model \
   --input ../data/dd_corpus_small_test_calibration.json \
   --output-csv ../data/dd_corpus_small_test_calibration_predictions.csv \
-  --output-predictions-jsonl ./artifacts/calibration/base_model/calibration_predictions.jsonl \
+  --output-predictions-jsonl ../artifacts/calibration/base_model/calibration_predictions.jsonl \
   --labels Person,Location,Organization \
   --batch-size 4 \
   --max-tokens 384 \
@@ -118,8 +128,8 @@ cd src
 python3 calibration/fit_calibrator.py \
   --method temperature-per-class \
   --calibration-csv ../data/dd_corpus_small_test_calibration_predictions.csv \
-  --output-calibrator ./artifacts/calibration/base_model/calibrator.json \
-  --stats-json ./artifacts/calibration/base_model/fit_stats.json \
+  --output-calibrator ../artifacts/calibration/base_model/calibrator.json \
+  --stats-json ../artifacts/calibration/base_model/fit_stats.json \
   --score-col Score \
   --label-col Validacao \
   --class-col Label \
@@ -130,13 +140,13 @@ python3 calibration/fit_calibrator.py \
 ## 9) Large Corpus Prediction With Calibrator
 ```bash
 cd src
-python3 pseudolabelling/generate_corpus_predictions.py \
-  --model-path ./artifacts/base_model_training/experiments/run_batch16/best_overall_gliner_model \
+python3 -m pseudolabelling.generate_corpus_predictions \
+  --model-path ../artifacts/base_model_training/experiments/run_batch16/best_overall_gliner_model \
   --model-max-length 384 \
-  --calibrator-path ./artifacts/calibration/base_model/calibrator.json \
+  --calibrator-path ../artifacts/calibration/base_model/calibrator.json \
   --input-jsonl ../artifacts/corpus_sanitization/dd_corpus_large_sanitized.jsonl \
-  --output-jsonl ./artifacts/pseudolabelling/iter01/01_predictions.jsonl \
-  --stats-json ./artifacts/pseudolabelling/iter01/01_predictions_stats.json \
+  --output-jsonl ../artifacts/pseudolabelling/iter01/01_predictions.jsonl \
+  --stats-json ../artifacts/pseudolabelling/iter01/01_predictions_stats.json \
   --labels Person,Location,Organization \
   --text-fields relato \
   --max-tokens 384 \
@@ -202,7 +212,7 @@ If inference throughput degrades unexpectedly after prediction-pipeline changes,
 ```bash
 cd src
 python3 tools/profile_pseudolabelling_inference.py \
-  --model-path ./artifacts/base_model_training/experiments/baseline_real_bs16_ml512/best_overall_gliner_model \
+  --model-path ../artifacts/base_model_training/experiments/baseline_real_bs16_ml512/best_overall_gliner_model \
   --model-max-length 384 \
   --input-jsonl ../artifacts/corpus_sanitization/dd_corpus_large_sanitized_sample_10k.jsonl \
   --labels Person,Location,Organization \
@@ -211,7 +221,7 @@ python3 tools/profile_pseudolabelling_inference.py \
   --max-tokens 512 \
   --score-threshold 0.0 \
   --limit 100 \
-  --report-json ./artifacts/pseudolabelling/profile_inference_100.json
+  --report-json ../artifacts/pseudolabelling/profile_inference_100.json
 ```
 
 This probe reports:
@@ -276,13 +286,13 @@ Recommended artifact convention for iterative experiments:
   - `artifacts/corpus_sanitization/dd_corpus_large_sanitized_chunks_50k/dd_corpus_large_sanitized_chunk_02.jsonl`
   - `artifacts/corpus_sanitization/dd_corpus_large_sanitized_chunks_50k/dd_corpus_large_sanitized_chunk_03.jsonl`
 - per-iteration runs:
-  - `src/artifacts/pseudolabelling/iterative_chunks_t030/iter_01/`
-  - `src/artifacts/pseudolabelling/iterative_chunks_t030/iter_02/`
-  - `src/artifacts/pseudolabelling/iterative_chunks_t030/iter_03/`
+  - `artifacts/pseudolabelling/iterative_chunks_t030/iter_01/`
+  - `artifacts/pseudolabelling/iterative_chunks_t030/iter_02/`
+  - `artifacts/pseudolabelling/iterative_chunks_t030/iter_03/`
 - accumulated pseudolabel artifacts:
-  - `src/artifacts/pseudolabelling/iterative_chunks_t030/accumulated/kept_acc_01.jsonl`
-  - `src/artifacts/pseudolabelling/iterative_chunks_t030/accumulated/kept_acc_02.jsonl`
-  - `src/artifacts/pseudolabelling/iterative_chunks_t030/accumulated/kept_acc_03.jsonl`
+  - `artifacts/pseudolabelling/iterative_chunks_t030/accumulated/kept_acc_01.jsonl`
+  - `artifacts/pseudolabelling/iterative_chunks_t030/accumulated/kept_acc_02.jsonl`
+  - `artifacts/pseudolabelling/iterative_chunks_t030/accumulated/kept_acc_03.jsonl`
 
 ## 12) Iterative Pseudolabelling Protocol
 
@@ -322,9 +332,9 @@ Example iterative refit invocation:
 ```bash
 cd src
 python3 -m pseudolabelling.run_iterative_cycle \
-  --run-dir ./artifacts/pseudolabelling/iterative_chunks_t030/iter_02 \
-  --model-path ./artifacts/base_model_training/experiments/baseline_real_bs16_ml512/best_overall_gliner_model \
-  --prediction-calibrator-path ./artifacts/calibration/base_model/calibrator.json \
+  --run-dir ../artifacts/pseudolabelling/iterative_chunks_t030/iter_02 \
+  --model-path ../artifacts/base_model_training/experiments/baseline_real_bs16_ml512/best_overall_gliner_model \
+  --prediction-calibrator-path ../artifacts/calibration/base_model/calibrator.json \
   --input-jsonl ../artifacts/corpus_sanitization/dd_corpus_large_sanitized_chunks_50k/dd_corpus_large_sanitized_chunk_02.jsonl \
   --labels Person,Location,Organization \
   --text-fields relato \
@@ -334,8 +344,8 @@ python3 -m pseudolabelling.run_iterative_cycle \
   --record-score-field score_context_boosted \
   --split-threshold 0.30 \
   --refit-mode supervised_plus_pseudolabels \
-  --refit-base-model ./artifacts/base_model_training/experiments/baseline_real_bs16_ml512/best_overall_gliner_model \
-  --refit-pseudolabel-path ./artifacts/pseudolabelling/iterative_chunks_t030/accumulated/kept_acc_02.jsonl \
+  --refit-base-model ../artifacts/base_model_training/experiments/baseline_real_bs16_ml512/best_overall_gliner_model \
+  --refit-pseudolabel-path ../artifacts/pseudolabelling/iterative_chunks_t030/accumulated/kept_acc_02.jsonl \
   --refit-supervised-train-path ../data/dd_corpus_small_train.json \
   --refit-epochs 3 \
   --refit-patience 2 \
@@ -372,9 +382,9 @@ First, measure the gain from additional supervised refit only:
 ```bash
 cd src
 python3 -m pseudolabelling.run_iterative_cycle \
-  --run-dir ./artifacts/pseudolabelling/iter_cycle_supervised_only_t050 \
-  --model-path ./artifacts/base_model_training/experiments/baseline_real_bs16_ml512/best_overall_gliner_model \
-  --prediction-calibrator-path ./artifacts/calibration/base_model/calibrator.json \
+  --run-dir ../artifacts/pseudolabelling/iter_cycle_supervised_only_t050 \
+  --model-path ../artifacts/base_model_training/experiments/baseline_real_bs16_ml512/best_overall_gliner_model \
+  --prediction-calibrator-path ../artifacts/calibration/base_model/calibrator.json \
   --input-jsonl ../data/dd_corpus_small_test_calibration.jsonl \
   --labels Person,Location,Organization \
   --text-fields text \
@@ -384,7 +394,7 @@ python3 -m pseudolabelling.run_iterative_cycle \
   --record-score-field score_context_boosted \
   --split-threshold 0.50 \
   --refit-mode supervised_only \
-  --refit-base-model ./artifacts/base_model_training/experiments/baseline_real_bs16_ml512/best_overall_gliner_model \
+  --refit-base-model ../artifacts/base_model_training/experiments/baseline_real_bs16_ml512/best_overall_gliner_model \
   --refit-supervised-train-path ../data/dd_corpus_small_train.json \
   --refit-epochs 3 \
   --refit-patience 2 \
@@ -407,9 +417,9 @@ Then, measure the full semisupervised recipe:
 ```bash
 cd src
 python3 -m pseudolabelling.run_iterative_cycle \
-  --run-dir ./artifacts/pseudolabelling/iter_cycle_supervised_plus_pseudolabels_t050 \
-  --model-path ./artifacts/base_model_training/experiments/baseline_real_bs16_ml512/best_overall_gliner_model \
-  --prediction-calibrator-path ./artifacts/calibration/base_model/calibrator.json \
+  --run-dir ../artifacts/pseudolabelling/iter_cycle_supervised_plus_pseudolabels_t050 \
+  --model-path ../artifacts/base_model_training/experiments/baseline_real_bs16_ml512/best_overall_gliner_model \
+  --prediction-calibrator-path ../artifacts/calibration/base_model/calibrator.json \
   --input-jsonl ../data/dd_corpus_small_test_calibration.jsonl \
   --labels Person,Location,Organization \
   --text-fields text \
@@ -419,7 +429,7 @@ python3 -m pseudolabelling.run_iterative_cycle \
   --record-score-field score_context_boosted \
   --split-threshold 0.50 \
   --refit-mode supervised_plus_pseudolabels \
-  --refit-base-model ./artifacts/base_model_training/experiments/baseline_real_bs16_ml512/best_overall_gliner_model \
+  --refit-base-model ../artifacts/base_model_training/experiments/baseline_real_bs16_ml512/best_overall_gliner_model \
   --refit-supervised-train-path ../data/dd_corpus_small_train.json \
   --refit-epochs 3 \
   --refit-patience 2 \

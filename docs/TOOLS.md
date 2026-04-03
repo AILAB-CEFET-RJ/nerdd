@@ -634,10 +634,10 @@ Os exemplos abaixo priorizam os scripts mais operacionais do repositório.
 ```bash
 cd src
 python3 tools/build_calibration_dataset.py \
-  --model-path ./artifacts/base_model_training/experiments/multi_lr_wd_grid_bs16_with_negatives/best_overall_gliner_model \
+  --model-path ../artifacts/base_model_training/experiments/multi_lr_wd_grid_bs16_with_negatives/best_overall_gliner_model \
   --input ../data/dd_corpus_small_test_final.json \
-  --output-csv ./artifacts/calibration/multi_with_negatives/calibration_dataset.csv \
-  --output-predictions-jsonl ./artifacts/calibration/multi_with_negatives/calibration_predictions.jsonl \
+  --output-csv ../artifacts/calibration/multi_with_negatives/calibration_dataset.csv \
+  --output-predictions-jsonl ../artifacts/calibration/multi_with_negatives/calibration_predictions.jsonl \
   --labels Person,Location,Organization \
   --batch-size 8 \
   --max-tokens 512 \
@@ -650,7 +650,7 @@ python3 tools/build_calibration_dataset.py \
 ```bash
 cd src
 python3 tools/profile_pseudolabelling_inference.py \
-  --model-path ./artifacts/base_model_training/experiments/multi_lr_wd_grid_bs16_with_negatives/best_overall_gliner_model \
+  --model-path ../artifacts/base_model_training/experiments/multi_lr_wd_grid_bs16_with_negatives/best_overall_gliner_model \
   --input-jsonl ../data/dd_corpus_large_sample_10k.jsonl \
   --labels Person,Location,Organization \
   --text-fields assunto,relato,bairroLocal,logradouroLocal,cidadeLocal,pontodeReferenciaLocal \
@@ -678,9 +678,9 @@ python3 tools/split_large_corpus_into_chunks.py \
 ```bash
 cd src
 python3 tools/summarize_context_boost_audit.py \
-  --details-jsonl ./artifacts/pseudolabelling/multi_with_negatives_chunk02_50k_t037_cuda_v12/03_context_boost_details.jsonl \
-  --summary-json ./artifacts/pseudolabelling/context_boost_audit_v12_chunk02/summary.json \
-  --rows-csv ./artifacts/pseudolabelling/context_boost_audit_v12_chunk02/boosted_entities.csv \
+  --details-jsonl ../artifacts/pseudolabelling/multi_with_negatives_chunk02_50k_t037_cuda_v12/03_context_boost_details.jsonl \
+  --summary-json ../artifacts/pseudolabelling/context_boost_audit_v12_chunk02/summary.json \
+  --rows-csv ../artifacts/pseudolabelling/context_boost_audit_v12_chunk02/boosted_entities.csv \
   --top-n 30
 ```
 
@@ -694,8 +694,8 @@ python3 tools/run_remaining_chunk_probes.py \
   --end-chunk 8 \
   --threshold 0.37 \
   --version v13 \
-  --run-root ./artifacts/pseudolabelling \
-  --summary-csv ./artifacts/pseudolabelling/chunk_probe_status_t037_v13.csv
+  --run-root ../artifacts/pseudolabelling \
+  --summary-csv ../artifacts/pseudolabelling/chunk_probe_status_t037_v13.csv
 ```
 
 ### `evaluate_chunk_quality.py`
@@ -703,9 +703,9 @@ python3 tools/run_remaining_chunk_probes.py \
 ```bash
 cd src
 python3 tools/evaluate_chunk_quality.py \
-  --run-glob './artifacts/pseudolabelling/multi_with_negatives_chunk*_50k_t037_cuda_v*' \
-  --output-csv ./artifacts/pseudolabelling/chunk_quality_t037.csv \
-  --output-json ./artifacts/pseudolabelling/chunk_quality_t037.json
+  --run-glob '../artifacts/pseudolabelling/multi_with_negatives_chunk*_50k_t037_cuda_v*' \
+  --output-csv ../artifacts/pseudolabelling/chunk_quality_t037.csv \
+  --output-json ../artifacts/pseudolabelling/chunk_quality_t037.json
 ```
 
 ### `inspect_dense_tips.py`
@@ -713,10 +713,10 @@ python3 tools/evaluate_chunk_quality.py \
 ```bash
 cd src
 python3 tools/inspect_dense_tips.py \
-  --input ./artifacts/pseudolabelling/multi_with_negatives_chunk04_50k_t037_cuda_v13/05_split/kept.jsonl \
+  --input ../artifacts/pseudolabelling/multi_with_negatives_chunk04_50k_t037_cuda_v13/05_split/kept.jsonl \
   --min-entities 30 \
-  --output-jsonl ./artifacts/pseudolabelling/chunk04_dense_tips.jsonl \
-  --output-html ./artifacts/pseudolabelling/chunk04_dense_tips.html \
-  --summary-json ./artifacts/pseudolabelling/chunk04_dense_tips_summary.json \
+  --output-jsonl ../artifacts/pseudolabelling/chunk04_dense_tips.jsonl \
+  --output-html ../artifacts/pseudolabelling/chunk04_dense_tips.html \
+  --summary-json ../artifacts/pseudolabelling/chunk04_dense_tips_summary.json \
   --title "Chunk 04 Dense Tips"
 ```

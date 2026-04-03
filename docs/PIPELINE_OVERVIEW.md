@@ -192,10 +192,10 @@ Recommended interpretation for dissertation experiments:
 5. Apply that artifact either during large-corpus prediction or later with `calibration/apply_calibrator.py`.
 
 ## Main Artifacts
-- Artifact root (recommended): `src/artifacts/`
-- Training outputs: `src/artifacts/base_model_training/`
-- Pseudolabelling outputs: `src/artifacts/pseudolabelling/`
-- Calibration outputs: `src/artifacts/calibration/`
+- Artifact root (recommended): `artifacts/`
+- Training outputs: `artifacts/base_model_training/`
+- Pseudolabelling outputs: `artifacts/pseudolabelling/`
+- Calibration outputs: `artifacts/calibration/`
 
 Examples:
 - `artifacts/base_model_training/smoke/run_nested_tiny/best_overall_gliner_model/`

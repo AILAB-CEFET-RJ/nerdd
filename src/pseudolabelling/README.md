@@ -47,13 +47,13 @@ Two semisupervised regimes are now possible:
 
 ```bash
 cd src
-python3 pseudolabelling/generate_corpus_predictions.py \
-  --model-path ./artifacts/base_model_training/smoke/run_nested_tiny/best_overall_gliner_model \
+python3 -m pseudolabelling.generate_corpus_predictions \
+  --model-path ../artifacts/base_model_training/smoke/run_nested_tiny/best_overall_gliner_model \
   --model-max-length 384 \
-  --calibrator-path ./artifacts/calibration/base_model/calibrator.json \
+  --calibrator-path ../artifacts/calibration/base_model/calibrator.json \
   --input-jsonl ../artifacts/corpus_sanitization/dd_corpus_large_sanitized.jsonl \
-  --output-jsonl ./artifacts/pseudolabelling/iter01/01_predictions.jsonl \
-  --stats-json ./artifacts/pseudolabelling/iter01/01_predictions_stats.json \
+  --output-jsonl ../artifacts/pseudolabelling/iter01/01_predictions.jsonl \
+  --stats-json ../artifacts/pseudolabelling/iter01/01_predictions_stats.json \
   --labels Person,Location,Organization \
   --text-fields relato \
   --max-tokens 384 \
@@ -68,10 +68,10 @@ Run the full iterative cycle (prediction -> optional legacy calibration step -> 
 
 ```bash
 cd src
-python3 pseudolabelling/run_iterative_cycle.py \
-  --run-dir ./artifacts/pseudolabelling/iter_cycle_01 \
-  --model-path ./artifacts/base_model_training/experiments/run_batch16/best_overall_gliner_model \
-  --prediction-calibrator-path ./artifacts/calibration/base_model/calibrator.json \
+python3 -m pseudolabelling.run_iterative_cycle \
+  --run-dir ../artifacts/pseudolabelling/iter_cycle_01 \
+  --model-path ../artifacts/base_model_training/experiments/run_batch16/best_overall_gliner_model \
+  --prediction-calibrator-path ../artifacts/calibration/base_model/calibrator.json \
   --input-jsonl ../artifacts/corpus_sanitization/dd_corpus_large_sanitized.jsonl \
   --labels Person,Location,Organization \
   --text-fields relato \
@@ -81,7 +81,7 @@ python3 pseudolabelling/run_iterative_cycle.py \
   --prediction-threshold 0.0 \
   --record-score-field score_context_boosted \
   --split-threshold 0.80 \
-  --refit-base-model ./best_overall_gliner_model \
+  --refit-base-model ../artifacts/base_model_training/experiments/run_batch16/best_overall_gliner_model \
   --refit-supervised-train-path ../data/dd_corpus_small_train.json \
   --refit-epochs 10 \
   --refit-batch-size 8 \
@@ -105,10 +105,10 @@ Inference-oriented entrypoints now share the same loader in `src/gliner_loader.p
 
 ```bash
 cd src
-python3 pseudolabelling/apply_context_boost.py \
-  --input-jsonl ./artifacts/pseudolabelling/iter01/01_predictions.jsonl \
-  --output-jsonl ./artifacts/pseudolabelling/iter01/02_context_boosted.jsonl \
-  --stats-json ./artifacts/pseudolabelling/iter01/02_context_boost_stats.json \
+python3 -m pseudolabelling.apply_context_boost \
+  --input-jsonl ../artifacts/pseudolabelling/iter01/01_predictions.jsonl \
+  --output-jsonl ../artifacts/pseudolabelling/iter01/02_context_boosted.jsonl \
+  --stats-json ../artifacts/pseudolabelling/iter01/02_context_boost_stats.json \
   --base-score-field score \
   --fallback-score-fields score_calibrated,score_ts,score_iso \
   --output-score-field score_context_boosted \
@@ -123,10 +123,10 @@ python3 pseudolabelling/apply_context_boost.py \
 
 ```bash
 cd src
-python3 pseudolabelling/compute_record_scores.py \
-  --input-jsonl ./artifacts/pseudolabelling/iter01/02_context_boosted.jsonl \
-  --output-jsonl ./artifacts/pseudolabelling/iter01/03_scored.jsonl \
-  --stats-json ./artifacts/pseudolabelling/iter01/03_score_stats.json \
+python3 -m pseudolabelling.compute_record_scores \
+  --input-jsonl ../artifacts/pseudolabelling/iter01/02_context_boosted.jsonl \
+  --output-jsonl ../artifacts/pseudolabelling/iter01/03_scored.jsonl \
+  --stats-json ../artifacts/pseudolabelling/iter01/03_score_stats.json \
   --score-field score_context_boosted \
   --output-field record_score \
   --legacy-field-alias score_relato \
@@ -139,9 +139,9 @@ python3 pseudolabelling/compute_record_scores.py \
 
 ```bash
 cd src
-python3 pseudolabelling/split_pseudolabels.py \
-  --input-jsonl ./artifacts/pseudolabelling/iter01/03_scored.jsonl \
-  --out-dir ./artifacts/pseudolabelling/iter01/04_split \
+python3 -m pseudolabelling.split_pseudolabels \
+  --input-jsonl ../artifacts/pseudolabelling/iter01/03_scored.jsonl \
+  --out-dir ../artifacts/pseudolabelling/iter01/04_split \
   --score-field record_score \
   --threshold 0.80 \
   --operator ge \
@@ -159,11 +159,11 @@ python3 pseudolabelling/split_pseudolabels.py \
 
 ```bash
 cd src
-python3 pseudolabelling/refit_model.py \
-  --input-path ./artifacts/pseudolabelling/iter01/04_split \
-  --pseudolabel-path ./artifacts/pseudolabelling/iter01/04_split/kept.jsonl \
-  --output-model-dir ./artifacts/pseudolabelling/iter01/05_refit_model \
-  --base-model ./artifacts/base_model_training/experiments/run_batch16/best_overall_gliner_model \
+python3 -m pseudolabelling.refit_model \
+  --input-path ../artifacts/pseudolabelling/iter01/04_split \
+  --pseudolabel-path ../artifacts/pseudolabelling/iter01/04_split/kept.jsonl \
+  --output-model-dir ../artifacts/pseudolabelling/iter01/05_refit_model \
+  --base-model ../artifacts/base_model_training/experiments/run_batch16/best_overall_gliner_model \
   --supervised-train-path ../data/dd_corpus_small_train.json \
   --epochs 10 \
   --patience 3 \
@@ -202,11 +202,11 @@ When `--pseudolabel-path` or `--refit-pseudolabel-path` is provided, refit uses 
 
 ```bash
 cd src
-python3 pseudolabelling/evaluate_refit.py \
-  --model-path ./artifacts/pseudolabelling/iter01/05_refit_model \
+python3 -m pseudolabelling.evaluate_refit \
+  --model-path ../artifacts/pseudolabelling/iter01/05_refit_model \
   --model-max-length 384 \
   --gt-jsonl ../data/dd_corpus_small_test_final.json \
-  --out-dir ./artifacts/pseudolabelling/iter01/06_eval_refit \
+  --out-dir ../artifacts/pseudolabelling/iter01/06_eval_refit \
   --labels Person,Location,Organization \
   --prediction-threshold 0.05 \
   --batch-size 4 \
@@ -218,22 +218,22 @@ python3 pseudolabelling/evaluate_refit.py \
 
 ```bash
 cd src
-python3 pseudolabelling/prepare_next_iteration.py \
-  --input-glob ./artifacts/pseudolabelling/iter01/04_split/*_descartados.jsonl \
-  --out-dir ./artifacts/pseudolabelling/iter02_input \
+python3 -m pseudolabelling.prepare_next_iteration \
+  --input-glob ../artifacts/pseudolabelling/iter01/04_split/*_descartados.jsonl \
+  --out-dir ../artifacts/pseudolabelling/iter02_input \
   --output-suffix _iter02_input \
   --keep-fields assunto,relato,logradouroLocal,bairroLocal,cidadeLocal,pontodeReferenciaLocal \
   --required-fields relato \
   --coerce-non-string stringify \
   --deduplicate-by relato,bairroLocal \
-  --stats-json ./artifacts/pseudolabelling/iter02_input/prepare_next_iteration_stats.json \
+  --stats-json ../artifacts/pseudolabelling/iter02_input/prepare_next_iteration_stats.json \
   --log-level INFO
 ```
 
 ## Artifact Convention
 
 Write pseudolabelling outputs under:
-- `src/artifacts/pseudolabelling/`
+- `artifacts/pseudolabelling/`
 
 When `--evaluate-refit` is enabled in the orchestrator, expect:
 
