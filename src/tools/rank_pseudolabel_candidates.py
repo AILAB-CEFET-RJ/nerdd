@@ -27,6 +27,16 @@ DEFAULT_GENERIC_ENTITY_TEXTS = (
     "p2",
     "comandante geral",
 )
+DEFAULT_POLITICAL_COPYPASTA_TERMS = (
+    "corrupcao",
+    "corrupção",
+    "pec da transicao",
+    "pec da transição",
+    "presidente eleito",
+    "lula",
+    "investigad",
+    "esquema",
+)
 
 
 def _safe_float(value):
@@ -54,6 +64,40 @@ def _normalize_entity_text(text):
 
 
 DEFAULT_GENERIC_ENTITY_TEXTS_NORMALIZED = {_normalize_entity_text(value) for value in DEFAULT_GENERIC_ENTITY_TEXTS}
+DEFAULT_POLITICAL_COPYPASTA_TERMS_NORMALIZED = {_normalize_entity_text(value) for value in DEFAULT_POLITICAL_COPYPASTA_TERMS}
+
+
+def _is_list_like_person_dump(text, label_counts):
+    if not isinstance(text, str):
+        return False
+    comma_count = text.count(",")
+    semicolon_count = text.count(";")
+    if comma_count + semicolon_count < 4:
+        return False
+    person_count = int(label_counts.get("Person", 0))
+    entity_total = sum(int(v) for v in label_counts.values())
+    if person_count < 4 or entity_total == 0:
+        return False
+    if person_count / entity_total < 0.6:
+        return False
+    lowered = _normalize_entity_text(text)
+    narrative_markers = ("trafico", "roubo", "assalto", "moto", "arma", "tiro", "bairro", "rua")
+    if any(marker in lowered for marker in narrative_markers):
+        return False
+    return True
+
+
+def _is_political_copypasta(text, label_counts):
+    if not isinstance(text, str):
+        return False
+    normalized = _normalize_entity_text(text)
+    hits = sum(1 for term in DEFAULT_POLITICAL_COPYPASTA_TERMS_NORMALIZED if term and term in normalized)
+    if hits < 2:
+        return False
+    comma_count = text.count(",")
+    semicolon_count = text.count(";")
+    entity_total = sum(int(v) for v in label_counts.values())
+    return (comma_count + semicolon_count >= 4) or entity_total >= 8
 
 
 def _pick_record_score(row, score_fields):
@@ -165,6 +209,8 @@ def build_candidate(
             if normalized and normalized in DEFAULT_GENERIC_ENTITY_TEXTS_NORMALIZED
         }
     )
+    list_like_person_dump = _is_list_like_person_dump(text, label_counts)
+    political_copypasta = _is_political_copypasta(text, label_counts)
 
     effective_record_score = record_score if record_score is not None else mean_entity_score
     quality_score = _compute_candidate_quality(
@@ -198,6 +244,8 @@ def build_candidate(
         "organization_ratio": organization_ratio,
         "location_ratio": location_ratio,
         "generic_entity_texts": generic_entity_texts,
+        "list_like_person_dump": list_like_person_dump,
+        "political_copypasta": political_copypasta,
         "label_counts": dict(label_counts),
     }
     return candidate
@@ -214,6 +262,8 @@ def keep_candidate(
     max_location_ratio,
     max_short_span_ratio,
     drop_generic_entity_texts,
+    drop_list_like_person_dumps,
+    drop_political_copypasta,
     required_labels,
 ):
     meta = candidate["_candidate_rank"]
@@ -236,6 +286,10 @@ def keep_candidate(
         return False, "short_span_ratio"
     if drop_generic_entity_texts and meta["generic_entity_texts"]:
         return False, "generic_entity_texts"
+    if drop_list_like_person_dumps and meta["list_like_person_dump"]:
+        return False, "list_like_person_dump"
+    if drop_political_copypasta and meta["political_copypasta"]:
+        return False, "political_copypasta"
     if required_labels and not any(label_counts.get(label, 0) > 0 for label in required_labels):
         return False, "required_labels"
     return True, ""
@@ -255,6 +309,8 @@ def rank_candidates(
     max_location_ratio,
     max_short_span_ratio,
     drop_generic_entity_texts,
+    drop_list_like_person_dumps,
+    drop_political_copypasta,
     short_span_max_chars,
     high_entity_score_threshold,
     low_entity_score_threshold,
@@ -284,6 +340,8 @@ def rank_candidates(
             max_location_ratio=max_location_ratio,
             max_short_span_ratio=max_short_span_ratio,
             drop_generic_entity_texts=drop_generic_entity_texts,
+            drop_list_like_person_dumps=drop_list_like_person_dumps,
+            drop_political_copypasta=drop_political_copypasta,
             required_labels=required_labels,
         )
         if not ok:
@@ -433,6 +491,8 @@ def build_summary(rows, counters, args):
             "max_location_ratio": args.max_location_ratio,
             "max_short_span_ratio": args.max_short_span_ratio,
             "drop_generic_entity_texts": args.drop_generic_entity_texts,
+            "drop_list_like_person_dumps": args.drop_list_like_person_dumps,
+            "drop_political_copypasta": args.drop_political_copypasta,
             "required_labels": _parse_csv(args.required_labels),
         },
         "ranking": {
@@ -451,6 +511,8 @@ def build_summary(rows, counters, args):
             "location_ratio": counters["dropped_location_ratio"],
             "short_span_ratio": counters["dropped_short_span_ratio"],
             "generic_entity_texts": counters["dropped_generic_entity_texts"],
+            "list_like_person_dump": counters["dropped_list_like_person_dump"],
+            "political_copypasta": counters["dropped_political_copypasta"],
             "required_labels": counters["dropped_required_labels"],
         },
         "selected_stats": {
@@ -517,6 +579,16 @@ def parse_args():
         action="store_true",
         help="Drop candidates containing generic normalized entity texts such as urgente, batalhao, p2, or punctuation-only spans.",
     )
+    parser.add_argument(
+        "--drop-list-like-person-dumps",
+        action="store_true",
+        help="Drop candidates that look like artificial comma/semicolon-separated person lists with weak narrative structure.",
+    )
+    parser.add_argument(
+        "--drop-political-copypasta",
+        action="store_true",
+        help="Drop candidates that match political copypasta patterns such as corruption + PEC/Lula + long named lists.",
+    )
     return parser.parse_args()
 
 
@@ -536,6 +608,8 @@ def main():
         max_location_ratio=args.max_location_ratio,
         max_short_span_ratio=args.max_short_span_ratio,
         drop_generic_entity_texts=args.drop_generic_entity_texts,
+        drop_list_like_person_dumps=args.drop_list_like_person_dumps,
+        drop_political_copypasta=args.drop_political_copypasta,
         short_span_max_chars=args.short_span_max_chars,
         high_entity_score_threshold=args.high_entity_score_threshold,
         low_entity_score_threshold=args.low_entity_score_threshold,
