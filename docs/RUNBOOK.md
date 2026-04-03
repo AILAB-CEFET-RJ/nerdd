@@ -45,6 +45,7 @@ Examples:
 - `02_context_boosted`
 - `03_record_scored`
 - `04_ranked_candidates`
+- `04b_gliner2_predictions`
 - `05_llm_input`
 - `06_llm_adjudicated`
 
@@ -58,6 +59,8 @@ Operational note:
 
 - use `src/tools/rank_pseudolabel_candidates.py` as the default implementation of `04_ranked_candidates`
 - use `src/tools/inspect_dense_tips.py` only for dense-outlier auditing, not as the primary ranking step before `05_llm_input`
+- use `src/tools/generate_gliner2_predictions.py` as the default implementation of `04b_gliner2_predictions`
+- `05_llm_input` must consume rows already enriched with `gliner2_entities`; inline GLiNER2 inference is not allowed in this stage
 
 ## 1) First Run
 

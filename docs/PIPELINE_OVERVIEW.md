@@ -10,6 +10,7 @@ Examples:
 - `02_context_boosted`
 - `03_record_scored`
 - `04_ranked_candidates`
+- `04b_gliner2_predictions`
 - `05_llm_input`
 - `06_llm_adjudicated`
 
@@ -103,6 +104,19 @@ Rationale:
 2. Extract entity-level scores (`score`, `score_context_boosted`, etc.).
 3. Aggregate to record-level score (`mean`, `max`, `median`, `p75`).
 4. Write record-level score field and run stats JSON.
+
+## GLiNER2 Prediction Flow (`src/tools/generate_gliner2_predictions.py`)
+1. Read ranked candidate rows that already carry the baseline predictions.
+2. Load the configured GLiNER2 base model and optional adapter.
+3. Re-run GLiNER2 on the canonical text of each selected candidate.
+4. Append explicit `gliner2_entities` plus `_gliner2_prediction_meta`.
+5. Save a JSONL artifact for downstream adjudication preparation.
+
+Important:
+
+- this step materializes GLiNER2 predictions explicitly as a pipeline artifact
+- `05_llm_input` must consume these precomputed `gliner2_entities`
+- inline GLiNER2 inference inside adjudication-input building is not part of the supported pipeline anymore
 
 ## Split Flow (`pseudolabelling/split_pseudolabels.py`)
 1. Read record-scored JSONL.
