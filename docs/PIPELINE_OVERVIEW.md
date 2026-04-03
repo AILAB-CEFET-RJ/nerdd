@@ -1,5 +1,24 @@
 # Pipeline Overview
 
+## Stage Naming Convention
+
+Use `number + semantic_name` for pipeline stages and derived artifact names.
+
+Examples:
+
+- `01_predictions`
+- `02_context_boosted`
+- `03_record_scored`
+- `04_ranked_candidates`
+- `05_llm_input`
+- `06_llm_adjudicated`
+
+Rationale:
+
+- preserves execution order in directory listings
+- keeps stage purpose readable during operational handoffs
+- reduces ambiguity after context resets
+
 ## Subpipeline Boundaries
 
 1. **Training + Evaluation Subpipeline**

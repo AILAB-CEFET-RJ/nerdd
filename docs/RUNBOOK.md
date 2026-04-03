@@ -35,6 +35,30 @@ Examples of files that must go under `artifacts/`:
 - training outputs and checkpoints
 - pseudolabelling predictions, rankings, adjudication outputs, and summaries
 
+## Stage Naming Convention
+
+Use `number + semantic_name` for pipeline stages and derived artifact names.
+
+Examples:
+
+- `01_predictions`
+- `02_context_boosted`
+- `03_record_scored`
+- `04_ranked_candidates`
+- `05_llm_input`
+- `06_llm_adjudicated`
+
+Rationale:
+
+- preserves execution order in directory listings
+- keeps stage purpose readable without consulting code
+- reduces ambiguity during handoffs and context resets
+
+Operational note:
+
+- use `src/tools/rank_pseudolabel_candidates.py` as the default implementation of `04_ranked_candidates`
+- use `src/tools/inspect_dense_tips.py` only for dense-outlier auditing, not as the primary ranking step before `05_llm_input`
+
 ## 1) First Run
 
 Use this smoke test first to validate the training stack end-to-end on a tiny dataset.

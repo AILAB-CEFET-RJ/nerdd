@@ -267,13 +267,17 @@ Métricas incluídas:
 
 ### `src/tools/inspect_dense_tips.py`
 
-Seleciona tips com muitas entidades e exporta uma visão legível para inspeção.
+Seleciona tips com muitas entidades e exporta uma visão legível para auditoria de densidade.
 
 Use quando:
 
 - você quer investigar outliers com densidade alta de spans
 - precisa abrir rapidamente os tips kept mais carregados
 - quer exportar um subconjunto para HTML e revisão manual
+
+Não use como etapa principal de `04_ranked_candidates`.
+
+Para ranking operacional de candidatos de pseudolabel, use `src/tools/rank_pseudolabel_candidates.py`.
 
 Saídas possíveis:
 
@@ -369,6 +373,8 @@ Use quando:
 - quer revisar os top candidatos antes de escalar pseudolabelling
 - precisa misturar score de registro com penalizações por densidade, spans curtos e dominância de `Organization`
 - quer exportar CSV/JSONL/HTML dos candidatos priorizados
+
+Use este script como etapa padrão de `04_ranked_candidates`.
 
 Saídas:
 
@@ -709,6 +715,8 @@ python3 tools/evaluate_chunk_quality.py \
 ```
 
 ### `inspect_dense_tips.py`
+
+Use este comando apenas para auditoria de outliers densos. Para `04_ranked_candidates`, prefira `rank_pseudolabel_candidates.py`.
 
 ```bash
 cd src
