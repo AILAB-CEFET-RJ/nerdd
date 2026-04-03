@@ -230,6 +230,27 @@ def _normalize_entity(entity: dict, *, source: str) -> dict:
     return normalized
 
 
+def _entity_key_with_offsets(entity: dict) -> tuple:
+    start = entity.get("start")
+    end = entity.get("end")
+    return (
+        str(entity.get("label", "")),
+        str(entity.get("text_norm", "")),
+        int(start) if isinstance(start, int) else None,
+        int(end) if isinstance(end, int) else None,
+    )
+
+
+def _entity_offsets_match(a: dict, b: dict) -> bool:
+    a_start = a.get("start")
+    a_end = a.get("end")
+    b_start = b.get("start")
+    b_end = b.get("end")
+    if all(isinstance(value, int) for value in (a_start, a_end, b_start, b_end)):
+        return int(a_start) == int(b_start) and int(a_end) == int(b_end)
+    return True
+
+
 def _label_allowed(entity: dict, allowed_labels: set[str]) -> bool:
     return str(entity.get("label", "")).strip() in allowed_labels
 
@@ -287,11 +308,11 @@ def match_entities(
 
     exact_index = {}
     for index, entity in enumerate(gliner2_entities):
-        key = (entity.get("label"), entity.get("text_norm"))
+        key = _entity_key_with_offsets(entity)
         exact_index.setdefault(key, []).append(index)
 
     for baseline_index, baseline_entity in enumerate(baseline_entities):
-        key = (baseline_entity.get("label"), baseline_entity.get("text_norm"))
+        key = _entity_key_with_offsets(baseline_entity)
         candidates = exact_index.get(key, [])
         chosen = next((idx for idx in candidates if idx not in gliner2_used), None)
         if chosen is None:
@@ -317,6 +338,8 @@ def match_entities(
         chosen = None
         for gliner2_index, gliner2_entity in enumerate(gliner2_entities):
             if gliner2_index in gliner2_used:
+                continue
+            if not _entity_offsets_match(baseline_entity, gliner2_entity):
                 continue
             if _is_soft_match(baseline_entity, gliner2_entity, min_len=soft_match_min_chars):
                 chosen = gliner2_index
@@ -345,6 +368,8 @@ def match_entities(
             if gliner2_index in gliner2_used:
                 continue
             if baseline_entity.get("text_norm") and baseline_entity.get("text_norm") == gliner2_entity.get("text_norm"):
+                if not _entity_offsets_match(baseline_entity, gliner2_entity):
+                    continue
                 if baseline_entity.get("label") != gliner2_entity.get("label"):
                     conflicts.append(
                         {
@@ -391,7 +416,7 @@ def build_review_seed_entities(
         ):
             continue
         entity["seed_origin"] = f"agreed_{item.get('match_type', 'exact')}"
-        key = (entity.get("label"), entity.get("text_norm"))
+        key = _entity_key_with_offsets(entity)
         if key in seen:
             continue
         seen.add(key)
@@ -408,7 +433,7 @@ def build_review_seed_entities(
             continue
         seeded_entity = dict(entity)
         seeded_entity["seed_origin"] = "baseline_high_score"
-        key = (seeded_entity.get("label"), seeded_entity.get("text_norm"))
+        key = _entity_key_with_offsets(seeded_entity)
         if key in seen:
             continue
         seen.add(key)
@@ -424,12 +449,19 @@ def build_review_seed_entities(
             continue
         seeded_entity = dict(entity)
         seeded_entity["seed_origin"] = "gliner2_location_metadata_match"
-        key = (seeded_entity.get("label"), seeded_entity.get("text_norm"))
+        key = _entity_key_with_offsets(seeded_entity)
         if key in seen:
             continue
         seen.add(key)
         seeded.append(seeded_entity)
-    seeded.sort(key=lambda entity: (str(entity.get("label", "")), str(entity.get("text_norm", ""))))
+    seeded.sort(
+        key=lambda entity: (
+            str(entity.get("label", "")),
+            str(entity.get("text_norm", "")),
+            int(entity.get("start")) if isinstance(entity.get("start"), int) else -1,
+            int(entity.get("end")) if isinstance(entity.get("end"), int) else -1,
+        )
+    )
     return seeded
 
 

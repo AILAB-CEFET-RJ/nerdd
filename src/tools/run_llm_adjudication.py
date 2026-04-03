@@ -65,8 +65,10 @@ ADJUDICATION_SCHEMA = {
                         "type": "string",
                         "enum": list(DEFAULT_ALLOWED_LABELS),
                     },
+                    "start": {"type": "integer"},
+                    "end": {"type": "integer"},
                 },
-                "required": ["text", "label"],
+                "required": ["text", "label", "start", "end"],
             },
         },
         "justification": {"type": "string"},
@@ -110,7 +112,12 @@ def _normalized_tokens(text: str) -> list[str]:
 
 def _review_seed_index(source_row: dict) -> dict[tuple[str, str], dict]:
     return {
-        (str(item.get("text", "")), str(item.get("label", ""))): item
+        (
+            str(item.get("text", "")),
+            str(item.get("label", "")),
+            int(item.get("start")) if isinstance(item.get("start"), int) else None,
+            int(item.get("end")) if isinstance(item.get("end"), int) else None,
+        ): item
         for item in (source_row.get("review_seed_entities") or [])
         if isinstance(item, dict)
     }
@@ -124,7 +131,15 @@ def _is_weak_single_location_accept(entities: list[dict], source_row: dict) -> b
         return False
     if len(_normalized_tokens(entity.get("text", ""))) != 1:
         return False
-    seed = _review_seed_index(source_row).get((entity["text"], entity["label"]), {})
+    seed = _review_seed_index(source_row).get(
+        (
+            entity["text"],
+            entity["label"],
+            int(entity["start"]) if isinstance(entity.get("start"), int) else None,
+            int(entity["end"]) if isinstance(entity.get("end"), int) else None,
+        ),
+        {},
+    )
     seed_origin = str(seed.get("seed_origin", ""))
     return not seed_origin.startswith("agreed_")
 
@@ -183,6 +198,10 @@ def _compact_entity(entity: dict) -> dict:
         "text": entity.get("text", ""),
         "label": entity.get("label", ""),
     }
+    if isinstance(entity.get("start"), int):
+        compact["start"] = int(entity["start"])
+    if isinstance(entity.get("end"), int):
+        compact["end"] = int(entity["end"])
     ner_score = _safe_float(entity.get("ner_score"))
     if ner_score is not None:
         compact["ner_score"] = round(ner_score, 6)
@@ -216,6 +235,8 @@ def build_messages(row: dict) -> list[dict]:
             {
                 "text": item.get("text", ""),
                 "label": item.get("label", ""),
+                "start": item.get("start"),
+                "end": item.get("end"),
                 "match_type": item.get("match_type", ""),
                 "consensus_score": item.get("consensus_score"),
             }
@@ -229,6 +250,8 @@ def build_messages(row: dict) -> list[dict]:
                 "text": item.get("text", ""),
                 "baseline_label": item.get("baseline_label", ""),
                 "gliner2_label": item.get("gliner2_label", ""),
+                "start": item.get("baseline_entity", {}).get("start"),
+                "end": item.get("baseline_entity", {}).get("end"),
                 "conflict_type": item.get("conflict_type", ""),
             }
             for item in (row.get("conflicts") or [])
@@ -246,6 +269,7 @@ def build_messages(row: dict) -> list[dict]:
         "- Conservatism is required.\n"
         "Hard rules:\n"
         "1. Every entity text must be an exact literal substring of the input text.\n"
+        "1b. Every entity must preserve the exact start/end offsets from review_seed_entities.\n"
         "2. Do not normalize, simplify, shorten, translate, or correct spelling in entity text.\n"
         "3. Allowed labels: Person, Location, Organization.\n"
         "4. Prefer reject over speculative completion.\n"
@@ -262,7 +286,7 @@ def build_messages(row: dict) -> list[dict]:
         "Task:\n"
         "- Decide whether the review_seed_entities for this record should be accepted as-is, accepted with removals, or rejected.\n"
         "- Do not perform open-ended entity extraction.\n"
-        "- Only keep entities that are exact literal substrings of the TEXT and already present in review_seed_entities.\n"
+        "- Only keep entities that are exact literal substrings of the TEXT and already present in review_seed_entities with the same start/end offsets.\n"
         "- If the seed set is noisy, weak, generic, partial, corrupted, or ambiguous, reject.\n\n"
         f"TEXT:\n{text}\n\n"
         "CANDIDATE DATA:\n"
@@ -373,7 +397,12 @@ def validate_adjudication(adjudication: dict, source_row: dict) -> dict:
     text = str(source_row.get("text", ""))
     review_seed_entities = source_row.get("review_seed_entities") or []
     review_seed_pairs = {
-        (str(item.get("text", "")), str(item.get("label", "")))
+        (
+            str(item.get("text", "")),
+            str(item.get("label", "")),
+            int(item.get("start")) if isinstance(item.get("start"), int) else None,
+            int(item.get("end")) if isinstance(item.get("end"), int) else None,
+        )
         for item in review_seed_entities
         if isinstance(item, dict)
     }
@@ -385,22 +414,32 @@ def validate_adjudication(adjudication: dict, source_row: dict) -> dict:
             raise AdjudicationValidationError("Each entity in entities_final must be an object.")
         entity_text = str(entity.get("text", ""))
         entity_label = str(entity.get("label", ""))
-        if not entity_text or entity_label not in ALLOWED_LABELS:
+        entity_start = entity.get("start")
+        entity_end = entity.get("end")
+        if not entity_text or entity_label not in ALLOWED_LABELS or not isinstance(entity_start, int) or not isinstance(entity_end, int):
             raise AdjudicationValidationError(f"Invalid entity returned by adjudicator: {entity}")
-        if entity_text not in text:
-            raise AdjudicationValidationError(f"Entity text is not an exact substring of the source text: {entity_text!r}")
-        key = (entity_text, entity_label)
+        if entity_end <= entity_start or entity_start < 0 or entity_end > len(text):
+            raise AdjudicationValidationError(f"Entity offsets are out of bounds or invalid: {entity}")
+        if text[entity_start:entity_end] != entity_text:
+            raise AdjudicationValidationError(
+                f"Entity text does not match the exact source substring at offsets start={entity_start} end={entity_end}: {entity_text!r}"
+            )
+        key = (entity_text, entity_label, entity_start, entity_end)
         if key in seen:
             continue
         seen.add(key)
-        cleaned_entities.append({"text": entity_text, "label": entity_label})
+        cleaned_entities.append({"text": entity_text, "label": entity_label, "start": entity_start, "end": entity_end})
 
     if decision in {"accept", "accept_with_edits"}:
         if not cleaned_entities:
             raise AdjudicationValidationError(
                 f"decision={decision!r} must contain at least one final entity"
             )
-        invalid_seed_entities = [entity for entity in cleaned_entities if (entity["text"], entity["label"]) not in review_seed_pairs]
+        invalid_seed_entities = [
+            entity
+            for entity in cleaned_entities
+            if (entity["text"], entity["label"], entity["start"], entity["end"]) not in review_seed_pairs
+        ]
         if invalid_seed_entities:
             raise AdjudicationValidationError(
                 f"decision={decision!r} may only contain entities from review_seed_entities; "
