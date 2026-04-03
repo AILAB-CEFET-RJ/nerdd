@@ -27,6 +27,15 @@ def _parse_csv(raw_value: str) -> list[str]:
     return [piece.strip() for piece in str(raw_value).split(",") if piece.strip()]
 
 
+def _resolve_model_path(raw_value: str) -> str:
+    candidate = Path(str(raw_value))
+    if candidate.is_absolute() or candidate.exists():
+        return str(candidate)
+    if "/" in str(raw_value) or "\\" in str(raw_value):
+        return str(raw_value)
+    return str(resolve_repo_artifact_path(__file__, raw_value))
+
+
 def build_summary(rows: list[dict], counters: Counter, args: argparse.Namespace) -> dict:
     return {
         "input": str(resolve_repo_artifact_path(__file__, args.input)),
@@ -73,8 +82,8 @@ def main() -> None:
 
     entity_types = _parse_csv(args.entity_types) or list(DEFAULT_ENTITY_TYPES)
     model = load_gliner2_model(
-        str(resolve_repo_artifact_path(__file__, args.model_path)),
-        adapter_dir=str(resolve_repo_artifact_path(__file__, args.adapter_dir)) if args.adapter_dir else "",
+        _resolve_model_path(args.model_path),
+        adapter_dir=_resolve_model_path(args.adapter_dir) if args.adapter_dir else "",
         logger=LOGGER,
         context="explicit prediction",
     )
