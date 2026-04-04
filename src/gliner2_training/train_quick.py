@@ -242,6 +242,11 @@ def _merge_training_rows(supervised_rows, pseudolabel_rows, *, train_mode, dedup
     return deduped
 
 
+def _deduplicate_pseudolabel_rows_against_supervised(supervised_rows, pseudolabel_rows):
+    supervised_texts = {row["text"] for row in supervised_rows}
+    return [row for row in pseudolabel_rows if row["text"] not in supervised_texts]
+
+
 def _convert_rows_to_gliner2_jsonl(rows, path):
     with Path(path).open("w", encoding="utf-8") as handle:
         for row in rows:
@@ -312,24 +317,28 @@ def run_quick_experiment(config: QuickTrainConfig, script_path: str):
             sample_ratio=config.pseudolabel_sample_ratio,
             max_records=config.max_pseudolabel_records,
         )
+        if config.deduplicate_by_text:
+            pseudolabel_rows_all = _deduplicate_pseudolabel_rows_against_supervised(
+                supervised_rows_all,
+                pseudolabel_rows_all,
+            )
 
     with tempfile.TemporaryDirectory(prefix="gliner2_quick_") as temp_dir:
         model = GLiNER2.from_pretrained(config.model_base)
-        raw_rows = _merge_training_rows(
-            supervised_rows_all,
-            pseudolabel_rows_all,
-            train_mode=config.train_mode,
-            deduplicate_by_text=config.deduplicate_by_text,
-        )
+        raw_rows = list(supervised_rows_all)
         if not config.keep_empty_examples:
             raw_rows = [row for row in raw_rows if row.get("spans")]
-        if not raw_rows:
+        if config.train_mode == "supervised_only" and not raw_rows:
             raise ValueError("Training dataset is empty after preprocessing.")
 
-        entity_labels = sorted({str(span["label"]) for row in raw_rows for span in (row.get("spans") or [])})
+        label_source_rows = list(raw_rows) + list(pseudolabel_rows_all)
+        if not label_source_rows:
+            raise ValueError("Training dataset is empty after preprocessing.")
+
+        entity_labels = sorted({str(span["label"]) for row in label_source_rows for span in (row.get("spans") or [])})
         entity_types = [_normalize_label(label) for label in entity_labels]
 
-        temp_train = Path(temp_dir) / "train.jsonl"
+        temp_train = Path(temp_dir) / "train_supervised.jsonl"
         _convert_rows_to_gliner2_jsonl(raw_rows, temp_train)
 
         dataset = TrainingDataset.load(temp_train, shuffle=True, seed=config.seed)
@@ -366,6 +375,28 @@ def run_quick_experiment(config: QuickTrainConfig, script_path: str):
             raise ValueError("Training split is empty.")
         if len(val_data.examples) == 0:
             raise ValueError("Validation split is empty.")
+
+        pseudolabel_dataset = TrainingDataset([])
+        if config.train_mode != "supervised_only" and pseudolabel_rows_all:
+            pseudo_rows = list(pseudolabel_rows_all)
+            if not config.keep_empty_examples:
+                pseudo_rows = [row for row in pseudo_rows if row.get("spans")]
+            temp_pseudo = Path(temp_dir) / "train_pseudolabel.jsonl"
+            _convert_rows_to_gliner2_jsonl(pseudo_rows, temp_pseudo)
+            pseudolabel_dataset = TrainingDataset.load(temp_pseudo, shuffle=True, seed=config.seed)
+            if hasattr(pseudolabel_dataset, "validate"):
+                pseudo_report = pseudolabel_dataset.validate(raise_on_error=False)
+                pseudo_invalid = sorted(set(pseudo_report.get("invalid_indices", []) or []))
+                if pseudo_invalid:
+                    invalid_set = set(pseudo_invalid)
+                    pseudolabel_dataset = TrainingDataset(
+                        [example for idx, example in enumerate(pseudolabel_dataset.examples) if idx not in invalid_set]
+                    )
+
+        if config.train_mode == "pseudolabel_only":
+            train_data = pseudolabel_dataset
+        elif config.train_mode == "supervised_plus_pseudolabels":
+            train_data = TrainingDataset(list(train_data.examples) + list(pseudolabel_dataset.examples))
 
         train_config = TrainingConfig(
             output_dir=str(output_dir),
@@ -429,6 +460,7 @@ def run_quick_experiment(config: QuickTrainConfig, script_path: str):
             "raw_train_rows": len(raw_rows),
             "filtered_train_rows": len(raw_rows),
             "invalid_train_examples": len(invalid_indices),
+            "pseudolabel_processed_rows": len(getattr(pseudolabel_dataset, "examples", [])),
             "train_rows": len(train_data.examples),
             "val_rows": len(val_data.examples),
             "entity_labels": entity_labels,
