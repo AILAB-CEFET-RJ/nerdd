@@ -464,6 +464,57 @@ python3 -m pseudolabelling.refit_model \
   --output-model-dir ../artifacts/pseudolabelling/baseline_quick_2026-04-03/08_refit_model_t06_top1000
 ```
 
+## 12b) Codex-vs-GPT Adjudication Benchmark
+
+When comparing adjudication outputs from `gpt-5` and Codex over the same `05_llm_input` cases, use a chunked benchmark workflow instead of manual ad hoc copying.
+
+Initialize a benchmark:
+
+```bash
+cd .
+python3 src/tools/manage_codex_adjudication_benchmark.py init \
+  --input artifacts/pseudolabelling/baseline_quick_2026-04-03/05_llm_input_t06_top1000.jsonl \
+  --benchmark-dir artifacts/benchmarks/codex_adjudication_t06_top1000 \
+  --benchmark-name codex_vs_gpt5_t06_top1000 \
+  --chunk-size 10
+```
+
+Inspect progress:
+
+```bash
+python3 src/tools/manage_codex_adjudication_benchmark.py status \
+  --state-json artifacts/benchmarks/codex_adjudication_t06_top1000/state.json
+```
+
+Export the next pending chunk:
+
+```bash
+python3 src/tools/manage_codex_adjudication_benchmark.py next \
+  --state-json artifacts/benchmarks/codex_adjudication_t06_top1000/state.json
+```
+
+After Codex adjudicates the emitted chunk, ingest the structured responses:
+
+```bash
+python3 src/tools/manage_codex_adjudication_benchmark.py ingest \
+  --state-json artifacts/benchmarks/codex_adjudication_t06_top1000/state.json \
+  --chunk-id chunk_001 \
+  --response-jsonl artifacts/benchmarks/codex_adjudication_t06_top1000/manual_responses/chunk_001.jsonl
+```
+
+Build the final consolidated Codex output:
+
+```bash
+python3 src/tools/manage_codex_adjudication_benchmark.py build-output \
+  --state-json artifacts/benchmarks/codex_adjudication_t06_top1000/state.json
+```
+
+Operational notes:
+
+- chunks are frozen at initialization time
+- the tool validates adjudication structure and offsets on ingest
+- the final output JSONL is directly comparable to the output of `run_llm_adjudication.py`
+
 ## 13) Controlled Refit Comparison For Dissertation Experiments
 
 Use the same final holdout `../data/dd_corpus_small_test.json` for both runs below.

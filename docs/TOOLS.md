@@ -20,6 +20,7 @@ Regra prática:
 | `src/tools/build_annotation_editor.py` | anotação | JSON, JSONL | sobrescreve saída | gerar um editor HTML para revisão manual de spans |
 | `src/tools/audit_calibration_by_label.py` | auditoria | CSV de calibração | sobrescreve saída | auditar scores brutos vs calibrados por label e por validade |
 | `src/tools/build_calibration_dataset.py` | calibração | JSON, JSONL | sobrescreve saída | montar dataset de calibração a partir de previsões do modelo |
+| `src/tools/manage_codex_adjudication_benchmark.py` | operação | JSONL de adjudicação | resumível | gerenciar benchmark chunkado de adjudicação assistida por Codex |
 | `src/tools/clean_generic_spans.py` | limpeza | JSON, JSONL | cuidado com `--inplace` | remover spans genéricos por banlist |
 | `src/tools/build_refit_pseudolabel_dataset.py` | conversão | JSONL de adjudicação | sobrescreve saída | projetar `06_llm_adjudicated` para um `pseudolabel_path` compatível com refit |
 | `src/tools/compare_spacy_predictions.py` | auditoria | JSON, JSONL | sobrescreve saída | comparar previsões existentes contra spaCy no mesmo conjunto |
@@ -257,6 +258,30 @@ Entradas principais:
 - `--output-jsonl`
 - `--summary-json` opcional
 - `--allowed-decisions` com default `accept,accept_with_edits`
+
+### `src/tools/manage_codex_adjudication_benchmark.py`
+
+Gerencia um benchmark chunkado para comparar a adjudicação do `gpt-5` com uma adjudicação assistida por Codex sobre os mesmos casos.
+
+Use quando:
+
+- você quer congelar um subconjunto de casos do `05_llm_input`
+- precisa emitir chunks pequenos para adjudicação incremental
+- quer retomar o benchmark sem reprocessar chunks já concluídos
+- precisa validar e consolidar respostas estruturadas em um único JSONL final
+
+Subcomandos:
+
+- `init`
+  - cria `state.json`, chunks e um benchmark input congelado
+- `status`
+  - mostra progresso por status de chunk
+- `next`
+  - marca e imprime o próximo chunk pendente
+- `ingest`
+  - valida respostas de um chunk e salva o resultado consolidado daquele bloco
+- `build-output`
+  - junta todos os chunks concluídos em um output final JSONL
 
 ## Inspeção E Profiling
 
