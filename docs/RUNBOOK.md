@@ -290,9 +290,16 @@ scripts/codex_benchmark.sh artifacts/benchmarks/codex_adjudication_t06_top1000 c
 Behavior of the wrapper:
 
 - `open-next` reserves the next chunk, prints the response path you should write to, prints the exact `cat > ... <<'EOF'` prefix to use, and then prints the chunk contents.
+- `open-next` also reminds you that `accept` and `accept_with_edits` may only keep entities already present in `review_seed_entities`.
 - `ingest-latest` ingests the most recently exported chunk without requiring you to retype the chunk id.
 - `complete-next` ingests the latest exported chunk if its response file already exists, then immediately opens the next pending chunk.
 - `status` prints progress and reminds you to continue with `open-next` if there are pending chunks.
+
+Operational constraint:
+
+- in this benchmark, `accept` and `accept_with_edits` are literal seed-set decisions, not open extraction
+- `entities_final` may only contain spans already present in `review_seed_entities`
+- do not add `baseline_only_entities`, `gliner2_only_entities`, normalized place names, or corrected spellings unless they are already in `review_seed_entities`
 
 Manual alternatives:
 

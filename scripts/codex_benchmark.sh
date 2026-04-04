@@ -40,6 +40,11 @@ step_note() {
   printf '\n[%s] %s\n' "$1" "$2"
 }
 
+seed_rule_note() {
+  step_note "$1" "Regra critica: para decision='accept' ou 'accept_with_edits', entities_final so pode conter spans ja presentes em review_seed_entities."
+  step_note "$1" "Nao adicione baseline_only, gliner2_only, normalizacoes, correcoes ortograficas ou spans semanticamente plausiveis fora do seed set."
+}
+
 latest_exported_chunk_id() {
   python3 - "$STATE_JSON" <<'PY'
 import json
@@ -102,6 +107,7 @@ open_chunk_flow() {
   local chunk_id="$1"
   step_note "open-next" "Chunk reservado. Revise o conteúdo abaixo e me envie no chat para adjudicação."
   print_chunk_paths "$chunk_id"
+  seed_rule_note "open-next"
   step_note "open-next" "Quando eu devolver a resposta, salve-a com:"
   printf "cat > %s <<'EOF'\n" "$RESP_DIR/$chunk_id.jsonl"
   step_note "open-next" "Depois rode:"
@@ -163,6 +169,7 @@ case "$COMMAND" in
     chunk_id="$(latest_exported_chunk_id)"
     step_note "show-latest" "Mostrando o chunk exportado mais recente."
     print_chunk_paths "$chunk_id"
+    seed_rule_note "show-latest"
     step_note "show-latest" "Quando a resposta estiver salva, rode:"
     printf "bash scripts/codex_benchmark.sh %s ingest-latest\n" "$BENCH_DIR"
     echo
@@ -172,6 +179,7 @@ case "$COMMAND" in
     require_chunk_id "${3:-}"
     step_note "response-path" "Agora cole a resposta adjudicada no arquivo abaixo."
     printf '%s\n' "$RESP_DIR/$3.jsonl"
+    seed_rule_note "response-path"
     step_note "response-path" "Exemplo:"
     printf "cat > %s <<'EOF'\n" "$RESP_DIR/$3.jsonl"
     ;;

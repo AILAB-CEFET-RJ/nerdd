@@ -260,6 +260,7 @@ Subcomandos principais:
 Wrapper operacional recomendado:
 
 - `scripts/codex_benchmark.sh`
+- o wrapper relembra a restricao central do benchmark: `accept` e `accept_with_edits` so podem manter entidades ja presentes em `review_seed_entities`
 
 Exemplos:
 
