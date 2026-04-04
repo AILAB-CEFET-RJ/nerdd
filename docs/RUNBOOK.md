@@ -259,6 +259,57 @@ Observed probe results on the `10k` sample:
 
 Recommended first full-corpus operating point:
 
+## 12b) Codex-vs-GPT Adjudication Benchmark
+
+Use `src/tools/manage_codex_adjudication_benchmark.py` to initialize and consolidate the benchmark, and use `scripts/codex_benchmark.sh` as the operational wrapper during chunk-by-chunk work.
+
+Initialize once:
+
+```bash
+python3 src/tools/manage_codex_adjudication_benchmark.py init \
+  --input artifacts/pseudolabelling/baseline_quick_2026-04-03/05_llm_input_t06_top1000.jsonl \
+  --benchmark-dir artifacts/benchmarks/codex_adjudication_t06_top1000 \
+  --benchmark-name codex_vs_gpt5_t06_top1000 \
+  --chunk-size 10
+```
+
+Operational loop:
+
+```bash
+scripts/codex_benchmark.sh artifacts/benchmarks/codex_adjudication_t06_top1000 open-next
+scripts/codex_benchmark.sh artifacts/benchmarks/codex_adjudication_t06_top1000 ingest-latest
+scripts/codex_benchmark.sh artifacts/benchmarks/codex_adjudication_t06_top1000 status
+```
+
+Single-command iteration after saving each response:
+
+```bash
+scripts/codex_benchmark.sh artifacts/benchmarks/codex_adjudication_t06_top1000 complete-next
+```
+
+Behavior of the wrapper:
+
+- `open-next` reserves the next chunk, prints the response path you should write to, prints the exact `cat > ... <<'EOF'` prefix to use, and then prints the chunk contents.
+- `ingest-latest` ingests the most recently exported chunk without requiring you to retype the chunk id.
+- `complete-next` ingests the latest exported chunk if its response file already exists, then immediately opens the next pending chunk.
+- `status` prints progress and reminds you to continue with `open-next` if there are pending chunks.
+
+Manual alternatives:
+
+```bash
+scripts/codex_benchmark.sh artifacts/benchmarks/codex_adjudication_t06_top1000 next
+scripts/codex_benchmark.sh artifacts/benchmarks/codex_adjudication_t06_top1000 show chunk_001
+scripts/codex_benchmark.sh artifacts/benchmarks/codex_adjudication_t06_top1000 show-latest
+scripts/codex_benchmark.sh artifacts/benchmarks/codex_adjudication_t06_top1000 response-path chunk_001
+scripts/codex_benchmark.sh artifacts/benchmarks/codex_adjudication_t06_top1000 ingest chunk_001
+```
+
+Final consolidation:
+
+```bash
+scripts/codex_benchmark.sh artifacts/benchmarks/codex_adjudication_t06_top1000 build-output
+```
+
 - start with `threshold=0.30`
 - treat `0.20` as a more aggressive follow-up
 - treat `0.40` as a more conservative follow-up

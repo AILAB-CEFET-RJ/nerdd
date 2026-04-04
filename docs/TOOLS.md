@@ -239,6 +239,41 @@ Dependência relevante:
 
 Converte a saída de `src/tools/run_llm_adjudication.py` em um JSONL pronto para `--pseudolabel-path` do refit.
 
+### `src/tools/manage_codex_adjudication_benchmark.py`
+
+Gerencia um benchmark chunkado para comparar adjudicação do GPT com adjudicação assistida por Codex.
+
+Use quando:
+
+- você quer congelar um benchmark input único
+- precisa trabalhar em chunks pequenos e resumíveis
+- quer validar incrementalmente as respostas antes de consolidar a saída final
+
+Subcomandos principais:
+
+- `init`
+- `status`
+- `next`
+- `ingest`
+- `build-output`
+
+Wrapper operacional recomendado:
+
+- `scripts/codex_benchmark.sh`
+
+Exemplos:
+
+```bash
+scripts/codex_benchmark.sh artifacts/benchmarks/codex_adjudication_t06_top1000 next
+scripts/codex_benchmark.sh artifacts/benchmarks/codex_adjudication_t06_top1000 open-next
+scripts/codex_benchmark.sh artifacts/benchmarks/codex_adjudication_t06_top1000 show chunk_001
+scripts/codex_benchmark.sh artifacts/benchmarks/codex_adjudication_t06_top1000 show-latest
+scripts/codex_benchmark.sh artifacts/benchmarks/codex_adjudication_t06_top1000 response-path chunk_001
+scripts/codex_benchmark.sh artifacts/benchmarks/codex_adjudication_t06_top1000 ingest chunk_001
+scripts/codex_benchmark.sh artifacts/benchmarks/codex_adjudication_t06_top1000 ingest-latest
+scripts/codex_benchmark.sh artifacts/benchmarks/codex_adjudication_t06_top1000 status
+```
+
 Use quando:
 
 - você já tem `06_llm_adjudicated`
