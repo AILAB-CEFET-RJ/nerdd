@@ -434,6 +434,30 @@ Use quando:
 - precisa testar rápido `GLiNER2 base`, `LoRA` ou hiperparâmetros antes de um experimento maior
 - quer gerar `quick_summary.json` e `eval_test/metrics.json` para comparação com o stack atual
 
+Observações metodológicas:
+
+- agora aceita `--pseudolabel-path` e `--train-mode`
+- em `supervised_plus_pseudolabels`, os pseudolabels são apensados apenas ao split de treino
+- o split de validação continua supervisionado-only
+- não é necessário materializar um dataset combinado `small_train + pseudolabels`
+
+### `src/base_model_training/train_quick.py`
+
+Treina rapidamente um modelo GLiNER em split único e avalia no holdout anotado.
+
+Use quando:
+
+- quer uma probe rápida no stack base antes de nested CV maior
+- precisa comparar `supervised_only` contra `supervised_plus_pseudolabels`
+- quer consumir adjudicações convertidas em `--pseudolabel-path` sem materializar um dataset combinado
+
+Observações metodológicas:
+
+- agora aceita `--pseudolabel-path` e `--train-mode`
+- em `supervised_plus_pseudolabels`, os pseudolabels entram apenas no split de treino
+- o split de validação permanece supervisionado-only
+- a deduplicação por `text`, quando habilitada, preserva a linha supervisionada
+
 ### `src/tools/reshuffle_train_test_split.py`
 
 Recombina dois splits existentes, embaralha com seed fixa e gera novos `train` e `test`.

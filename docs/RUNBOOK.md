@@ -509,6 +509,7 @@ Recommended defaults:
 - keep `accept` and `accept_with_edits`
 - do not materialize a merged `small_train + pseudolabels` dataset
 - pass the emitted file directly through `--pseudolabel-path`
+- keep pseudolabels on the training side only; validation must remain supervised-only
 
 Example refit invocation:
 
@@ -521,6 +522,41 @@ python3 -m pseudolabelling.refit_model \
   --base-model ../artifacts/base_model_training/experiments/baseline_quick_2026-04-03/best_quick_gliner_model \
   --output-model-dir ../artifacts/pseudolabelling/baseline_quick_2026-04-03/08_refit_model_t06_top1000
 ```
+
+Quick ablation commands using the adjudicated pseudolabels without materializing a merged dataset:
+
+`base_model_training.train_quick`
+
+```bash
+cd src
+python3 -m base_model_training.train_quick \
+  --train-path ../data/dd_corpus_small_train.json \
+  --test-path ../data/dd_corpus_small_test.json \
+  --pseudolabel-path ../artifacts/benchmarks/codex_adjudication_disagreement_top100_v2/refit_pseudolabels.jsonl \
+  --train-mode supervised_plus_pseudolabels \
+  --output-dir ../artifacts/base_model_training/quick_supervised_plus_codex \
+  --log-level INFO
+```
+
+`gliner2_training.train_quick`
+
+```bash
+cd src
+python3 -m gliner2_training.train_quick \
+  --train-path ../data/dd_corpus_small_train.json \
+  --test-path ../data/dd_corpus_small_test.json \
+  --pseudolabel-path ../artifacts/benchmarks/codex_adjudication_disagreement_top100_v2/refit_pseudolabels.jsonl \
+  --train-mode supervised_plus_pseudolabels \
+  --output-dir ../artifacts/gliner2_training/quick_supervised_plus_codex \
+  --log-level INFO
+```
+
+For both quick-training entrypoints:
+
+- the supervised split is created first
+- the internal validation set remains supervised-only
+- pseudolabel rows are appended only to the training side
+- this avoids validation leakage from adjudicated pseudolabels
 
 ## 12b) Codex-vs-GPT Adjudication Benchmark
 
