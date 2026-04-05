@@ -558,6 +558,15 @@ For both quick-training entrypoints:
 - pseudolabel rows are appended only to the training side
 - this avoids validation leakage from adjudicated pseudolabels
 
+Experimental note from the disagreement benchmarks:
+
+- `codex_adjudication_disagreement_top100_v2` and `codex_adjudication_disagreement_top300_v1` were useful as directed evaluation/audit sets
+- as training pseudolabels, the same artifacts were not stable enough to promote by default
+- a single positive run is not enough; use multiple seeds before attributing gains to adjudicated pseudolabels
+- in the `top300_v1` study, a single `gliner2_training` run improved, but the multi-seed check turned negative on average
+- the conservative subset (`review_confidence=high` and `decision=accept`) still degraded across the tested seeds
+- do not assume that disagreement adjudication artifacts are suitable training pseudolabels just because they are useful review benchmarks
+
 ## 12b) Codex-vs-GPT Adjudication Benchmark
 
 When comparing adjudication outputs from `gpt-5` and Codex over the same `05_llm_input` cases, use a chunked benchmark workflow instead of manual ad hoc copying.
@@ -608,6 +617,56 @@ Operational notes:
 - chunks are frozen at initialization time
 - the tool validates adjudication structure and offsets on ingest
 - the final output JSONL is directly comparable to the output of `run_llm_adjudication.py`
+
+Operational semantics for the literal benchmark mode:
+
+- `accept` and `accept_with_edits` are seed-set decisions, not open-ended extraction
+- in this mode, adjudication must stay within `review_seed_entities`
+- if you want a semantically broader adjudication workflow, treat it as a different benchmark mode and keep the artifacts separate
+
+## 12c) Auditing Refit Regressions
+
+Use `src/tools/audit_refit_regressions.py` after any `supervised_only` vs `supervised_plus_pseudolabels` comparison when you need to understand *why* the metrics moved.
+
+The tool compares:
+
+- one gold evaluation file
+- one baseline `predictions.jsonl`
+- one candidate/refit `predictions.jsonl`
+
+and emits:
+
+- `summary.json`
+- `regressions.jsonl`
+- `wins.jsonl`
+- `ties.jsonl`
+- `top_regressions.md`
+
+Example:
+
+```bash
+python3 src/tools/audit_refit_regressions.py \
+  --gold data/dd_corpus_small_test.json \
+  --baseline-pred artifacts/gliner2_training/quick_supervised_only/eval_test/predictions.jsonl \
+  --candidate-pred artifacts/gliner2_training/quick_supervised_plus_codex_top300_v1/eval_test/predictions.jsonl \
+  --output-dir artifacts/audits/gliner2_top300_v1_vs_supervised_only \
+  --title "GLiNER2 top300_v1 vs supervised_only"
+```
+
+The summary currently tracks:
+
+- `wins`, `losses`, `ties`
+- `micro_f1_delta`, `macro_f1_delta`
+- `loss_reason_counts`
+- `loss_reason_counts_by_label`
+- `wrong_label_confusions`
+
+Interpretation guidance:
+
+- if a run gains on aggregate but also increases `spurious_entity`, the improvement may be recall-heavy and unstable
+- high `boundary_or_partial` suggests span drift or partial-supervision effects
+- high `wrong_label_confusions` suggests label drift induced by the refit data
+- use this audit before deciding to scale any new pseudolabel source
 
 ## 13) Controlled Refit Comparison For Dissertation Experiments
 
