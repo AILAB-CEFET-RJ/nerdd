@@ -75,6 +75,7 @@ def _init_state(args):
     rows = read_json_or_jsonl(args.input)
     rows_by_id = _rows_by_source_id(rows)
     chunk_size = int(args.chunk_size)
+    annotation_mode = str(args.annotation_mode).strip()
     if chunk_size <= 0:
         raise ValueError("--chunk-size must be > 0")
 
@@ -111,6 +112,7 @@ def _init_state(args):
 
     state = {
         "benchmark_name": args.benchmark_name,
+        "annotation_mode": annotation_mode,
         "input": str(Path(args.input).resolve()),
         "benchmark_input_jsonl": str(benchmark_input_path.resolve()),
         "chunk_size": chunk_size,
@@ -132,6 +134,7 @@ def _print_status(args):
     counts = Counter(chunk["status"] for chunk in state.get("chunks", []))
     payload = {
         "benchmark_name": state.get("benchmark_name", ""),
+        "annotation_mode": state.get("annotation_mode", "literal_review"),
         "records_total": state.get("records_total", 0),
         "chunks_total": state.get("chunks_total", 0),
         "chunks_by_status": dict(counts),
@@ -206,7 +209,11 @@ def _ingest_chunk(args):
         adjudication = response_row.get("adjudication")
         if not isinstance(adjudication, dict):
             raise ValueError(f"Response row for {source_id} must contain an adjudication object.")
-        validated = validate_adjudication(adjudication, source_row)
+        validated = validate_adjudication(
+            adjudication,
+            source_row,
+            annotation_mode=state.get("annotation_mode", "literal_review"),
+        )
         decision_counts[validated["decision"]] += 1
         validated_rows.append(
             {
@@ -271,6 +278,12 @@ def parse_args():
     init_parser.add_argument("--benchmark-dir", required=True, help="Directory to store state, chunks, and responses.")
     init_parser.add_argument("--benchmark-name", default="codex_adjudication_benchmark")
     init_parser.add_argument("--chunk-size", type=int, default=10)
+    init_parser.add_argument(
+        "--annotation-mode",
+        default="literal_review",
+        choices=["literal_review", "train_annotation"],
+        help="Validation mode for adjudication ingestion.",
+    )
 
     status_parser = subparsers.add_parser("status", help="Print benchmark progress summary.")
     status_parser.add_argument("--state-json", required=True, help="Benchmark state JSON path.")

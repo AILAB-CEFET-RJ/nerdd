@@ -41,6 +41,7 @@ DEFAULT_DOTENV_PATH = ".env"
 DEFAULT_TEMPERATURE = 0.0
 ALLOWED_DECISIONS = {"accept", "accept_with_edits", "reject"}
 ALLOWED_LABELS = set(DEFAULT_ALLOWED_LABELS)
+ALLOWED_ANNOTATION_MODES = {"literal_review", "train_annotation"}
 
 ADJUDICATION_SCHEMA = {
     "type": "object",
@@ -382,9 +383,17 @@ def _extract_usage(response_payload: dict) -> dict:
     return cleaned
 
 
-def validate_adjudication(adjudication: dict, source_row: dict) -> dict:
+def validate_adjudication(
+    adjudication: dict,
+    source_row: dict,
+    *,
+    annotation_mode: str = "literal_review",
+) -> dict:
     if not isinstance(adjudication, dict):
         raise AdjudicationValidationError("Adjudication payload must be a JSON object.")
+
+    if annotation_mode not in ALLOWED_ANNOTATION_MODES:
+        raise AdjudicationValidationError(f"Unsupported annotation_mode: {annotation_mode}")
 
     decision = adjudication.get("decision")
     if decision not in ALLOWED_DECISIONS:
@@ -435,20 +444,21 @@ def validate_adjudication(adjudication: dict, source_row: dict) -> dict:
             raise AdjudicationValidationError(
                 f"decision={decision!r} must contain at least one final entity"
             )
-        invalid_seed_entities = [
-            entity
-            for entity in cleaned_entities
-            if (entity["text"], entity["label"], entity["start"], entity["end"]) not in review_seed_pairs
-        ]
-        if invalid_seed_entities:
-            raise AdjudicationValidationError(
-                f"decision={decision!r} may only contain entities from review_seed_entities; "
-                f"got unsupported entities: {invalid_seed_entities}"
-            )
-        if _is_weak_single_location_accept(cleaned_entities, source_row):
-            raise AdjudicationValidationError(
-                f"decision={decision!r} is too weak semantically: single-token Location without agreement support"
-            )
+        if annotation_mode == "literal_review":
+            invalid_seed_entities = [
+                entity
+                for entity in cleaned_entities
+                if (entity["text"], entity["label"], entity["start"], entity["end"]) not in review_seed_pairs
+            ]
+            if invalid_seed_entities:
+                raise AdjudicationValidationError(
+                    f"decision={decision!r} may only contain entities from review_seed_entities; "
+                    f"got unsupported entities: {invalid_seed_entities}"
+                )
+            if _is_weak_single_location_accept(cleaned_entities, source_row):
+                raise AdjudicationValidationError(
+                    f"decision={decision!r} is too weak semantically: single-token Location without agreement support"
+                )
 
     validated = dict(adjudication)
     validated["entities_final"] = cleaned_entities

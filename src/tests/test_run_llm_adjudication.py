@@ -174,6 +174,26 @@ class TestRunLlmAdjudication(unittest.TestCase):
                 source_row,
             )
 
+    def test_validate_adjudication_train_annotation_allows_new_literal_entities(self):
+        source_row = {
+            "text": "Ivete Sangalo em Salvador",
+            "review_seed_entities": [{"text": "Ivete Sangalo", "label": "Person", "start": 0, "end": 14}],
+        }
+        validated = validate_adjudication(
+            {
+                "decision": "accept_with_edits",
+                "review_confidence": "high",
+                "entities_final": [
+                    {"text": "Ivete Sangalo", "label": "Person", "start": 0, "end": 14},
+                    {"text": "Salvador", "label": "Location", "start": 18, "end": 26},
+                ],
+                "justification": "literal training extraction",
+            },
+            source_row,
+            annotation_mode="train_annotation",
+        )
+        self.assertEqual(len(validated["entities_final"]), 2)
+
     def test_validate_adjudication_rejects_single_token_location_without_agreement_support(self):
         source_row = {
             "text": "rua alagoas proximo deposito de gas",
