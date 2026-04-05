@@ -119,6 +119,28 @@ def _classify_new_fp(pred_span, gold_spans):
     return "wrong_label"
 
 
+def _wrong_label_confusion_for_missed_gold(gold_span, candidate_pred_spans):
+    overlapping = [span for span in candidate_pred_spans if _span_overlap(span, gold_span)]
+    if not overlapping:
+        return None
+    if any(span["label"] == gold_span["label"] for span in overlapping):
+        return None
+    overlap_counts = Counter(span["label"] for span in overlapping)
+    predicted_label = sorted(overlap_counts.items(), key=lambda item: (-item[1], item[0]))[0][0]
+    return f"{gold_span['label']}->{predicted_label}"
+
+
+def _wrong_label_confusion_for_new_fp(pred_span, gold_spans):
+    overlapping = [span for span in gold_spans if _span_overlap(span, pred_span)]
+    if not overlapping:
+        return None
+    if any(span["label"] == pred_span["label"] for span in overlapping):
+        return None
+    overlap_counts = Counter(span["label"] for span in overlapping)
+    gold_label = sorted(overlap_counts.items(), key=lambda item: (-item[1], item[0]))[0][0]
+    return f"{gold_label}->{pred_span['label']}"
+
+
 def _build_tp_fp_sets(gold_spans, pred_spans):
     gold_set = {_exact_key(span) for span in gold_spans}
     pred_set = {_exact_key(span) for span in pred_spans}
@@ -167,6 +189,8 @@ def _audit_rows(gold_rows, baseline_rows, candidate_rows):
     loss_reason_counts = Counter()
     win_reason_counts = Counter()
     labels_affected = Counter()
+    loss_reason_counts_by_label = defaultdict(Counter)
+    wrong_label_confusions = Counter()
     row_deltas = []
 
     baseline_pred_spans = []
@@ -205,6 +229,11 @@ def _audit_rows(gold_rows, baseline_rows, candidate_rows):
             reason = _classify_missed_gold(gold_span, cand_spans)
             loss_reasons[reason] += 1
             labels_affected[gold_span["label"]] += 1
+            loss_reason_counts_by_label[gold_span["label"]][reason] += 1
+            if reason == "wrong_label":
+                confusion = _wrong_label_confusion_for_missed_gold(gold_span, cand_spans)
+                if confusion:
+                    wrong_label_confusions[confusion] += 1
         lost_gold_spans = [gold_by_key[key] for key in lost_exact]
         for key in sorted(new_fp):
             pred_span = cand_by_key[key]
@@ -213,6 +242,11 @@ def _audit_rows(gold_rows, baseline_rows, candidate_rows):
             reason = _classify_new_fp(pred_span, gold_spans)
             loss_reasons[reason] += 1
             labels_affected[pred_span["label"]] += 1
+            loss_reason_counts_by_label[pred_span["label"]][reason] += 1
+            if reason == "wrong_label":
+                confusion = _wrong_label_confusion_for_new_fp(pred_span, gold_spans)
+                if confusion:
+                    wrong_label_confusions[confusion] += 1
 
         win_reasons = Counter()
         for key in sorted(gained_exact):
@@ -292,6 +326,11 @@ def _audit_rows(gold_rows, baseline_rows, candidate_rows):
         "candidate_macro_f1": candidate_metrics["macro_f1"],
         "macro_f1_delta": candidate_metrics["macro_f1"] - baseline_metrics["macro_f1"],
         "loss_reason_counts": dict(loss_reason_counts),
+        "loss_reason_counts_by_label": {
+            label: dict(sorted(counter.items(), key=lambda item: (-item[1], item[0])))
+            for label, counter in sorted(loss_reason_counts_by_label.items())
+        },
+        "wrong_label_confusions": dict(sorted(wrong_label_confusions.items(), key=lambda item: (-item[1], item[0]))),
         "win_reason_counts": dict(win_reason_counts),
         "labels_affected": dict(labels_affected),
     }
@@ -325,6 +364,20 @@ def _render_markdown(title, payload):
     if summary["loss_reason_counts"]:
         for reason, count in sorted(summary["loss_reason_counts"].items(), key=lambda item: (-item[1], item[0])):
             lines.append(f"- {reason}: {count}")
+    else:
+        lines.append("- none")
+
+    lines.extend(["", "## Loss Reasons By Label", ""])
+    if summary.get("loss_reason_counts_by_label"):
+        for label, counts in summary["loss_reason_counts_by_label"].items():
+            lines.append(f"- {label}: {counts}")
+    else:
+        lines.append("- none")
+
+    lines.extend(["", "## Wrong Label Confusions", ""])
+    if summary.get("wrong_label_confusions"):
+        for confusion, count in summary["wrong_label_confusions"].items():
+            lines.append(f"- {confusion}: {count}")
     else:
         lines.append("- none")
 
