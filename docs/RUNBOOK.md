@@ -281,6 +281,13 @@ scripts/codex_benchmark.sh artifacts/benchmarks/codex_adjudication_t06_top1000 i
 scripts/codex_benchmark.sh artifacts/benchmarks/codex_adjudication_t06_top1000 status
 ```
 
+Automatic loop via API, without copy/paste:
+
+```bash
+scripts/codex_benchmark.sh artifacts/benchmarks/codex_adjudication_t06_top1000 auto-next
+scripts/codex_benchmark.sh artifacts/benchmarks/codex_adjudication_t06_top1000 auto-complete-next
+```
+
 Single-command iteration after saving each response:
 
 ```bash
@@ -294,6 +301,14 @@ Behavior of the wrapper:
 - `ingest-latest` ingests the most recently exported chunk without requiring you to retype the chunk id.
 - `complete-next` ingests the latest exported chunk if its response file already exists, then immediately opens the next pending chunk.
 - `status` prints progress and reminds you to continue with `open-next` if there are pending chunks.
+- `auto-next` reserves the next chunk, calls `src/tools/run_llm_adjudication.py` on that chunk, writes the response JSONL into `manual_responses/`, and ingests it immediately.
+- `auto-complete-next` ingests the latest exported chunk if needed, then auto-runs the next pending chunk through the API and ingests it.
+
+Operational note for train-oriented benchmarks:
+
+- initialize those benchmarks with `--annotation-mode train_annotation`
+- in that mode, the prompt is conservative but not restricted to `review_seed_entities`
+- the benchmark wrapper propagates the benchmark `annotation_mode` into the automatic API call
 
 Operational constraint:
 

@@ -6,7 +6,9 @@ if [[ $# -lt 2 ]]; then
 Usage:
   scripts/codex_benchmark.sh <benchmark_dir> next
   scripts/codex_benchmark.sh <benchmark_dir> open-next
+  scripts/codex_benchmark.sh <benchmark_dir> auto-next
   scripts/codex_benchmark.sh <benchmark_dir> complete-next
+  scripts/codex_benchmark.sh <benchmark_dir> auto-complete-next
   scripts/codex_benchmark.sh <benchmark_dir> show <chunk_id>
   scripts/codex_benchmark.sh <benchmark_dir> show-latest
   scripts/codex_benchmark.sh <benchmark_dir> response-path <chunk_id>
@@ -18,7 +20,9 @@ Usage:
 Examples:
   scripts/codex_benchmark.sh artifacts/benchmarks/codex_adjudication_t06_top1000 next
   scripts/codex_benchmark.sh artifacts/benchmarks/codex_adjudication_t06_top1000 open-next
+  scripts/codex_benchmark.sh artifacts/benchmarks/codex_adjudication_t06_top1000 auto-next
   scripts/codex_benchmark.sh artifacts/benchmarks/codex_adjudication_t06_top1000 complete-next
+  scripts/codex_benchmark.sh artifacts/benchmarks/codex_adjudication_t06_top1000 auto-complete-next
   scripts/codex_benchmark.sh artifacts/benchmarks/codex_adjudication_t06_top1000 show chunk_001
   scripts/codex_benchmark.sh artifacts/benchmarks/codex_adjudication_t06_top1000 show-latest
   scripts/codex_benchmark.sh artifacts/benchmarks/codex_adjudication_t06_top1000 response-path chunk_001
@@ -33,6 +37,8 @@ COMMAND="$2"
 STATE_JSON="$BENCH_DIR/state.json"
 CHUNKS_DIR="$BENCH_DIR/chunks"
 RESP_DIR="$BENCH_DIR/manual_responses"
+AUTOFILL_MODEL="${OPENAI_DEFAULT_MODEL:-gpt-5}"
+AUTOFILL_TEMPERATURE="${OPENAI_DEFAULT_TEMPERATURE:-0.0}"
 
 mkdir -p "$RESP_DIR"
 
@@ -41,8 +47,21 @@ step_note() {
 }
 
 seed_rule_note() {
-  step_note "$1" "Regra critica: para decision='accept' ou 'accept_with_edits', entities_final so pode conter spans ja presentes em review_seed_entities."
-  step_note "$1" "Nao adicione baseline_only, gliner2_only, normalizacoes, correcoes ortograficas ou spans semanticamente plausiveis fora do seed set."
+  annotation_mode="$(python3 - "$STATE_JSON" <<'PY'
+import json
+import sys
+from pathlib import Path
+state = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+print(state.get("annotation_mode", "literal_review"))
+PY
+)"
+  if [[ "$annotation_mode" == "train_annotation" ]]; then
+    step_note "$1" "Modo train_annotation: entities_final pode incluir novas entidades literais fora de review_seed_entities."
+    step_note "$1" "Priorize spans completos, conservadores e defensáveis; omita entidades genéricas, espúrias ou ambíguas."
+  else
+    step_note "$1" "Regra critica: para decision='accept' ou 'accept_with_edits', entities_final so pode conter spans ja presentes em review_seed_entities."
+    step_note "$1" "Nao adicione baseline_only, gliner2_only, normalizacoes, correcoes ortograficas ou spans semanticamente plausiveis fora do seed set."
+  fi
 }
 
 latest_exported_chunk_id() {
@@ -92,6 +111,32 @@ print_chunk_paths() {
   printf 'response_path=%s\n' "$RESP_DIR/$chunk_id.jsonl"
 }
 
+state_annotation_mode() {
+  python3 - "$STATE_JSON" <<'PY'
+import json
+import sys
+from pathlib import Path
+state = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+print(state.get("annotation_mode", "literal_review"))
+PY
+}
+
+autofill_chunk() {
+  local chunk_id="$1"
+  local annotation_mode
+  annotation_mode="$(state_annotation_mode)"
+  local chunk_path="$CHUNKS_DIR/$chunk_id.jsonl"
+  local response_path="$RESP_DIR/$chunk_id.jsonl"
+  step_note "auto" "Preenchendo $chunk_id via Responses API com model=$AUTOFILL_MODEL annotation_mode=$annotation_mode."
+  python3 src/tools/run_llm_adjudication.py \
+    --input "$chunk_path" \
+    --output-jsonl "$response_path" \
+    --model "$AUTOFILL_MODEL" \
+    --temperature "$AUTOFILL_TEMPERATURE" \
+    --annotation-mode "$annotation_mode"
+  step_note "auto" "Resposta salva em $response_path"
+}
+
 reserve_next_chunk() {
   python3 src/tools/manage_codex_adjudication_benchmark.py next \
     --state-json "$STATE_JSON" >/tmp/codex_benchmark_next.json
@@ -135,6 +180,15 @@ case "$COMMAND" in
     chunk_id="$(reserve_next_chunk)"
     open_chunk_flow "$chunk_id"
     ;;
+  auto-next)
+    chunk_id="$(reserve_next_chunk)"
+    autofill_chunk "$chunk_id"
+    python3 src/tools/manage_codex_adjudication_benchmark.py ingest \
+      --state-json "$STATE_JSON" \
+      --chunk-id "$chunk_id" \
+      --response-jsonl "$RESP_DIR/$chunk_id.jsonl"
+    step_note "auto-next" "Chunk $chunk_id processado e ingerido com sucesso."
+    ;;
   complete-next)
     if [[ "$(has_exported_chunk)" == "yes" ]]; then
       chunk_id="$(latest_exported_chunk_id)"
@@ -158,6 +212,31 @@ case "$COMMAND" in
       open_chunk_flow "$chunk_id"
     else
       step_note "complete-next" "Não há mais chunks pendentes. Rode 'build-output' para consolidar o benchmark."
+    fi
+    ;;
+  auto-complete-next)
+    if [[ "$(has_exported_chunk)" == "yes" ]]; then
+      chunk_id="$(latest_exported_chunk_id)"
+      response_path="$RESP_DIR/$chunk_id.jsonl"
+      if [[ ! -f "$response_path" ]]; then
+        autofill_chunk "$chunk_id"
+      fi
+      python3 src/tools/manage_codex_adjudication_benchmark.py ingest \
+        --state-json "$STATE_JSON" \
+        --chunk-id "$chunk_id" \
+        --response-jsonl "$response_path"
+    fi
+
+    if [[ "$(has_pending_chunk)" == "yes" ]]; then
+      chunk_id="$(reserve_next_chunk)"
+      autofill_chunk "$chunk_id"
+      python3 src/tools/manage_codex_adjudication_benchmark.py ingest \
+        --state-json "$STATE_JSON" \
+        --chunk-id "$chunk_id" \
+        --response-jsonl "$RESP_DIR/$chunk_id.jsonl"
+      step_note "auto-complete-next" "Chunk $chunk_id processado e ingerido com sucesso."
+    else
+      step_note "auto-complete-next" "Não há mais chunks pendentes. Rode 'build-output' para consolidar o benchmark."
     fi
     ;;
   show)

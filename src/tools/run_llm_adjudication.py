@@ -223,7 +223,9 @@ def _serialize_entities(entities) -> list[dict]:
     return rows
 
 
-def build_messages(row: dict) -> list[dict]:
+def build_messages(row: dict, *, annotation_mode: str = "literal_review") -> list[dict]:
+    if annotation_mode not in ALLOWED_ANNOTATION_MODES:
+        raise ValueError(f"Unsupported annotation_mode: {annotation_mode}")
     text = str(row.get("text", "")).strip()
     payload = {
         "source_id": row.get("source_id"),
@@ -261,48 +263,82 @@ def build_messages(row: dict) -> list[dict]:
         "review_seed_entities": _serialize_entities(row.get("review_seed_entities")),
     }
 
-    system_message = (
-        "You are a reviewer of Portuguese NER annotations for Brazilian crime-tip records.\n"
-        "Return JSON only.\n"
-        "Domain context:\n"
-        "- Each record is an anonymous Brazilian crime tip.\n"
-        "- Text is often noisy, non-standard, misspelled, truncated, and may contain OCR/encoding corruption.\n"
-        "- Conservatism is required.\n"
-        "Hard rules:\n"
-        "1. Every entity text must be an exact literal substring of the input text.\n"
-        "1b. Every entity must preserve the exact start/end offsets from review_seed_entities.\n"
-        "2. Do not normalize, simplify, shorten, translate, or correct spelling in entity text.\n"
-        "3. Allowed labels: Person, Location, Organization.\n"
-        "4. Prefer reject over speculative completion.\n"
-        "5. decision='accept' is only allowed when every final entity comes directly from review_seed_entities.\n"
-        "6. decision='accept_with_edits' is only allowed when every final entity comes directly from review_seed_entities.\n"
-        "7. For accept_with_edits, you may remove entities from the seed set, but do not add new entities outside review_seed_entities.\n"
-        "8. Do not promote gliner2-only entities unless they are already present in review_seed_entities.\n"
-        "9. If the case is noisy, incomplete, ambiguous, weakly supported, or semantically poor, return decision='reject'.\n"
-        "10. Be especially skeptical of single-token Location entities, partial place names, generic road/area words, and corrupted fragments.\n"
-        "11. If in doubt, reject."
-    )
-    user_message = (
-        "Review this single Brazilian crime-tip record and adjudicate the proposed NER annotation.\n\n"
-        "Task:\n"
-        "- Decide whether the review_seed_entities for this record should be accepted as-is, accepted with removals, or rejected.\n"
-        "- Do not perform open-ended entity extraction.\n"
-        "- Only keep entities that are exact literal substrings of the TEXT and already present in review_seed_entities with the same start/end offsets.\n"
-        "- If the seed set is noisy, weak, generic, partial, corrupted, or ambiguous, reject.\n\n"
-        f"TEXT:\n{text}\n\n"
-        "CANDIDATE DATA:\n"
-        f"{json.dumps(payload, ensure_ascii=False, indent=2)}"
-    )
+    if annotation_mode == "train_annotation":
+        system_message = (
+            "You are producing conservative Portuguese NER training annotations for Brazilian crime-tip records.\n"
+            "Return JSON only.\n"
+            "Domain context:\n"
+            "- Each record is an anonymous Brazilian crime tip.\n"
+            "- Text is often noisy, non-standard, misspelled, truncated, and may contain OCR/encoding corruption.\n"
+            "- Preserve the exact literal text; do not normalize or correct spelling.\n"
+            "- Conservatism is required.\n"
+            "Hard rules:\n"
+            "1. Every entity text must be an exact literal substring of the input text.\n"
+            "2. Allowed labels: Person, Location, Organization.\n"
+            "3. You are not restricted to review_seed_entities; you may add new literal entities when they are clearly defensible.\n"
+            "4. Prefer the most complete defensible literal span over partial fragments.\n"
+            "5. Do not invent entities, normalize text, or use metadata alone to justify an entity.\n"
+            "6. Omit generic role/group words unless they are part of a clear named entity.\n"
+            "7. Be especially skeptical of partial place names, weak organization mentions, and label drift between Location, Organization, and Person.\n"
+            "8. If the case is noisy, incomplete, ambiguous, weakly supported, or semantically poor, return decision='reject'.\n"
+            "9. If in doubt, omit the entity."
+        )
+        user_message = (
+            "Review this single Brazilian crime-tip record and produce a conservative NER training annotation.\n\n"
+            "Task:\n"
+            "- Extract only literal, defensible entities from the TEXT.\n"
+            "- You may keep, drop, or add entities relative to review_seed_entities.\n"
+            "- Prefer high precision over recall.\n"
+            "- Omit weak, generic, partial, corrupted, or ambiguous entities.\n\n"
+            f"TEXT:\n{text}\n\n"
+            "CANDIDATE DATA:\n"
+            f"{json.dumps(payload, ensure_ascii=False, indent=2)}"
+        )
+    else:
+        system_message = (
+            "You are a reviewer of Portuguese NER annotations for Brazilian crime-tip records.\n"
+            "Return JSON only.\n"
+            "Domain context:\n"
+            "- Each record is an anonymous Brazilian crime tip.\n"
+            "- Text is often noisy, non-standard, misspelled, truncated, and may contain OCR/encoding corruption.\n"
+            "- Conservatism is required.\n"
+            "Hard rules:\n"
+            "1. Every entity text must be an exact literal substring of the input text.\n"
+            "1b. Every entity must preserve the exact start/end offsets from review_seed_entities.\n"
+            "2. Do not normalize, simplify, shorten, translate, or correct spelling in entity text.\n"
+            "3. Allowed labels: Person, Location, Organization.\n"
+            "4. Prefer reject over speculative completion.\n"
+            "5. decision='accept' is only allowed when every final entity comes directly from review_seed_entities.\n"
+            "6. decision='accept_with_edits' is only allowed when every final entity comes directly from review_seed_entities.\n"
+            "7. For accept_with_edits, you may remove entities from the seed set, but do not add new entities outside review_seed_entities.\n"
+            "8. Do not promote gliner2-only entities unless they are already present in review_seed_entities.\n"
+            "9. If the case is noisy, incomplete, ambiguous, weakly supported, or semantically poor, return decision='reject'.\n"
+            "10. Be especially skeptical of single-token Location entities, partial place names, generic road/area words, and corrupted fragments.\n"
+            "11. If in doubt, reject."
+        )
+        user_message = (
+            "Review this single Brazilian crime-tip record and adjudicate the proposed NER annotation.\n\n"
+            "Task:\n"
+            "- Decide whether the review_seed_entities for this record should be accepted as-is, accepted with removals, or rejected.\n"
+            "- Do not perform open-ended entity extraction.\n"
+            "- Only keep entities that are exact literal substrings of the TEXT and already present in review_seed_entities with the same start/end offsets.\n"
+            "- If the seed set is noisy, weak, generic, partial, corrupted, or ambiguous, reject.\n\n"
+            f"TEXT:\n{text}\n\n"
+            "CANDIDATE DATA:\n"
+            f"{json.dumps(payload, ensure_ascii=False, indent=2)}"
+        )
     return [
         {"role": "system", "content": system_message},
         {"role": "user", "content": user_message},
     ]
 
 
-def build_request_body(row: dict, *, model: str, temperature: float | None = None) -> dict:
+def build_request_body(
+    row: dict, *, model: str, temperature: float | None = None, annotation_mode: str = "literal_review"
+) -> dict:
     body = {
         "model": model,
-        "input": build_messages(row),
+        "input": build_messages(row, annotation_mode=annotation_mode),
         "text": {
             "format": {
                 "type": "json_schema",
@@ -470,6 +506,7 @@ def call_responses_api(
     *,
     model: str,
     temperature: float | None,
+    annotation_mode: str,
     api_key: str,
     api_base: str,
     timeout_seconds: int,
@@ -478,7 +515,7 @@ def call_responses_api(
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
-    body = build_request_body(row, model=model, temperature=temperature)
+    body = build_request_body(row, model=model, temperature=temperature, annotation_mode=annotation_mode)
     response = requests.post(api_base, headers=headers, json=body, timeout=timeout_seconds)
     response.raise_for_status()
     return response.json()
@@ -489,6 +526,7 @@ def adjudicate_row(
     *,
     model: str,
     temperature: float | None,
+    annotation_mode: str,
     api_key: str,
     api_base: str,
     timeout_seconds: int,
@@ -502,11 +540,16 @@ def adjudicate_row(
                 row,
                 model=model,
                 temperature=temperature,
+                annotation_mode=annotation_mode,
                 api_key=api_key,
                 api_base=api_base,
                 timeout_seconds=timeout_seconds,
             )
-            adjudication = validate_adjudication(parse_adjudication_response(response_payload), row)
+            adjudication = validate_adjudication(
+                parse_adjudication_response(response_payload),
+                row,
+                annotation_mode=annotation_mode,
+            )
             return {
                 "source_id": row.get("source_id"),
                 "model": model,
@@ -676,6 +719,12 @@ def parse_args() -> argparse.Namespace:
         help="Optional cap on cumulative total_tokens across successful records (0 = unlimited).",
     )
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
+    parser.add_argument(
+        "--annotation-mode",
+        default="literal_review",
+        choices=["literal_review", "train_annotation"],
+        help="Prompt/validation mode for adjudication.",
+    )
     return parser.parse_args()
 
 
@@ -746,6 +795,7 @@ def main() -> None:
                 row,
                 model=model_name,
                 temperature=temperature,
+                annotation_mode=args.annotation_mode,
                 api_key=api_key,
                 api_base=args.api_base,
                 timeout_seconds=args.timeout_seconds,

@@ -42,12 +42,31 @@ class TestRunLlmAdjudication(unittest.TestCase):
         self.assertIn("Ivete Sangalo mora em Salvador", messages[1]["content"])
         self.assertIn("baseline_entities", messages[1]["content"])
 
+    def test_build_messages_train_annotation_allows_new_entities_instruction(self):
+        row = {
+            "source_id": "tip-1",
+            "text": "Ivete Sangalo mora em Salvador",
+            "review_seed_entities": [{"text": "Ivete Sangalo", "label": "Person", "start": 0, "end": 14}],
+        }
+        messages = build_messages(row, annotation_mode="train_annotation")
+        self.assertIn("not restricted to review_seed_entities", messages[0]["content"])
+        self.assertIn("produce a conservative NER training annotation", messages[1]["content"])
+
     def test_build_request_body_uses_json_schema(self):
         body = build_request_body({"text": "abc"}, model="gpt-4o-mini", temperature=0.7)
         self.assertEqual(body["model"], "gpt-4o-mini")
         self.assertEqual(body["temperature"], 0.7)
         self.assertEqual(body["text"]["format"]["type"], "json_schema")
         self.assertEqual(body["text"]["format"]["schema"], ADJUDICATION_SCHEMA)
+
+    def test_build_request_body_propagates_annotation_mode(self):
+        body = build_request_body(
+            {"text": "Ivete Sangalo mora em Salvador"},
+            model="gpt-4o-mini",
+            temperature=0.0,
+            annotation_mode="train_annotation",
+        )
+        self.assertIn("not restricted to review_seed_entities", body["input"][0]["content"])
 
     def test_build_request_body_omits_temperature_for_gpt5_models(self):
         body = build_request_body({"text": "abc"}, model="gpt-5-mini", temperature=0.7)
@@ -177,15 +196,15 @@ class TestRunLlmAdjudication(unittest.TestCase):
     def test_validate_adjudication_train_annotation_allows_new_literal_entities(self):
         source_row = {
             "text": "Ivete Sangalo em Salvador",
-            "review_seed_entities": [{"text": "Ivete Sangalo", "label": "Person", "start": 0, "end": 14}],
+            "review_seed_entities": [{"text": "Ivete Sangalo", "label": "Person", "start": 0, "end": 13}],
         }
         validated = validate_adjudication(
             {
                 "decision": "accept_with_edits",
                 "review_confidence": "high",
                 "entities_final": [
-                    {"text": "Ivete Sangalo", "label": "Person", "start": 0, "end": 14},
-                    {"text": "Salvador", "label": "Location", "start": 18, "end": 26},
+                    {"text": "Ivete Sangalo", "label": "Person", "start": 0, "end": 13},
+                    {"text": "Salvador", "label": "Location", "start": 17, "end": 25},
                 ],
                 "justification": "literal training extraction",
             },
@@ -234,8 +253,8 @@ class TestRunLlmAdjudication(unittest.TestCase):
         source_row = {
             "text": "São crias da Coreia. Rua Caruaru escadao.",
             "review_seed_entities": [
-                {"text": "Coreia", "label": "Location", "seed_origin": "gliner2_location_metadata_match"},
-                {"text": "Caruaru", "label": "Location", "seed_origin": "gliner2_location_metadata_match"},
+                {"text": "Coreia", "label": "Location", "start": 13, "end": 19, "seed_origin": "gliner2_location_metadata_match"},
+                {"text": "Caruaru", "label": "Location", "start": 25, "end": 32, "seed_origin": "gliner2_location_metadata_match"},
             ],
         }
         validated = validate_adjudication(
@@ -243,8 +262,8 @@ class TestRunLlmAdjudication(unittest.TestCase):
                 "decision": "accept_with_edits",
                 "review_confidence": "high",
                 "entities_final": [
-                    {"text": "Coreia", "label": "Location"},
-                    {"text": "Caruaru", "label": "Location"},
+                    {"text": "Coreia", "label": "Location", "start": 13, "end": 19},
+                    {"text": "Caruaru", "label": "Location", "start": 25, "end": 32},
                 ],
                 "justification": "two specific locations",
             },
@@ -272,10 +291,11 @@ class TestRunLlmAdjudication(unittest.TestCase):
                 {
                     "source_id": "tip-1",
                     "text": "Ivete Sangalo em Salvador",
-                    "review_seed_entities": [{"text": "Ivete Sangalo", "label": "Person"}],
+                    "review_seed_entities": [{"text": "Ivete Sangalo", "label": "Person", "start": 0, "end": 14}],
                 },
                 model="gpt-4o-mini",
                 temperature=0.0,
+                annotation_mode="literal_review",
                 api_key="test-key",
                 api_base="https://example.invalid/v1/responses",
                 timeout_seconds=1,

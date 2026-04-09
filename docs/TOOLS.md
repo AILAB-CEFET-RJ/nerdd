@@ -23,6 +23,7 @@ Regra prática:
 | `src/tools/build_calibration_dataset.py` | calibração | JSON, JSONL | sobrescreve saída | montar dataset de calibração a partir de previsões do modelo |
 | `src/tools/build_train_annotation_prompt_probe.py` | auditoria | audits + lote fonte | sobrescreve saída | montar um probe pequeno e diagnóstico para testar prompts de adjudicação voltados a treino |
 | `src/tools/manage_codex_adjudication_benchmark.py` | operação | JSONL de adjudicação | resumível | gerenciar benchmark chunkado de adjudicação assistida por Codex |
+| `src/tools/run_llm_adjudication.py` | operação | JSONL de adjudicação | resumível | chamar a Responses API para adjudicação literal ou `train_annotation`, inclusive em chunks |
 | `src/tools/clean_generic_spans.py` | limpeza | JSON, JSONL | cuidado com `--inplace` | remover spans genéricos por banlist |
 | `src/tools/build_refit_pseudolabel_dataset.py` | conversão | JSONL de adjudicação | sobrescreve saída | projetar `06_llm_adjudicated` para um `pseudolabel_path` compatível com refit |
 | `src/tools/compare_spacy_predictions.py` | auditoria | JSON, JSONL | sobrescreve saída | comparar previsões existentes contra spaCy no mesmo conjunto |
@@ -242,6 +243,30 @@ Dependência relevante:
 
 Converte a saída de `src/tools/run_llm_adjudication.py` em um JSONL pronto para `--pseudolabel-path` do refit.
 
+### `src/tools/run_llm_adjudication.py`
+
+Executa adjudicação automática via Responses API sobre um JSONL de entrada.
+
+Use quando:
+
+- você quer evitar copiar e colar respostas manualmente no ChatGPT/Codex
+- quer preencher um chunk inteiro de benchmark de forma programática
+- precisa alternar entre protocolo literal e `train_annotation`
+
+Pontos relevantes:
+
+- aceita `--annotation-mode literal_review|train_annotation`
+- valida offsets e labels após a resposta
+- emite JSONL diretamente consumível pelo benchmark manager
+
+Entradas principais:
+
+- `--input`
+- `--output-jsonl`
+- `--model`
+- `--annotation-mode`
+- `--api-key-env`
+
 ### `src/tools/select_train_adjudication_candidates.py`
 
 Seleciona um lote de textos mais adequados para adjudicação LLM voltada a treino.
@@ -342,11 +367,13 @@ Exemplos:
 ```bash
 scripts/codex_benchmark.sh artifacts/benchmarks/codex_adjudication_t06_top1000 next
 scripts/codex_benchmark.sh artifacts/benchmarks/codex_adjudication_t06_top1000 open-next
+scripts/codex_benchmark.sh artifacts/benchmarks/codex_adjudication_t06_top1000 auto-next
 scripts/codex_benchmark.sh artifacts/benchmarks/codex_adjudication_t06_top1000 show chunk_001
 scripts/codex_benchmark.sh artifacts/benchmarks/codex_adjudication_t06_top1000 show-latest
 scripts/codex_benchmark.sh artifacts/benchmarks/codex_adjudication_t06_top1000 response-path chunk_001
 scripts/codex_benchmark.sh artifacts/benchmarks/codex_adjudication_t06_top1000 ingest chunk_001
 scripts/codex_benchmark.sh artifacts/benchmarks/codex_adjudication_t06_top1000 ingest-latest
+scripts/codex_benchmark.sh artifacts/benchmarks/codex_adjudication_t06_top1000 auto-complete-next
 scripts/codex_benchmark.sh artifacts/benchmarks/codex_adjudication_t06_top1000 status
 ```
 
