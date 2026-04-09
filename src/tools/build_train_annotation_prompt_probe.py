@@ -21,7 +21,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Build a 10-case diagnostic probe for train-annotation prompting.")
     parser.add_argument("--regressions-jsonl", required=True, help="Audit regressions.jsonl path")
     parser.add_argument("--wins-jsonl", required=True, help="Audit wins.jsonl path")
-    parser.add_argument("--source-input", required=True, help="Original train-adjudication candidate JSONL")
+    parser.add_argument("--source-input", default="", help="Optional original candidate JSONL for recovering review_seed_entities")
     parser.add_argument("--output-jsonl", required=True, help="Output prompt-probe JSONL")
     parser.add_argument("--summary-json", default="", help="Optional summary JSON")
     parser.add_argument("--top-location-person", type=int, default=3)
@@ -92,10 +92,21 @@ def _best_rows(rows, predicate, limit):
 
 
 def _clean_probe_row(row, source_row, categories):
+    source_text = ""
+    source_id = ""
+    review_seed_entities = []
+    if source_row is not None:
+        source_id = source_row.get("source_id", "")
+        source_text = source_row.get("text") or source_row.get("_source", {}).get("text", "")
+        review_seed_entities = source_row.get("review_seed_entities", [])
+    if not source_text:
+        source_text = row.get("text", "")
+    if not source_id:
+        source_id = row.get("source_id", "")
     payload = {
-        "source_id": source_row.get("source_id", ""),
-        "text": source_row.get("text") or source_row.get("_source", {}).get("text", ""),
-        "review_seed_entities": source_row.get("review_seed_entities", []),
+        "source_id": source_id,
+        "text": source_text,
+        "review_seed_entities": review_seed_entities,
         "_probe_meta": {
             "categories": sorted(categories),
             "loss_reasons": row.get("_audit", {}).get("loss_reasons", {}),
@@ -116,7 +127,7 @@ def main():
 
     regressions = _load_rows(args.regressions_jsonl)
     wins = _load_rows(args.wins_jsonl)
-    source_rows = _load_rows(args.source_input)
+    source_rows = _load_rows(args.source_input) if args.source_input else []
 
     source_by_text = {}
     source_by_id = {}
@@ -141,9 +152,7 @@ def main():
                 source_row = source_by_id.get(source_id)
             if source_row is None:
                 source_row = source_by_text.get(str(row.get("text", "")).strip())
-            if source_row is None:
-                continue
-            key = str(source_row.get("source_id") or source_row.get("text"))
+            key = str((source_row or {}).get("source_id") or (source_row or {}).get("text") or row.get("source_id") or row.get("text"))
             if key in selected_keys:
                 # enrich existing categories if already selected
                 for existing in selected:

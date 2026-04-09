@@ -97,6 +97,60 @@ class BuildTrainAnnotationPromptProbeTests(unittest.TestCase):
             self.assertIn("spurious_entity", categories)
             self.assertIn("win_reference", categories)
 
+    def test_builds_probe_rows_without_source_input(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            regressions_path = root / "regressions.jsonl"
+            wins_path = root / "wins.jsonl"
+            output_path = root / "probe.jsonl"
+
+            regression_rows = [
+                {
+                    "text": "Rua Alpha com Joao",
+                    "spans": [{"start": 0, "end": 9, "label": "Location", "text": "Rua Alpha"}],
+                    "candidate_entities": [{"start": 0, "end": 9, "label": "Person", "text": "Rua Alpha"}],
+                    "_audit": {"loss_reasons": {"wrong_label": 1}, "delta_row_f1": -1.0},
+                }
+            ]
+            wins_rows = [
+                {
+                    "text": "Boa win",
+                    "_audit": {"win_reasons": {"recovered_exact_match": 1}, "delta_row_f1": 1.0},
+                }
+            ]
+            regressions_path.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in regression_rows) + "\n", encoding="utf-8")
+            wins_path.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in wins_rows) + "\n", encoding="utf-8")
+
+            old_argv = sys.argv[:]
+            try:
+                sys.argv = [
+                    "build_train_annotation_prompt_probe.py",
+                    "--regressions-jsonl",
+                    str(regressions_path),
+                    "--wins-jsonl",
+                    str(wins_path),
+                    "--output-jsonl",
+                    str(output_path),
+                    "--top-location-person",
+                    "1",
+                    "--top-location-org",
+                    "0",
+                    "--top-boundary",
+                    "0",
+                    "--top-spurious",
+                    "0",
+                    "--top-wins",
+                    "1",
+                ]
+                probe_main()
+            finally:
+                sys.argv = old_argv
+
+            probe_rows = [json.loads(line) for line in output_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+            self.assertEqual(len(probe_rows), 2)
+            self.assertEqual(probe_rows[0]["text"], "Rua Alpha com Joao")
+            self.assertEqual(probe_rows[0]["review_seed_entities"], [])
+
 
 if __name__ == "__main__":
     unittest.main()
