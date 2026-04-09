@@ -207,7 +207,7 @@ case "$COMMAND" in
   build-output)
     python3 src/tools/manage_codex_adjudication_benchmark.py build-output \
       --state-json "$STATE_JSON"
-    step_note "build-output" "Saída consolidada gerada. Agora compare com o output do GPT-5."
+    step_note "build-output" "Saída consolidada gerada."
     ;;
   *)
     echo "Unknown command: $COMMAND" >&2

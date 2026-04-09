@@ -567,6 +567,12 @@ Experimental note from the disagreement benchmarks:
 - the conservative subset (`review_confidence=high` and `decision=accept`) still degraded across the tested seeds
 - do not assume that disagreement adjudication artifacts are suitable training pseudolabels just because they are useful review benchmarks
 
+When designing a new adjudication workflow specifically for training:
+
+- keep it separate from the literal disagreement benchmark
+- use a separate selector and benchmark directory
+- do not reuse the old assumption that seed-bounded disagreement adjudication is automatically suitable for training
+
 ## 12b) Codex-vs-GPT Adjudication Benchmark
 
 When comparing adjudication outputs from `gpt-5` and Codex over the same `05_llm_input` cases, use a chunked benchmark workflow instead of manual ad hoc copying.
@@ -624,7 +630,43 @@ Operational semantics for the literal benchmark mode:
 - in this mode, adjudication must stay within `review_seed_entities`
 - if you want a semantically broader adjudication workflow, treat it as a different benchmark mode and keep the artifacts separate
 
-## 12c) Auditing Refit Regressions
+## 12c) Train-Oriented Adjudication Candidate Selection
+
+If the goal is to generate better training pseudolabels rather than evaluate disagreement, do not start from the disagreement selector.
+
+Use:
+
+```bash
+python3 src/tools/select_train_adjudication_candidates.py \
+  --input artifacts/pseudolabelling/baseline_quick_2026-04-03/05_llm_input_t06_top1000.jsonl \
+  --output-jsonl artifacts/pseudolabelling/baseline_quick_2026-04-03/05_llm_input_train_adjudication_top100.jsonl \
+  --summary-json artifacts/pseudolabelling/baseline_quick_2026-04-03/05_llm_input_train_adjudication_top100_summary.json \
+  --top-n 100 \
+  --max-text-length 900 \
+  --min-seed-entities 1 \
+  --max-seed-entities 4 \
+  --max-union-entities 8 \
+  --max-gliner2-noise-proxy 0.6 \
+  --min-agreement-ratio 0.15 \
+  --max-agreement-ratio 0.8 \
+  --require-agreed-or-baseline-seed \
+  --penalize-generic-seeds \
+  --log-level INFO
+```
+
+This selector is biased toward:
+
+- more stable cases
+- lower-noise cases
+- seeds with stronger origin evidence
+- examples more likely to yield complete, conservative train annotations
+
+Operational note:
+
+- this still only selects candidates
+- the LLM protocol for `train_annotation` must remain separate from the literal benchmark protocol
+
+## 12d) Auditing Refit Regressions
 
 Use `src/tools/audit_refit_regressions.py` after any `supervised_only` vs `supervised_plus_pseudolabels` comparison when you need to understand *why* the metrics moved.
 
@@ -667,6 +709,44 @@ Interpretation guidance:
 - high `boundary_or_partial` suggests span drift or partial-supervision effects
 - high `wrong_label_confusions` suggests label drift induced by the refit data
 - use this audit before deciding to scale any new pseudolabel source
+
+## 12e) Prompt Probing Before Launching A New Train-Annotation Benchmark
+
+Before spending more benchmark budget on a new `train_annotation` workflow, test the prompt on a small, diagnostic probe.
+
+Use:
+
+```bash
+python3 src/tools/build_train_annotation_prompt_probe.py \
+  --regressions-jsonl artifacts/audits/gliner2_train_adjudication_partial50_seed17_vs_supervised_only/regressions.jsonl \
+  --wins-jsonl artifacts/audits/gliner2_train_adjudication_partial50_seed13_vs_supervised_only/wins.jsonl \
+  --source-input artifacts/pseudolabelling/baseline_quick_2026-04-03/05_llm_input_train_adjudication_top100.jsonl \
+  --output-jsonl artifacts/prompt_probes/train_annotation_prompt_probe_10.jsonl \
+  --summary-json artifacts/prompt_probes/train_annotation_prompt_probe_10_summary.json \
+  --top-location-person 3 \
+  --top-location-org 2 \
+  --top-boundary 2 \
+  --top-spurious 2 \
+  --top-wins 1 \
+  --log-level INFO
+```
+
+The output JSONL is designed to be pasted into ChatGPT/Codex for prompt testing. It keeps only:
+
+- `source_id`
+- `text`
+- `review_seed_entities`
+- `_probe_meta`
+
+Recommended use:
+
+- test the prompt on `5-10` cases first
+- cover failure modes such as:
+  - `Location -> Person`
+  - `Location -> Organization`
+  - `boundary_or_partial`
+  - `spurious_entity`
+- refine the prompt before opening a new full benchmark
 
 ## 13) Controlled Refit Comparison For Dissertation Experiments
 

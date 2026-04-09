@@ -19,7 +19,9 @@ Regra prática:
 | --- | --- | --- | --- | --- |
 | `src/tools/build_annotation_editor.py` | anotação | JSON, JSONL | sobrescreve saída | gerar um editor HTML para revisão manual de spans |
 | `src/tools/audit_calibration_by_label.py` | auditoria | CSV de calibração | sobrescreve saída | auditar scores brutos vs calibrados por label e por validade |
+| `src/tools/audit_refit_regressions.py` | auditoria | gold + predictions.jsonl | sobrescreve saída | auditar regressões entre baseline e refit, com wins/losses/ties e confusões de label |
 | `src/tools/build_calibration_dataset.py` | calibração | JSON, JSONL | sobrescreve saída | montar dataset de calibração a partir de previsões do modelo |
+| `src/tools/build_train_annotation_prompt_probe.py` | auditoria | audits + lote fonte | sobrescreve saída | montar um probe pequeno e diagnóstico para testar prompts de adjudicação voltados a treino |
 | `src/tools/manage_codex_adjudication_benchmark.py` | operação | JSONL de adjudicação | resumível | gerenciar benchmark chunkado de adjudicação assistida por Codex |
 | `src/tools/clean_generic_spans.py` | limpeza | JSON, JSONL | cuidado com `--inplace` | remover spans genéricos por banlist |
 | `src/tools/build_refit_pseudolabel_dataset.py` | conversão | JSONL de adjudicação | sobrescreve saída | projetar `06_llm_adjudicated` para um `pseudolabel_path` compatível com refit |
@@ -42,6 +44,7 @@ Regra prática:
 | `src/tools/replace_label_in_jsonl.py` | edição | JSON, JSONL | cuidado com `--inplace` | renomear labels em um corpus JSON/JSONL |
 | `src/tools/run_remaining_chunk_probes.py` | operação | chunks JSONL | parcialmente idempotente | rodar probes restantes de chunks 50k com configuração fixa |
 | `src/tools/sample_large_corpus.py` | amostragem | JSON, JSONL | sobrescreve saída | gerar amostras reproduzíveis de corpus grande |
+| `src/tools/select_train_adjudication_candidates.py` | seleção | JSONL de adjudicação | sobrescreve saída | selecionar candidatos mais treináveis para adjudicação LLM voltada a treino |
 | `src/tools/split_dataset_for_calibration.py` | calibração | JSON array | sobrescreve saída | separar train/calibration com controle de perfil de labels |
 | `src/tools/split_large_corpus_into_chunks.py` | particionamento | JSON, JSONL | sobrescreve saída | dividir corpus grande em chunks fixos |
 | `src/tools/summarize_context_boost_audit.py` | auditoria | JSONL | sobrescreve saída | resumir artefatos de auditoria do context boost |
@@ -238,6 +241,78 @@ Dependência relevante:
 ### `src/tools/build_refit_pseudolabel_dataset.py`
 
 Converte a saída de `src/tools/run_llm_adjudication.py` em um JSONL pronto para `--pseudolabel-path` do refit.
+
+### `src/tools/select_train_adjudication_candidates.py`
+
+Seleciona um lote de textos mais adequados para adjudicação LLM voltada a treino.
+
+Use quando:
+
+- você quer gerar um benchmark separado de `train_annotation`
+- o benchmark literal de desacordo já se mostrou inadequado como pseudolabel de treino
+- você quer priorizar casos mais estáveis, menos ruidosos e com seeds melhores
+
+Critérios principais:
+
+- favorece `agreement_ratio` moderado/alto
+- favorece `baseline_coverage_proxy` mais forte
+- favorece seeds com origem `agreed_exact` e `baseline_high_score`
+- penaliza ruído alto, textos longos e seeds genéricos
+
+Saídas:
+
+- JSONL com o lote selecionado
+- resumo opcional com distribuição de labels e origens de seeds
+
+### `src/tools/audit_refit_regressions.py`
+
+Audita regressões entre um baseline e um refit/candidato sobre o mesmo conjunto gold.
+
+Use quando:
+
+- uma comparação `supervised_only` vs `supervised_plus_pseudolabels` mudou as métricas e você precisa entender o mecanismo do ganho/perda
+- você quer medir `wins`, `losses`, `ties`
+- você quer diagnosticar `spurious_entity`, `wrong_label`, `boundary_or_partial` e `missing_entity`
+
+Saídas:
+
+- `summary.json`
+- `regressions.jsonl`
+- `wins.jsonl`
+- `ties.jsonl`
+- `top_regressions.md`
+
+Diagnósticos adicionais:
+
+- `loss_reason_counts_by_label`
+- `wrong_label_confusions`
+
+### `src/tools/build_train_annotation_prompt_probe.py`
+
+Monta um probe pequeno e diagnóstico para testar prompts de adjudicação voltados a treino em ChatGPT/Codex antes de abrir um benchmark novo.
+
+Use quando:
+
+- você quer testar rapidamente um prompt novo com `5-10` casos
+- precisa cobrir falhas observadas nos audits, como:
+  - `Location -> Person`
+  - `Location -> Organization`
+  - `boundary_or_partial`
+  - `spurious_entity`
+
+Entradas:
+
+- um `regressions.jsonl` de auditoria
+- um `wins.jsonl` de auditoria
+- o lote fonte original de adjudicação para treino
+
+Saídas:
+
+- JSONL limpo com:
+  - `source_id`
+  - `text`
+  - `review_seed_entities`
+  - `_probe_meta`
 
 ### `src/tools/manage_codex_adjudication_benchmark.py`
 
