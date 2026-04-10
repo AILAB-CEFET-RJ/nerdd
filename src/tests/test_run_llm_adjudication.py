@@ -213,6 +213,45 @@ class TestRunLlmAdjudication(unittest.TestCase):
         )
         self.assertEqual(len(validated["entities_final"]), 2)
 
+    def test_validate_adjudication_relocates_unique_occurrence_when_offsets_are_wrong(self):
+        source_row = {
+            "text": "Tem um carro na tr Miguel pinto em frente ao número 394",
+            "review_seed_entities": [],
+        }
+        validated = validate_adjudication(
+            {
+                "decision": "accept",
+                "review_confidence": "high",
+                "entities_final": [
+                    {"text": "tr Miguel pinto", "label": "Location", "start": 30, "end": 45},
+                ],
+                "justification": "unique literal occurrence",
+            },
+            source_row,
+            annotation_mode="train_annotation",
+        )
+        self.assertEqual(validated["entities_final"][0]["start"], 16)
+        self.assertEqual(validated["entities_final"][0]["end"], 31)
+
+    def test_validate_adjudication_rejects_ambiguous_relocation(self):
+        source_row = {
+            "text": "QUITUNGO perto do posto e depois QUITUNGO novamente",
+            "review_seed_entities": [],
+        }
+        with self.assertRaises(ValueError):
+            validate_adjudication(
+                {
+                    "decision": "accept",
+                    "review_confidence": "high",
+                    "entities_final": [
+                        {"text": "QUITUNGO", "label": "Location", "start": 10, "end": 18},
+                    ],
+                    "justification": "ambiguous repeated literal occurrence",
+                },
+                source_row,
+                annotation_mode="train_annotation",
+            )
+
     def test_validate_adjudication_rejects_single_token_location_without_agreement_support(self):
         source_row = {
             "text": "rua alagoas proximo deposito de gas",

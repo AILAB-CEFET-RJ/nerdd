@@ -419,6 +419,37 @@ def _extract_usage(response_payload: dict) -> dict:
     return cleaned
 
 
+def _find_exact_occurrences(text: str, needle: str) -> list[tuple[int, int]]:
+    if not needle:
+        return []
+    matches = []
+    start = 0
+    while True:
+        index = text.find(needle, start)
+        if index < 0:
+            break
+        matches.append((index, index + len(needle)))
+        start = index + 1
+    return matches
+
+
+def _resolve_entity_offsets(text: str, entity_text: str, entity_start: int, entity_end: int) -> tuple[int, int]:
+    if entity_end > entity_start and entity_start >= 0 and entity_end <= len(text):
+        if text[entity_start:entity_end] == entity_text:
+            return entity_start, entity_end
+
+    occurrences = _find_exact_occurrences(text, entity_text)
+    if not occurrences:
+        raise AdjudicationValidationError(
+            f"Entity text does not occur literally in source text: {entity_text!r}"
+        )
+    if len(occurrences) > 1:
+        raise AdjudicationValidationError(
+            f"Entity text occurs multiple times; offsets are ambiguous and must be exact: {entity_text!r}"
+        )
+    return occurrences[0]
+
+
 def validate_adjudication(
     adjudication: dict,
     source_row: dict,
@@ -463,12 +494,9 @@ def validate_adjudication(
         entity_end = entity.get("end")
         if not entity_text or entity_label not in ALLOWED_LABELS or not isinstance(entity_start, int) or not isinstance(entity_end, int):
             raise AdjudicationValidationError(f"Invalid entity returned by adjudicator: {entity}")
-        if entity_end <= entity_start or entity_start < 0 or entity_end > len(text):
+        if entity_end <= entity_start:
             raise AdjudicationValidationError(f"Entity offsets are out of bounds or invalid: {entity}")
-        if text[entity_start:entity_end] != entity_text:
-            raise AdjudicationValidationError(
-                f"Entity text does not match the exact source substring at offsets start={entity_start} end={entity_end}: {entity_text!r}"
-            )
+        entity_start, entity_end = _resolve_entity_offsets(text, entity_text, entity_start, entity_end)
         key = (entity_text, entity_label, entity_start, entity_end)
         if key in seen:
             continue
