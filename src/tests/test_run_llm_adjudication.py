@@ -50,7 +50,9 @@ class TestRunLlmAdjudication(unittest.TestCase):
         }
         messages = build_messages(row, annotation_mode="train_annotation")
         self.assertIn("not restricted to review_seed_entities", messages[0]["content"])
-        self.assertIn("produce a conservative NER training annotation", messages[1]["content"])
+        self.assertIn("locative marker is part of the literal mention", messages[0]["content"])
+        self.assertIn("aligned with the corpus convention", messages[1]["content"])
+        self.assertIn("Allow institutional mentions such as polícia as Organization", messages[1]["content"])
 
     def test_build_request_body_uses_json_schema(self):
         body = build_request_body({"text": "abc"}, model="gpt-4o-mini", temperature=0.7)
@@ -67,6 +69,7 @@ class TestRunLlmAdjudication(unittest.TestCase):
             annotation_mode="train_annotation",
         )
         self.assertIn("not restricted to review_seed_entities", body["input"][0]["content"])
+        self.assertIn("Road and address markers", body["input"][0]["content"])
 
     def test_build_request_body_omits_temperature_for_gpt5_models(self):
         body = build_request_body({"text": "abc"}, model="gpt-5-mini", temperature=0.7)
