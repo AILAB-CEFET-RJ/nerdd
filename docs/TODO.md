@@ -32,6 +32,10 @@
 - Catalogar erros recorrentes de digitacao, OCR e codificacao que afetam entidades.
 - Estimar impacto desses erros em recall por label, especialmente `Location`.
 - Decidir se o saneamento entra na pipeline canonica ou apenas em pipelines experimentais.
+- Consolidar uma guideline para logradouros:
+  - logradouro completo com marcador locativo, por exemplo `Rua X`, `Travessa Y`, `Av Z`
+  - nome sem marcador apenas para bairros, comunidades, distritos e topologicos autonomos
+- Revisar uma amostra pequena dos casos suspeitos produzidos por `expand_location_spans_with_markers.py`, mas manter a leitura atual de que esses casos sao minoria.
 
 ## Auditoria De Refit
 
@@ -50,3 +54,15 @@
   - `wrong_label`
   - `boundary_or_partial`
 - Conclusao provisoria: benchmarks de desacordo adjudicados por seed literal sao uteis para avaliacao e auditoria, mas nao devem ser promovidos automaticamente a pseudolabels de treino no formato atual.
+- A correcao automatica de spans de `Location` para incluir marcadores locativos explicitos (`rua`, `tr`, `trav`, `av`, etc.) produziu ganho robusto de baseline em `gliner2_training`.
+- No experimento `quick_supervised_only_locprefix_expanded`, a media multi-seed foi:
+  - `mean delta micro = +0.0204`
+  - `mean delta macro = +0.0112`
+  - `mean delta Location F1 = +0.0368`
+  - `mean delta Organization F1 = +0.0040`
+  - `mean delta Person F1 = -0.0072`
+- Leitura provisoria:
+  - a inconsistência do corpus em fronteiras locativas era uma fonte importante de ruído
+  - a correção do corpus trouxe ganho mais robusto do que os experimentos recentes de pseudolabel
+  - os poucos casos suspeitos de expansao automatica nao parecem numerosos o suficiente para bloquear o uso experimental dessa normalizacao
+  - o baseline com corpus normalizado deve ser tratado como a nova referência experimental candidata antes de novos ciclos de pseudolabel

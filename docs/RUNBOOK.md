@@ -763,6 +763,51 @@ Recommended use:
   - `spurious_entity`
 - refine the prompt before opening a new full benchmark
 
+## 12f) Location Prefix Expansion As Corpus Normalization
+
+If the corpus mixes `Rua X` and `X` as `Location` boundaries, normalize that first before attributing instability to pseudolabels.
+
+Use:
+
+```bash
+python3 src/tools/expand_location_spans_with_markers.py \
+  --input data/dd_corpus_small_train.json \
+  --output artifacts/corpus_normalization/dd_corpus_small_train_location_prefix_expanded.json \
+  --summary-json artifacts/corpus_normalization/dd_corpus_small_train_location_prefix_expanded_summary.json
+```
+
+```bash
+python3 src/tools/expand_location_spans_with_markers.py \
+  --input data/dd_corpus_small_test.json \
+  --output artifacts/corpus_normalization/dd_corpus_small_test_location_prefix_expanded.json \
+  --summary-json artifacts/corpus_normalization/dd_corpus_small_test_location_prefix_expanded_summary.json
+```
+
+Operational reading:
+
+- this step expands `Location` spans to include explicit locative markers such as `rua`, `tr`, `trav`, `trv`, `av`, `avenida`, and similar forms
+- it is meant to reduce boundary inconsistency in logradouro mentions
+- a small number of noisy cases may remain, but the suspicious cases appear to be a minority relative to the total number of expanded spans
+
+Observed result in `gliner2_training` baseline:
+
+- single-run baseline with the normalized corpora improved from:
+  - `micro_f1 0.6320 -> 0.6735`
+  - `macro_f1 0.6137 -> 0.6444`
+- multi-seed baseline comparison also stayed positive on average:
+  - `mean delta micro = +0.0204`
+  - `mean delta macro = +0.0112`
+  - `mean delta Location F1 = +0.0368`
+  - `mean delta Organization F1 = +0.0040`
+  - `mean delta Person F1 = -0.0072`
+
+Interpretation:
+
+- location-boundary inconsistency in the gold corpus was a material source of noise
+- this corpus normalization produced a stronger and more stable gain than the recent train-adjudication pseudolabel experiments
+- treat `quick_supervised_only_locprefix_expanded` as the candidate reference baseline for subsequent comparisons
+- normalize the corpus first, then re-evaluate pseudolabel experiments on top of the corrected baseline
+
 ## 13) Controlled Refit Comparison For Dissertation Experiments
 
 Use the same final holdout `../data/dd_corpus_small_test.json` for both runs below.
