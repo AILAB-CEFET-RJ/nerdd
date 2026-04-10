@@ -24,6 +24,7 @@ Regra prática:
 | `src/tools/build_train_annotation_prompt_probe.py` | auditoria | audits + lote fonte | sobrescreve saída | montar um probe pequeno e diagnóstico para testar prompts de adjudicação voltados a treino |
 | `src/tools/manage_codex_adjudication_benchmark.py` | operação | JSONL de adjudicação | resumível | gerenciar benchmark chunkado de adjudicação assistida por Codex |
 | `src/tools/run_llm_adjudication.py` | operação | JSONL de adjudicação | resumível | chamar a Responses API para adjudicação literal ou `train_annotation`, inclusive em chunks |
+| `src/tools/expand_location_spans_with_markers.py` | limpeza | JSON, JSONL | sobrescreve saída | expandir spans de `Location` para incluir marcadores locativos como `rua`, `trav`, `trv`, `av` quando estiverem imediatamente antes |
 | `src/tools/clean_generic_spans.py` | limpeza | JSON, JSONL | cuidado com `--inplace` | remover spans genéricos por banlist |
 | `src/tools/build_refit_pseudolabel_dataset.py` | conversão | JSONL de adjudicação | sobrescreve saída | projetar `06_llm_adjudicated` para um `pseudolabel_path` compatível com refit |
 | `src/tools/compare_spacy_predictions.py` | auditoria | JSON, JSONL | sobrescreve saída | comparar previsões existentes contra spaCy no mesmo conjunto |
@@ -266,6 +267,23 @@ Entradas principais:
 - `--model`
 - `--annotation-mode`
 - `--api-key-env`
+
+### `src/tools/expand_location_spans_with_markers.py`
+
+Expande spans de `Location` para incluir o marcador locativo anterior quando ele estiver explicitamente presente no texto.
+
+Use quando:
+
+- você quer reduzir inconsistência entre `Rua X` e `X`
+- o corpus mistura spans completos de logradouro com spans sem o marcador
+- você quer testar uma normalização mais consistente antes de treinar ou avaliar
+
+Pontos relevantes:
+
+- opera sobre `spans` em corpora JSON ou JSONL
+- é conservador: só expande quando encontra um marcador locativo imediatamente antes do span
+- suporta abreviações como `tr`, `trv`, `trav`, `av`
+- suporta títulos intermediários como `Dr.` em casos como `Trav Dr . Lopes`
 
 ### `src/tools/select_train_adjudication_candidates.py`
 
