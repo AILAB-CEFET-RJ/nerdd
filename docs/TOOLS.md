@@ -102,6 +102,17 @@ Entradas principais:
 - `--input`
 - `--output`
 - `--title`
+- `--span-field`
+
+Observações metodológicas:
+
+- por padrão, o script usa o fallback `spans -> entities -> ner`
+- com `--span-field`, você pode renderizar listas alternativas de entidades sem transformar o arquivo antes
+- isso é útil para inspeção pré-adjudicação de artefatos como:
+  - `review_seed_entities`
+  - `baseline_entities`
+  - `gliner2_entities`
+  - `adjudication.entities_final`
 
 Saída:
 

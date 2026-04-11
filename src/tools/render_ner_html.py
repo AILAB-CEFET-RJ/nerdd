@@ -47,6 +47,15 @@ def parse_args():
         default=0,
         help="Maximum number of records to render (0 = all).",
     )
+    parser.add_argument(
+        "--span-field",
+        default="auto",
+        help=(
+            "Which span list to render. Use 'auto' for spans/entities/ner fallback, "
+            "or pass a field such as review_seed_entities, baseline_entities, "
+            "gliner2_entities, or adjudication.entities_final."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -84,7 +93,22 @@ def get_text(record):
     return ""
 
 
-def get_spans(record):
+def _resolve_field_path(record, field_path):
+    current = record
+    for part in str(field_path).split("."):
+        if not isinstance(current, dict):
+            return None
+        current = current.get(part)
+    return current
+
+
+def get_spans(record, span_field="auto"):
+    if span_field and span_field != "auto":
+        selected = _resolve_field_path(record, span_field)
+        if isinstance(selected, list):
+            return selected
+        return []
+
     spans = record.get("spans")
     if isinstance(spans, list):
         return spans
@@ -110,11 +134,11 @@ def normalize_span(span):
     return {"start": start, "end": end, "label": label.strip()}
 
 
-def build_label_colors(rows):
+def build_label_colors(rows, span_field="auto"):
     labels = []
     seen = set()
     for row in rows:
-        for raw_span in get_spans(row):
+        for raw_span in get_spans(row, span_field=span_field):
             span = normalize_span(raw_span)
             if not span:
                 continue
@@ -224,14 +248,14 @@ def build_html(title, rows_html, legend_html, summary_html):
     )
 
 
-def render_html(rows, output_path, title, max_reports):
+def render_html(rows, output_path, title, max_reports, span_field="auto"):
     if max_reports > 0:
         rows = rows[:max_reports]
 
-    label_colors = build_label_colors(rows)
+    label_colors = build_label_colors(rows, span_field=span_field)
     label_counts = Counter()
     for row in rows:
-        for raw_span in get_spans(row):
+        for raw_span in get_spans(row, span_field=span_field):
             span = normalize_span(raw_span)
             if span:
                 label_counts[span["label"]] += 1
@@ -265,7 +289,7 @@ def render_html(rows, output_path, title, max_reports):
     rendered_rows = []
     for idx, row in enumerate(rows, start=1):
         text = get_text(row)
-        spans = sanitize_spans(text, get_spans(row))
+        spans = sanitize_spans(text, get_spans(row, span_field=span_field))
         rendered_text = render_text_with_spans(text, spans, label_colors)
         entity_list_html = render_entity_list(text, spans)
         source_id = escape(str(row.get("source_id", ""))).strip()
@@ -292,7 +316,7 @@ def render_html(rows, output_path, title, max_reports):
 def main():
     args = parse_args()
     rows = load_corpus(args.input)
-    render_html(rows, args.output, args.title, args.max_reports)
+    render_html(rows, args.output, args.title, args.max_reports, span_field=args.span_field)
     print(f"[ok] HTML saved to: {args.output}")
 
 
