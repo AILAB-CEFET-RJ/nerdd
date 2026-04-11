@@ -4,7 +4,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from tools.build_llm_adjudication_input import (
+from tools.prepare_adjudication_cases import (
     _extract_location_metadata_terms,
     _matches_location_metadata,
     build_review_seed_entities,

@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from tools.select_train_adjudication_candidates import compute_trainability_score, row_passes_filters
+from tools.select_train_annotation_cases import compute_trainability_score, row_passes_filters
 
 
 class SelectTrainAdjudicationCandidatesTests(unittest.TestCase):

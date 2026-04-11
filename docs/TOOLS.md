@@ -46,7 +46,7 @@ Regra prática:
 | `src/tools/replace_label_in_jsonl.py` | edição | JSON, JSONL | cuidado com `--inplace` | renomear labels em um corpus JSON/JSONL |
 | `src/tools/run_remaining_chunk_probes.py` | operação | chunks JSONL | parcialmente idempotente | rodar probes restantes de chunks 50k com configuração fixa |
 | `src/tools/sample_large_corpus.py` | amostragem | JSON, JSONL | sobrescreve saída | gerar amostras reproduzíveis de corpus grande |
-| `src/tools/select_train_adjudication_candidates.py` | seleção | JSONL de adjudicação | sobrescreve saída | selecionar candidatos mais treináveis para adjudicação LLM voltada a treino |
+| `src/tools/select_train_annotation_cases.py` | seleção | JSONL de adjudicação | sobrescreve saída | selecionar candidatos mais treináveis para adjudicação LLM voltada a treino |
 | `src/tools/split_dataset_for_calibration.py` | calibração | JSON array | sobrescreve saída | separar train/calibration com controle de perfil de labels |
 | `src/tools/split_large_corpus_into_chunks.py` | particionamento | JSON, JSONL | sobrescreve saída | dividir corpus grande em chunks fixos |
 | `src/tools/summarize_context_boost_audit.py` | auditoria | JSONL | sobrescreve saída | resumir artefatos de auditoria do context boost |
@@ -285,7 +285,7 @@ Pontos relevantes:
 - suporta abreviações como `tr`, `trv`, `trav`, `av`
 - suporta títulos intermediários como `Dr.` em casos como `Trav Dr . Lopes`
 
-### `src/tools/select_train_adjudication_candidates.py`
+### `src/tools/select_train_annotation_cases.py`
 
 Seleciona um lote de textos mais adequados para adjudicação LLM voltada a treino.
 

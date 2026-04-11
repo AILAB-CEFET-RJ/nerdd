@@ -685,7 +685,7 @@ If the goal is to generate better training pseudolabels rather than evaluate dis
 Use:
 
 ```bash
-python3 src/tools/select_train_adjudication_candidates.py \
+python3 src/tools/select_train_annotation_cases.py \
   --input artifacts/pseudolabelling/baseline_quick_2026-04-03/05_llm_input_t06_top1000.jsonl \
   --output-jsonl artifacts/pseudolabelling/baseline_quick_2026-04-03/05_llm_input_train_adjudication_top100.jsonl \
   --summary-json artifacts/pseudolabelling/baseline_quick_2026-04-03/05_llm_input_train_adjudication_top100_summary.json \

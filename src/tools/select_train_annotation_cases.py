@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Select training-oriented LLM adjudication candidates from build_llm_adjudication_input output."""
+"""Select training-oriented LLM adjudication candidates from prepare_adjudication_cases output."""
 
 from __future__ import annotations
 
@@ -38,9 +38,9 @@ GENERIC_ENTITY_TEXTS = {
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Select train-annotation candidates from build_llm_adjudication_input output."
+        description="Select train-annotation candidates from prepare_adjudication_cases output."
     )
-    parser.add_argument("--input", required=True, help="Input JSONL from build_llm_adjudication_input.py")
+    parser.add_argument("--input", required=True, help="Input JSONL from prepare_adjudication_cases.py")
     parser.add_argument("--output-jsonl", required=True, help="Selected output JSONL")
     parser.add_argument("--summary-json", default="", help="Optional summary JSON")
     parser.add_argument("--top-n", type=int, default=100)

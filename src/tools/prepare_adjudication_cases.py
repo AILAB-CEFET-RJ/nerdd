@@ -616,7 +616,7 @@ def main() -> None:
     if not all(isinstance(row.get("gliner2_entities"), list) for row in rows):
         raise ValueError(
             "Input rows must already contain gliner2_entities. "
-            "Run src/tools/generate_gliner2_predictions.py before build_llm_adjudication_input.py."
+            "Run src/tools/generate_gliner2_predictions.py before prepare_adjudication_cases.py."
         )
     LOGGER.info("Using precomputed gliner2_entities from input rows.")
 

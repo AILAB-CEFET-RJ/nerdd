@@ -27,9 +27,9 @@ GENERIC_ORGS = {
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Select disagreement-heavy adjudication candidates from build_llm_adjudication_input output."
+        description="Select disagreement-heavy adjudication candidates from prepare_adjudication_cases output."
     )
-    parser.add_argument("--input", required=True, help="Input JSONL from build_llm_adjudication_input.py")
+    parser.add_argument("--input", required=True, help="Input JSONL from prepare_adjudication_cases.py")
     parser.add_argument("--output-jsonl", required=True, help="Selected output JSONL")
     parser.add_argument("--summary-json", default="", help="Optional summary JSON")
     parser.add_argument("--top-n", type=int, default=100)

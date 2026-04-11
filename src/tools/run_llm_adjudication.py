@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run LLM-assisted adjudication over structured NER candidate review inputs.
 
-This utility consumes the JSONL produced by `build_llm_adjudication_input.py`,
+This utility consumes the JSONL produced by `prepare_adjudication_cases.py`,
 calls the OpenAI Responses API with Structured Outputs, and writes a per-record
 JSONL containing the model's adjudication decision plus the original source row.
 
@@ -734,7 +734,7 @@ def _processed_source_ids(success_rows: list[dict], error_rows: list[dict]) -> s
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run LLM-assisted adjudication over pseudolabel candidate review inputs.")
-    parser.add_argument("--input", required=True, help="Input JSON/JSONL from build_llm_adjudication_input.py.")
+    parser.add_argument("--input", required=True, help="Input JSON/JSONL from prepare_adjudication_cases.py.")
     parser.add_argument("--output-jsonl", required=True, help="Output JSONL with adjudication results.")
     parser.add_argument("--errors-jsonl", default="", help="Optional JSONL with per-record errors.")
     parser.add_argument("--summary-json", default="", help="Optional summary JSON.")
