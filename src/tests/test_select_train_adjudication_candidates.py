@@ -22,6 +22,8 @@ class SelectTrainAdjudicationCandidatesTests(unittest.TestCase):
         drop_list_like_person_dumps = True
         drop_person_only_short_texts = True
         person_only_short_text_max_length = 80
+        require_location_seed = True
+        require_domain_context = True
 
     def test_filters_out_rows_without_stable_seed_origin(self):
         row = {
@@ -115,6 +117,42 @@ class SelectTrainAdjudicationCandidatesTests(unittest.TestCase):
         ok, reasons = row_passes_filters(row, self.Args())
         self.assertFalse(ok)
         self.assertIn("person_only_short_text", reasons)
+
+    def test_filters_rows_without_location_seed(self):
+        row = {
+            "text": "Trafico com Joao e Mateus na regiao",
+            "metadata": {
+                "agreement_ratio": 0.4,
+                "gliner2_noise_proxy": 0.2,
+                "entity_count_agreed": 1,
+                "entity_count_baseline_only": 1,
+                "entity_count_gliner2_only": 0,
+            },
+            "review_seed_entities": [
+                {"text": "Joao", "label": "Person", "seed_origin": "agreed_exact"},
+            ],
+        }
+        ok, reasons = row_passes_filters(row, self.Args())
+        self.assertFalse(ok)
+        self.assertIn("missing_location_seed", reasons)
+
+    def test_filters_rows_without_domain_context(self):
+        row = {
+            "text": "Centro Mesquita",
+            "metadata": {
+                "agreement_ratio": 0.4,
+                "gliner2_noise_proxy": 0.2,
+                "entity_count_agreed": 1,
+                "entity_count_baseline_only": 0,
+                "entity_count_gliner2_only": 0,
+            },
+            "review_seed_entities": [
+                {"text": "Mesquita", "label": "Location", "seed_origin": "agreed_exact"},
+            ],
+        }
+        ok, reasons = row_passes_filters(row, self.Args())
+        self.assertFalse(ok)
+        self.assertIn("missing_domain_context", reasons)
 
 
 if __name__ == "__main__":

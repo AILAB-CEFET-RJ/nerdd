@@ -56,6 +56,22 @@ NARRATIVE_MARKERS = (
     "polícia",
 )
 
+LOCATIVE_MARKERS = (
+    "rua",
+    "travessa",
+    "trav",
+    "avenida",
+    "av ",
+    "bairro",
+    "morro",
+    "favela",
+    "comunidade",
+    "praca",
+    "praça",
+    "estrada",
+    "rodovia",
+)
+
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -78,6 +94,18 @@ def parse_args():
     parser.add_argument("--drop-list-like-person-dumps", action="store_true")
     parser.add_argument("--drop-person-only-short-texts", action="store_true")
     parser.add_argument("--person-only-short-text-max-length", type=int, default=80)
+    parser.add_argument(
+        "--require-location-seed",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Require at least one plausible Location seed.",
+    )
+    parser.add_argument(
+        "--require-domain-context",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Require either a narrative marker or a locative marker in the text.",
+    )
     parser.add_argument(
         "--ranking-field",
         default="adjudication_priority_score",
@@ -147,6 +175,26 @@ def _normalized_text(text: str) -> str:
 def _has_narrative_markers(text: str) -> bool:
     lowered = _normalized_text(text)
     return any(marker in lowered for marker in NARRATIVE_MARKERS)
+
+
+def _has_locative_markers(text: str) -> bool:
+    lowered = _normalized_text(text)
+    return any(marker in lowered for marker in LOCATIVE_MARKERS)
+
+
+def _has_plausible_location_seed(row: dict) -> bool:
+    for ent in _review_seed_entities(row):
+        if str(ent.get("label", "")).strip() != "Location":
+            continue
+        text = _normalized_text(str(ent.get("text", "")))
+        if not text:
+            continue
+        tokens = [piece for piece in text.split() if piece]
+        if len(tokens) >= 2:
+            return True
+        if len(text) >= 6:
+            return True
+    return False
 
 
 def _is_list_like_person_dump(row: dict) -> bool:
@@ -222,6 +270,10 @@ def row_passes_filters(row: dict, args) -> tuple[bool, list[str]]:
         seed_origins = _seed_origin_counts(row)
         if seed_origins.get("agreed_exact", 0) <= 0 and seed_origins.get("baseline_high_score", 0) <= 0:
             reasons.append("no_stable_seed_origin")
+    if args.require_location_seed and not _has_plausible_location_seed(row):
+        reasons.append("missing_location_seed")
+    if args.require_domain_context and not (_has_narrative_markers(text) or _has_locative_markers(text)):
+        reasons.append("missing_domain_context")
     if args.drop_list_like_person_dumps and _is_list_like_person_dump(row):
         reasons.append("list_like_person_dump")
     if args.drop_person_only_short_texts and _is_person_only_short_text(row, args.person_only_short_text_max_length):
@@ -338,6 +390,8 @@ def build_summary(input_rows, kept_pool, selected_rows, dropped_counter, args):
             "drop_list_like_person_dumps": args.drop_list_like_person_dumps,
             "drop_person_only_short_texts": args.drop_person_only_short_texts,
             "person_only_short_text_max_length": args.person_only_short_text_max_length,
+            "require_location_seed": args.require_location_seed,
+            "require_domain_context": args.require_domain_context,
             "ranking_field": args.ranking_field,
         },
     }
