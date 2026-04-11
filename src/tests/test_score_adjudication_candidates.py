@@ -1,0 +1,73 @@
+import sys
+import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from tools.score_adjudication_candidates import compute_adjudication_priority
+
+
+class ScoreAdjudicationCandidatesTests(unittest.TestCase):
+    def test_prefers_midband_domain_aligned_case_over_trivial_high_confidence_case(self):
+        useful = {
+            "text": "Trafico de drogas na Rua Alpha, bairro Centro, Mesquita.",
+            "record_score": 0.58,
+            "metadata": {
+                "agreement_ratio": 0.42,
+                "entity_count_agreed": 2,
+                "entity_count_baseline_only": 1,
+                "entity_count_gliner2_only": 1,
+            },
+            "review_seed_entities": [
+                {"text": "Rua Alpha", "label": "Location", "seed_origin": "agreed_exact"},
+                {"text": "Centro", "label": "Location", "seed_origin": "baseline_high_score"},
+            ],
+        }
+        trivial = {
+            "text": "Rua Alpha Mesquita.",
+            "record_score": 0.99,
+            "metadata": {
+                "agreement_ratio": 0.96,
+                "entity_count_agreed": 2,
+                "entity_count_baseline_only": 0,
+                "entity_count_gliner2_only": 0,
+            },
+            "review_seed_entities": [
+                {"text": "Rua Alpha", "label": "Location", "seed_origin": "agreed_exact"},
+                {"text": "Mesquita", "label": "Location", "seed_origin": "agreed_exact"},
+            ],
+        }
+        useful_score, useful_components, _, useful_reasons = compute_adjudication_priority(
+            useful, person_only_short_text_max_length=80
+        )
+        trivial_score, trivial_components, _, _ = compute_adjudication_priority(
+            trivial, person_only_short_text_max_length=80
+        )
+        self.assertGreater(useful_score, trivial_score)
+        self.assertGreater(useful_components["record_score_midband_score"], trivial_components["record_score_midband_score"])
+        self.assertIn("domain_aligned", useful_reasons)
+
+    def test_penalizes_list_like_person_dump(self):
+        row = {
+            "text": "Ivete Sangalo, Xuxa Meneguel, Anita thainara carvalho, são taradas",
+            "record_score": 0.71,
+            "metadata": {
+                "agreement_ratio": 0.35,
+                "entity_count_agreed": 2,
+                "entity_count_baseline_only": 1,
+                "entity_count_gliner2_only": 1,
+            },
+            "review_seed_entities": [
+                {"text": "Ivete Sangalo", "label": "Person", "seed_origin": "agreed_exact"},
+                {"text": "Xuxa Meneguel", "label": "Person", "seed_origin": "agreed_exact"},
+                {"text": "Anita thainara carvalho", "label": "Person", "seed_origin": "baseline_high_score"},
+            ],
+        }
+        score, _, penalties, reasons = compute_adjudication_priority(row, person_only_short_text_max_length=80)
+        self.assertLess(score, 0.0)
+        self.assertGreater(penalties["list_like_person_penalty"], 0.0)
+        self.assertIn("list_like_person_penalty", reasons)
+
+
+if __name__ == "__main__":
+    unittest.main()

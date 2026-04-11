@@ -690,8 +690,13 @@ If the goal is to generate better training pseudolabels rather than evaluate dis
 Use:
 
 ```bash
-python3 src/tools/select_train_annotation_cases.py \
+python3 src/tools/score_adjudication_candidates.py \
   --input artifacts/pseudolabelling/baseline_quick_2026-04-03/05_llm_input_t06_top1000.jsonl \
+  --output-jsonl artifacts/pseudolabelling/baseline_quick_2026-04-03/05b_llm_input_t06_top1000_priority.jsonl \
+  --summary-json artifacts/pseudolabelling/baseline_quick_2026-04-03/05b_llm_input_t06_top1000_priority_summary.json
+
+python3 src/tools/select_train_annotation_cases.py \
+  --input artifacts/pseudolabelling/baseline_quick_2026-04-03/05b_llm_input_t06_top1000_priority.jsonl \
   --output-jsonl artifacts/pseudolabelling/baseline_quick_2026-04-03/05_llm_input_train_adjudication_top100.jsonl \
   --summary-json artifacts/pseudolabelling/baseline_quick_2026-04-03/05_llm_input_train_adjudication_top100_summary.json \
   --top-n 100 \
@@ -704,6 +709,7 @@ python3 src/tools/select_train_annotation_cases.py \
   --max-agreement-ratio 0.8 \
   --require-agreed-or-baseline-seed \
   --penalize-generic-seeds \
+  --ranking-field adjudication_priority_score \
   --log-level INFO
 ```
 
@@ -713,6 +719,13 @@ This selector is biased toward:
 - lower-noise cases
 - seeds with stronger origin evidence
 - examples more likely to yield complete, conservative train annotations
+
+The priority scorer is biased toward:
+
+- domain-aligned DD-like narratives
+- moderate agreement and moderate baseline confidence instead of trivial high-confidence cases
+- presence of plausible `Location` seeds
+- cases that are still easy enough for low-cost adjudication
 
 Operational note:
 

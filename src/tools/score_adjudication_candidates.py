@@ -1,0 +1,313 @@
+#!/usr/bin/env python3
+"""Score adjudication candidates for expected training utility."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import logging
+import sys
+from collections import Counter
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from tools.inspect_dense_tips import read_json_or_jsonl, write_jsonl
+from tools.select_train_annotation_cases import (
+    _generic_seed_count,
+    _has_narrative_markers,
+    _is_list_like_person_dump,
+    _is_person_only_short_text,
+    _metadata,
+    _review_seed_entities,
+    _safe_float,
+    _seed_label_counts,
+    _seed_origin_counts,
+    _text,
+)
+
+LOGGER = logging.getLogger(__name__)
+
+LOCATIVE_MARKERS = (
+    "rua",
+    "travessa",
+    "trav",
+    "avenida",
+    "av ",
+    "bairro",
+    "morro",
+    "favela",
+    "comunidade",
+    "praca",
+    "praça",
+    "estrada",
+    "rodovia",
+)
+
+DOMAIN_NOISE_MARKERS = (
+    "taradas",
+    "tarado",
+    "celebridade",
+    "cantor",
+    "cantora",
+    "atriz",
+    "ator",
+    "bbb",
+)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Score adjudication candidates for training utility before LLM review.")
+    parser.add_argument("--input", required=True, help="Input JSONL from prepare_adjudication_cases.py")
+    parser.add_argument("--output-jsonl", required=True, help="Output JSONL with adjudication priority scores")
+    parser.add_argument("--summary-json", default="", help="Optional summary JSON")
+    parser.add_argument("--person-only-short-text-max-length", type=int, default=80)
+    parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
+    return parser.parse_args()
+
+
+def _normalized_text(text: str) -> str:
+    return " ".join(str(text).strip().lower().split())
+
+
+def _has_locative_markers(text: str) -> bool:
+    lowered = _normalized_text(text)
+    return any(marker in lowered for marker in LOCATIVE_MARKERS)
+
+
+def _has_domain_noise(text: str) -> bool:
+    lowered = _normalized_text(text)
+    return any(marker in lowered for marker in DOMAIN_NOISE_MARKERS)
+
+
+def _clamp(value: float, lo: float = 0.0, hi: float = 1.0) -> float:
+    return max(lo, min(hi, value))
+
+
+def _band_score(value: float, *, sweet_min: float, sweet_max: float, near_min: float, near_max: float) -> float:
+    if sweet_min <= value <= sweet_max:
+        return 1.0
+    if near_min <= value <= near_max:
+        return 0.6
+    return 0.2
+
+
+def compute_adjudication_priority(row: dict, *, person_only_short_text_max_length: int) -> tuple[float, dict, dict, list[str]]:
+    text = _text(row)
+    metadata = _metadata(row)
+    seeds = _review_seed_entities(row)
+    seed_label_counts = _seed_label_counts(row)
+    seed_origin_counts = _seed_origin_counts(row)
+    location_seed_count = int(seed_label_counts.get("Location", 0))
+    generic_seed_count = _generic_seed_count(row)
+    agreement_ratio = _safe_float(metadata.get("agreement_ratio"))
+    record_score = _safe_float(row.get("record_score"), _safe_float(row.get("_source", {}).get("record_score")))
+    union_count = (
+        int(metadata.get("entity_count_agreed", 0) or 0)
+        + int(metadata.get("entity_count_baseline_only", 0) or 0)
+        + int(metadata.get("entity_count_gliner2_only", 0) or 0)
+    )
+    text_length = len(text)
+
+    domain_score = 0.0
+    if location_seed_count > 0:
+        domain_score += 0.4
+    if _has_narrative_markers(text):
+        domain_score += 0.2
+    if _has_locative_markers(text):
+        domain_score += 0.2
+    if seed_origin_counts.get("agreed_exact", 0) > 0 or seed_origin_counts.get("baseline_high_score", 0) > 0:
+        domain_score += 0.1
+    if _has_domain_noise(text):
+        domain_score -= 0.2
+    if _is_list_like_person_dump(row):
+        domain_score -= 0.4
+    if _is_person_only_short_text(row, person_only_short_text_max_length):
+        domain_score -= 0.4
+    domain_score = _clamp(domain_score)
+
+    disagreement_midband_score = _band_score(
+        agreement_ratio,
+        sweet_min=0.2,
+        sweet_max=0.7,
+        near_min=0.1,
+        near_max=0.85,
+    )
+    record_score_midband_score = _band_score(
+        record_score,
+        sweet_min=0.35,
+        sweet_max=0.80,
+        near_min=0.20,
+        near_max=0.92,
+    )
+
+    if location_seed_count >= 2:
+        location_seed_score = 1.0
+    elif location_seed_count == 1:
+        location_seed_score = 0.6
+    else:
+        location_seed_score = 0.0
+
+    adjudicability_score = 0.0
+    if 1 <= len(seeds) <= 4:
+        adjudicability_score += 0.5
+    elif 5 <= len(seeds) <= 6:
+        adjudicability_score += 0.2
+    if 30 <= text_length <= 500:
+        adjudicability_score += 0.3
+    elif 20 <= text_length <= 700:
+        adjudicability_score += 0.15
+    if union_count <= 8:
+        adjudicability_score += 0.2
+    elif union_count <= 10:
+        adjudicability_score += 0.1
+    adjudicability_score = _clamp(adjudicability_score)
+
+    penalties = {
+        "generic_seed_penalty": 0.15 * generic_seed_count,
+        "list_like_person_penalty": 0.8 if _is_list_like_person_dump(row) else 0.0,
+        "person_only_short_penalty": 0.8 if _is_person_only_short_text(row, person_only_short_text_max_length) else 0.0,
+        "domain_noise_penalty": 0.25 if _has_domain_noise(text) else 0.0,
+    }
+
+    score = 0.0
+    score += 0.30 * domain_score
+    score += 0.25 * disagreement_midband_score
+    score += 0.20 * record_score_midband_score
+    score += 0.15 * location_seed_score
+    score += 0.10 * adjudicability_score
+    score -= sum(penalties.values())
+
+    reasons = []
+    if domain_score >= 0.6:
+        reasons.append("domain_aligned")
+    if disagreement_midband_score >= 1.0:
+        reasons.append("agreement_in_midband")
+    if record_score_midband_score >= 1.0:
+        reasons.append("record_score_in_midband")
+    if location_seed_score >= 0.6:
+        reasons.append("has_location_seed")
+    if adjudicability_score >= 0.8:
+        reasons.append("easy_to_adjudicate")
+    if penalties["generic_seed_penalty"] > 0:
+        reasons.append("generic_seed_penalty")
+    if penalties["list_like_person_penalty"] > 0:
+        reasons.append("list_like_person_penalty")
+    if penalties["person_only_short_penalty"] > 0:
+        reasons.append("person_only_short_penalty")
+    if penalties["domain_noise_penalty"] > 0:
+        reasons.append("domain_noise_penalty")
+
+    components = {
+        "domain_score": domain_score,
+        "disagreement_midband_score": disagreement_midband_score,
+        "record_score_midband_score": record_score_midband_score,
+        "location_seed_score": location_seed_score,
+        "adjudicability_score": adjudicability_score,
+    }
+    diagnostics = {
+        "text_length": text_length,
+        "seed_count": len(seeds),
+        "location_seed_count": location_seed_count,
+        "generic_seed_count": generic_seed_count,
+        "agreement_ratio": agreement_ratio,
+        "record_score": record_score,
+        "union_count": union_count,
+    }
+    return score, components, penalties, reasons
+
+
+def build_summary(rows: list[dict]) -> dict:
+    def _avg_top_level(key: str) -> float:
+        values = [_safe_float(row.get(key), None) for row in rows]
+        values = [value for value in values if value is not None]
+        return (sum(values) / len(values)) if values else 0.0
+
+    component_keys = (
+        "domain_score",
+        "disagreement_midband_score",
+        "record_score_midband_score",
+        "location_seed_score",
+        "adjudicability_score",
+    )
+    penalty_keys = (
+        "generic_seed_penalty",
+        "list_like_person_penalty",
+        "person_only_short_penalty",
+        "domain_noise_penalty",
+    )
+    reason_counts = Counter()
+    for row in rows:
+        for reason in row.get("_adjudication_priority", {}).get("reasons", []):
+            reason_counts[reason] += 1
+
+    return {
+        "rows_total": len(rows),
+        "summary": {
+            "avg_adjudication_priority_score": _avg_top_level("adjudication_priority_score"),
+            "avg_domain_score": _avg_top_level("domain_score"),
+            "avg_disagreement_midband_score": _avg_top_level("disagreement_midband_score"),
+            "avg_record_score_midband_score": _avg_top_level("record_score_midband_score"),
+            "avg_location_seed_score": _avg_top_level("location_seed_score"),
+            "avg_adjudicability_score": _avg_top_level("adjudicability_score"),
+            "reason_counts": dict(reason_counts),
+            "penalty_averages": {
+                key: (
+                    sum(_safe_float((row.get("_adjudication_priority", {}).get("penalties", {})).get(key), 0.0) for row in rows)
+                    / len(rows)
+                )
+                if rows
+                else 0.0
+                for key in penalty_keys
+            },
+            "component_averages": {
+                key: (
+                    sum(_safe_float((row.get("_adjudication_priority", {}).get("components", {})).get(key), 0.0) for row in rows)
+                    / len(rows)
+                )
+                if rows
+                else 0.0
+                for key in component_keys
+            },
+        },
+    }
+
+
+def main() -> None:
+    args = parse_args()
+    logging.basicConfig(
+        level=getattr(logging, args.log_level),
+        format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+    )
+
+    rows = read_json_or_jsonl(args.input)
+    output_rows = []
+    for row in rows:
+        score, components, penalties, reasons = compute_adjudication_priority(
+            row,
+            person_only_short_text_max_length=args.person_only_short_text_max_length,
+        )
+        enriched = dict(row)
+        enriched["adjudication_priority_score"] = score
+        enriched.update(components)
+        enriched["_adjudication_priority"] = {
+            "score": score,
+            "components": components,
+            "penalties": penalties,
+            "reasons": reasons,
+        }
+        output_rows.append(enriched)
+
+    write_jsonl(args.output_jsonl, output_rows)
+    LOGGER.info("Saved adjudication-priority-scored rows: %s", args.output_jsonl)
+
+    if args.summary_json:
+        summary = build_summary(output_rows)
+        summary_path = Path(args.summary_json)
+        summary_path.parent.mkdir(parents=True, exist_ok=True)
+        summary_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
+        LOGGER.info("Saved summary JSON: %s", args.summary_json)
+
+
+if __name__ == "__main__":
+    main()

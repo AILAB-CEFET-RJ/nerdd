@@ -314,11 +314,36 @@ Critérios principais:
 - favorece `baseline_coverage_proxy` mais forte
 - favorece seeds com origem `agreed_exact` e `baseline_high_score`
 - penaliza ruído alto, textos longos e seeds genéricos
+- por padrão, pode ordenar por `adjudication_priority_score` quando esse campo já foi materializado a montante
 
 Saídas:
 
 - JSONL com o lote selecionado
 - resumo opcional com distribuição de labels e origens de seeds
+
+### `src/tools/score_adjudication_candidates.py`
+
+Calcula um score de prioridade para adjudicação voltado a utilidade de treino, não apenas confiança do baseline.
+
+Use quando:
+
+- você quer priorizar casos com maior potencial de ganho após revisão LLM
+- não quer depender só de `record_score` alto
+- quer favorecer casos de domínio plausível com incerteza produtiva
+
+Sinais principais:
+
+- `domain_score`
+- `disagreement_midband_score`
+- `record_score_midband_score`
+- `location_seed_score`
+- `adjudicability_score`
+
+Saídas:
+
+- `adjudication_priority_score` em cada linha
+- subscores e penalidades em `_adjudication_priority`
+- resumo opcional com médias por componente
 
 ### `src/tools/audit_refit_regressions.py`
 

@@ -78,6 +78,11 @@ def parse_args():
     parser.add_argument("--drop-list-like-person-dumps", action="store_true")
     parser.add_argument("--drop-person-only-short-texts", action="store_true")
     parser.add_argument("--person-only-short-text-max-length", type=int, default=80)
+    parser.add_argument(
+        "--ranking-field",
+        default="adjudication_priority_score",
+        help="Primary numeric field used to rank rows after filtering. Falls back to internal trainability score when missing.",
+    )
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     return parser.parse_args()
 
@@ -282,6 +287,13 @@ def compute_trainability_score(row: dict, args) -> tuple[float, list[str], dict]
     return score, reasons, penalties
 
 
+def _ranking_score(row: dict, args) -> float:
+    value = _safe_float(row.get(args.ranking_field), None)
+    if value is not None:
+        return value
+    return _safe_float((row.get("_train_adjudication_selection") or {}).get("score"))
+
+
 def build_summary(input_rows, kept_pool, selected_rows, dropped_counter, args):
     def _avg(key):
         values = [_safe_float((_metadata(row)).get(key), None) for row in selected_rows]
@@ -307,6 +319,16 @@ def build_summary(input_rows, kept_pool, selected_rows, dropped_counter, args):
             "avg_seed_entities": (sum(len(_review_seed_entities(row)) for row in selected_rows) / len(selected_rows))
             if selected_rows
             else 0.0,
+            "avg_ranking_score": (
+                sum(_ranking_score(row, args) for row in selected_rows) / len(selected_rows)
+            )
+            if selected_rows
+            else 0.0,
+            "avg_adjudication_priority_score": (
+                sum(_safe_float(row.get("adjudication_priority_score")) for row in selected_rows) / len(selected_rows)
+            )
+            if selected_rows
+            else 0.0,
             "review_seed_label_counts": dict(label_counts),
             "review_seed_origin_counts": dict(origin_counts),
         },
@@ -316,6 +338,7 @@ def build_summary(input_rows, kept_pool, selected_rows, dropped_counter, args):
             "drop_list_like_person_dumps": args.drop_list_like_person_dumps,
             "drop_person_only_short_texts": args.drop_person_only_short_texts,
             "person_only_short_text_max_length": args.person_only_short_text_max_length,
+            "ranking_field": args.ranking_field,
         },
     }
 
@@ -348,7 +371,7 @@ def main():
 
     kept_pool.sort(
         key=lambda row: (
-            -row["_train_adjudication_selection"]["score"],
+            -_ranking_score(row, args),
             -_safe_float((_metadata(row)).get("baseline_coverage_proxy")),
             -_safe_float((_metadata(row)).get("agreement_ratio")),
             _safe_float((_metadata(row)).get("gliner2_noise_proxy")),
