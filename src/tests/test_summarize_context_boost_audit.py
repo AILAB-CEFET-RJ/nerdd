@@ -67,6 +67,7 @@ class TestSummarizeContextBoostAudit(unittest.TestCase):
             self.assertEqual(summary["boosted_entities_total"], 2)
             self.assertEqual(summary["boosted_label_counts"]["Location"], 2)
             self.assertAlmostEqual(summary["avg_score_delta"], 0.15, places=6)
+            self.assertAlmostEqual(summary["top_boosted_entities"][0]["score_delta"], 0.16, places=6)
 
             with rows_csv.open("r", encoding="utf-8") as handle:
                 rows = list(csv.DictReader(handle))

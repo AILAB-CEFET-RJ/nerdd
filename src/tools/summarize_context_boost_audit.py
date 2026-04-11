@@ -103,7 +103,12 @@ def build_summary(rows, top_n):
                         {
                             "text": item.get("text", ""),
                             "label": item.get("label", ""),
+                            "score_before": item.get("score_before"),
                             "score_after": item.get("score_after"),
+                            "score_delta": (
+                                (_safe_float(item.get("score_after")) or 0.0)
+                                - (_safe_float(item.get("score_before")) or 0.0)
+                            ),
                             "boost_reason": item.get("boost_reason", ""),
                         }
                         for item in boosted_entities[:5]
@@ -203,7 +208,16 @@ def build_summary_from_boosted_entities(rows, top_n):
             row.get("row_index") or 0,
         ),
     )
-    summary["top_boosted_entities"] = ranked[:top_n]
+    summary["top_boosted_entities"] = [
+        {
+            **row,
+            "score_delta": (
+                (_safe_float(row.get("score_after")) or 0.0)
+                - (_safe_float(row.get("score_before")) or 0.0)
+            ),
+        }
+        for row in ranked[:top_n]
+    ]
     return summary, flat_rows
 
 
