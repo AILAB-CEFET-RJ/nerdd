@@ -71,8 +71,28 @@ def _rows_by_source_id(rows: list[dict]) -> dict[str, dict]:
     return indexed
 
 
+def _load_excluded_source_ids(paths: list[str]) -> set[str]:
+    excluded = set()
+    for raw_path in paths:
+        path = Path(raw_path)
+        rows = read_json_or_jsonl(str(path))
+        if not isinstance(rows, list):
+            raise ValueError(f"Exclude file must decode to a list of JSON objects: {path}")
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            source_id = str(row.get("source_id", "")).strip()
+            adjudication = row.get("adjudication")
+            if source_id and isinstance(adjudication, dict):
+                excluded.add(source_id)
+    return excluded
+
+
 def _init_state(args):
     rows = read_json_or_jsonl(args.input)
+    excluded_source_ids = _load_excluded_source_ids(args.exclude_adjudicated_from)
+    if excluded_source_ids:
+        rows = [row for row in rows if str(row.get("source_id", "")).strip() not in excluded_source_ids]
     rows_by_id = _rows_by_source_id(rows)
     chunk_size = int(args.chunk_size)
     annotation_mode = str(args.annotation_mode).strip()
@@ -114,6 +134,8 @@ def _init_state(args):
         "benchmark_name": args.benchmark_name,
         "annotation_mode": annotation_mode,
         "input": str(Path(args.input).resolve()),
+        "excluded_source_ids_count": len(excluded_source_ids),
+        "exclude_adjudicated_from": [str(Path(path).resolve()) for path in args.exclude_adjudicated_from],
         "benchmark_input_jsonl": str(benchmark_input_path.resolve()),
         "chunk_size": chunk_size,
         "records_total": len(rows),
@@ -278,6 +300,12 @@ def parse_args():
     init_parser.add_argument("--benchmark-dir", required=True, help="Directory to store state, chunks, and responses.")
     init_parser.add_argument("--benchmark-name", default="codex_adjudication_benchmark")
     init_parser.add_argument("--chunk-size", type=int, default=10)
+    init_parser.add_argument(
+        "--exclude-adjudicated-from",
+        action="append",
+        default=[],
+        help="Repeatable JSONL/JSON file containing prior adjudication rows; matching source_id values are skipped.",
+    )
     init_parser.add_argument(
         "--annotation-mode",
         default="literal_review",
