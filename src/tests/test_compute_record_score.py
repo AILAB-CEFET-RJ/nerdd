@@ -55,6 +55,17 @@ class ComputeRecordScoreTests(unittest.TestCase):
         )
         self.assertAlmostEqual(score, 0.9, places=6)
 
+    def test_mean_times_min_aggregation_penalizes_low_tail(self):
+        record = {"entities": [{"score": 0.99}, {"score": 0.99}, {"score": 0.1}]}
+        score, _, _, _ = compute_record_score(
+            record,
+            score_field="score",
+            entity_key="entities",
+            aggregation="mean_times_min",
+            empty_entities_policy="zero",
+        )
+        self.assertAlmostEqual(score, ((0.99 + 0.99 + 0.1) / 3.0) * 0.1, places=6)
+
     def test_empty_policy_null(self):
         record = {"entities": []}
         score, valid, invalid, empty = compute_record_score(

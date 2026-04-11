@@ -145,6 +145,38 @@ python3 -m pseudolabelling.generate_corpus_predictions \
   --log-level INFO
 ```
 
+## 5b) Compute Record Scores For Ranking
+
+Use `pseudolabelling.compute_record_scores` to convert entity-level confidence into a
+single `record_score` per relato before ranking or thresholding candidates.
+
+Recommended aggregation for current pseudolabelling runs:
+
+- `mean_times_min`
+
+Rationale:
+
+- keeps records with uniformly strong entities near the top
+- strongly penalizes a single low-confidence entity
+- avoids the overly optimistic behavior of plain arithmetic mean when one bad span is
+  washed out by two strong ones
+
+Example:
+
+```bash
+cd src
+python3 -m pseudolabelling.compute_record_scores \
+  --input-jsonl ../artifacts/pseudolabelling/iter01/02_context_boosted.jsonl \
+  --output-jsonl ../artifacts/pseudolabelling/iter01/03_record_scored.jsonl \
+  --stats-json ../artifacts/pseudolabelling/iter01/03_score_stats.json \
+  --score-field score_context_boosted \
+  --output-field record_score \
+  --legacy-field-alias score_relato \
+  --aggregation mean_times_min \
+  --empty-entities-policy zero \
+  --log-level INFO
+```
+
 ## 6) Split Holdout For Calibration
 
 This step is only needed when rebuilding calibration and final-test splits from a pre-split dataset. In the current cleaned `data/` layout, the canonical files already exist as:

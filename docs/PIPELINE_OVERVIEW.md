@@ -102,7 +102,7 @@ Rationale:
 ## Record Score Flow (`pseudolabelling/compute_record_scores.py`)
 1. Read context-boosted (or calibrated) JSONL.
 2. Extract entity-level scores (`score`, `score_context_boosted`, etc.).
-3. Aggregate to record-level score (`mean`, `max`, `median`, `p75`).
+3. Aggregate to record-level score (`mean`, `max`, `median`, `p75`, `mean_times_min`).
 4. Write record-level score field and run stats JSON.
 
 ## GLiNER2 Prediction Flow (`src/tools/generate_gliner2_predictions.py`)

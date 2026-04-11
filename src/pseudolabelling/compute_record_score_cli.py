@@ -12,7 +12,7 @@ def parse_args():
     parser.add_argument("--entity-key", default="entities", help="Primary entity list key (fallback to 'ner')")
     parser.add_argument(
         "--aggregation",
-        choices=["mean", "max", "median", "p75"],
+        choices=["mean", "max", "median", "p75", "mean_times_min"],
         default="mean",
         help="Aggregation method for record-level score",
     )

@@ -140,10 +140,12 @@ python3 -m pseudolabelling.compute_record_scores \
   --score-field score_context_boosted \
   --output-field record_score \
   --legacy-field-alias score_relato \
-  --aggregation mean \
+  --aggregation mean_times_min \
   --empty-entities-policy zero \
   --log-level INFO
 ```
+
+`mean_times_min` is useful when a single low-confidence entity should strongly penalize the whole record instead of being washed out by a simple arithmetic mean.
 
 ## Split Example
 

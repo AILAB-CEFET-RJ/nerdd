@@ -42,6 +42,8 @@ def _aggregate(values, aggregation):
         ordered = sorted(values)
         idx = int(round((len(ordered) - 1) * 0.75))
         return float(ordered[idx])
+    if aggregation == "mean_times_min":
+        return float(mean(values) * min(values))
     raise ValueError(f"Unsupported aggregation: {aggregation}")
 
 
