@@ -70,6 +70,13 @@ def format_duration(seconds):
 
 def materialize_model_base(model_base):
     """Resolve remote HF repo id into a local snapshot once, to avoid network during training."""
+    if not model_base:
+        return model_base
+
+    candidate = Path(str(model_base))
+    if candidate.exists():
+        return str(candidate)
+
     if "/" not in model_base and "\\" not in model_base:
         return model_base
 
