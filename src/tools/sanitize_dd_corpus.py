@@ -57,6 +57,26 @@ TOPONYM_HINTS = (
     "rua",
     "avenida",
 )
+NARRATIVE_HINTS = (
+    "trafico",
+    "tráfico",
+    "droga",
+    "drogas",
+    "roubo",
+    "assalto",
+    "arma",
+    "armas",
+    "armado",
+    "armados",
+    "tiro",
+    "tiroteio",
+    "milicia",
+    "milícia",
+    "barricada",
+    "barricadas",
+    "sequestro",
+    "furto",
+)
 
 
 def _parse_jsonl_lines(text: str) -> list[dict]:
@@ -130,6 +150,59 @@ def _looks_like_uppercase_short(text: str) -> bool:
     return uppercase_ratio >= 0.9
 
 
+def _has_any_hint(text: str, hints: tuple[str, ...]) -> bool:
+    normalized = normalize_relato(text)
+    return any(hint in normalized for hint in hints)
+
+
+def _looks_like_name_list_dump(text: str) -> bool:
+    stripped = str(text).strip()
+    if not stripped:
+        return False
+    separators = stripped.count(",") + stripped.count(";")
+    if separators < 2:
+        return False
+    if any(ch.isdigit() for ch in stripped):
+        return False
+    if _has_any_hint(stripped, NARRATIVE_HINTS) or _has_any_hint(stripped, TOPONYM_HINTS):
+        return False
+
+    chunks = [piece.strip() for piece in re.split(r"[;,]", stripped) if piece.strip()]
+    if len(chunks) < 3:
+        return False
+
+    acceptable = 0
+    for chunk in chunks:
+        tokens = [tok for tok in re.findall(r"[A-Za-zÀ-ÿ]+", chunk) if tok]
+        if 1 <= len(tokens) <= 4:
+            acceptable += 1
+    return acceptable >= 3
+
+
+def _looks_like_short_low_context(text: str) -> bool:
+    normalized = normalize_relato(text)
+    tokens = _tokenize_normalized(text)
+    if not normalized or len(normalized) >= 35:
+        return False
+    if len(tokens) > 6:
+        return False
+    if any(ch.isdigit() for ch in normalized):
+        return False
+    if _has_any_hint(text, NARRATIVE_HINTS) or _has_any_hint(text, TOPONYM_HINTS):
+        return False
+    return True
+
+
+def _looks_like_low_context_for_review(text: str) -> bool:
+    normalized = normalize_relato(text)
+    if not normalized or len(normalized) >= 80:
+        return False
+    if _has_any_hint(text, NARRATIVE_HINTS) or _has_any_hint(text, TOPONYM_HINTS):
+        return False
+    tokens = _tokenize_normalized(text)
+    return len(tokens) <= 12
+
+
 def _relato_value(row: dict) -> str:
     value = row.get("relato")
     if isinstance(value, str):
@@ -177,6 +250,10 @@ def classify_row(
         dropped_reasons.append("duplicate_normalized_relato")
     elif len(relato) > max_relato_chars:
         dropped_reasons.append("relato_too_long")
+    elif _looks_like_name_list_dump(relato):
+        dropped_reasons.append("name_list_dump")
+    elif _looks_like_short_low_context(relato):
+        dropped_reasons.append("short_low_context")
 
     if dropped_reasons:
         return "dropped_safe", dropped_reasons, record_meta
@@ -198,6 +275,8 @@ def classify_row(
         flagged_reasons.append("uppercase_short_relato")
     if _looks_like_mojibake(relato):
         flagged_reasons.append("mojibake_suspected")
+    if _looks_like_low_context_for_review(relato):
+        flagged_reasons.append("low_context_text")
 
     if flagged_reasons:
         return "flagged_review", flagged_reasons, record_meta

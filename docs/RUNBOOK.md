@@ -264,6 +264,11 @@ Operational convention:
 - `artifacts/corpus_sanitization/dd_corpus_large_sanitized.jsonl` is the official pseudolabelling input.
 - `artifacts/corpus_sanitization/dd_corpus_large_flagged_review.jsonl` is held out for later inspection.
 
+Sanitization intent:
+
+- this stage should remove not only obvious formatting junk and duplicates, but also clearly off-domain low-context texts that do not resemble the supervised DD train/test corpora
+- examples of texts that should now be discarded earlier include short nominal lists and very short snippets with no narrative or locative anchor
+
 ## 11) Sample A Reproducible Fraction Of The Large Corpus
 
 Before running expensive pseudolabelling experiments on the full large corpus, create a fixed sample to study the score distribution and choose a threshold budget more safely.

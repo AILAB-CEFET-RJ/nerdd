@@ -740,6 +740,21 @@ Observação:
 - por padrão, a amostra preserva a ordem original dos índices sorteados
 - use `--shuffle-output` para escrever os registros em ordem embaralhada
 
+### `src/tools/sanitize_dd_corpus.py`
+
+Sanitiza o corpus grande antes do pseudolabelling, removendo ruído estrutural e separando casos suspeitos para auditoria.
+
+Use quando:
+
+- você quer reduzir custo de inferência sobre relatos claramente inadequados ao domínio de denúncia
+- precisa remover duplicatas e lixo textual antes do pipeline caro
+- quer segregar casos suspeitos em `flagged_review` para auditoria offline
+
+Observações metodológicas:
+
+- além de higiene superficial, o utilitário agora descarta listas nominais off-domain e textos muito curtos sem contexto narrativo nem locativo
+- relatos curtos com marcadores plausíveis de denúncia ou localização continuam preservados
+
 ### `src/tools/split_large_corpus_into_chunks.py`
 
 Divide um corpus grande em chunks JSONL de tamanho fixo.
