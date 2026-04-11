@@ -63,6 +63,47 @@ def _seed_entities(row: dict) -> list[dict]:
     return entities if isinstance(entities, list) else []
 
 
+def _tokenize(text: str) -> list[str]:
+    return [tok for tok in str(text).strip().lower().split() if tok]
+
+
+def _has_degenerate_merged_span(seeds: list[dict]) -> bool:
+    texts = [str(ent.get("text", "")).strip() for ent in seeds if str(ent.get("text", "")).strip()]
+    normalized = {_text.lower(): _text for _text in texts}
+    token_sets = {text.lower(): set(_tokenize(text)) for text in texts}
+    for text in texts:
+        toks = _tokenize(text)
+        if len(toks) < 2:
+            continue
+        token_set = set(toks)
+        for other in texts:
+            if text == other:
+                continue
+            other_toks = _tokenize(other)
+            if len(other_toks) != 1:
+                continue
+            if set(other_toks).issubset(token_set):
+                return True
+    return False
+
+
+def _has_obvious_truncation(seeds: list[dict]) -> bool:
+    suspicious_singletons = {
+        "petropolis",
+        "delfim",
+        "valadares",
+        "janeiro",
+        "rj",
+        "belford",
+        "amazonas",
+    }
+    for ent in seeds:
+        text = str(ent.get("text", "")).strip().lower()
+        if text in suspicious_singletons:
+            return True
+    return False
+
+
 def _feature_dict(row: dict, *, person_only_short_text_max_length: int) -> dict[str, float]:
     text = _text(row)
     metadata = _metadata(row)
@@ -188,9 +229,17 @@ def main() -> None:
         source_id = str(row.get("source_id", "")).strip()
         if source_id and source_id in excluded_source_ids:
             continue
+        seeds = _seed_entities(row)
         vec = _feature_dict(row, person_only_short_text_max_length=args.person_only_short_text_max_length)
-        seed_count = len(_seed_entities(row))
+        seed_count = len(seeds)
         if seed_count < 2:
+            continue
+        record_score = _safe_float(row.get("record_score"), 0.0)
+        if record_score <= 0.01:
+            continue
+        if _has_degenerate_merged_span(seeds):
+            continue
+        if _has_obvious_truncation(seeds):
             continue
         sim_pos = _similarity(vec, positive_proto)
         sim_neg = _similarity(vec, negative_proto) if negative_proto else 0.0

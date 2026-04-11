@@ -367,7 +367,7 @@ def render_html(rows, output_path, title, max_reports, span_field="auto", score_
             header_bits.append(f"decision={decision}")
         meta_bits = [f"entities={len(spans)}"]
         if record_score is not None:
-            meta_bits.append(f"{escape(record_score_key)}={record_score:.3f}")
+            meta_bits.append(f"{escape(record_score_key)}={record_score:.6f}")
         rendered_rows.append(
             "<section class='report'>"
             f"<h3>{' | '.join(header_bits)}</h3>"

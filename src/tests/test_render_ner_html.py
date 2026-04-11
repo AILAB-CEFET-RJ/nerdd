@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from tools.render_ner_html import (
     DEFAULT_SCORE_FIELDS,
     _pick_record_score,
+    render_html,
     get_spans,
     parse_args,
     render_text_with_spans,
@@ -58,6 +59,17 @@ class RenderNerHtmlTests(unittest.TestCase):
         score, key = _pick_record_score({"record_score": 0.4, "adjudication_priority_score": 0.7})
         self.assertEqual(score, 0.7)
         self.assertEqual(key, "adjudication_priority_score")
+
+    def test_render_html_shows_record_score_with_six_decimals(self):
+        row = {
+            "text": "Rua Alpha",
+            "record_score": 0.004321,
+            "entities": [{"text": "Rua Alpha", "label": "Location", "start": 0, "end": 9}],
+        }
+        out = Path("/tmp/render_score_precision_test.html")
+        render_html([row], output_path=out, title="t", max_reports=0)
+        html = out.read_text(encoding="utf-8")
+        self.assertIn("record_score=0.004321", html)
 
 
 if __name__ == "__main__":

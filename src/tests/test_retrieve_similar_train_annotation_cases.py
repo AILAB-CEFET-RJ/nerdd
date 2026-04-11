@@ -4,7 +4,13 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from tools.retrieve_similar_train_annotation_cases import _feature_dict, _mean_feature_vector, _similarity
+from tools.retrieve_similar_train_annotation_cases import (
+    _feature_dict,
+    _has_degenerate_merged_span,
+    _has_obvious_truncation,
+    _mean_feature_vector,
+    _similarity,
+)
 
 
 class RetrieveSimilarTrainAnnotationCasesTests(unittest.TestCase):
@@ -76,6 +82,16 @@ class RetrieveSimilarTrainAnnotationCasesTests(unittest.TestCase):
         }
         vec = _feature_dict(row, person_only_short_text_max_length=80)
         self.assertAlmostEqual(vec["multi_token_location_ratio"], 0.25)
+
+    def test_detects_degenerate_merged_span(self):
+        seeds = [
+            {"text": "caixa da água Mesquita", "label": "Location"},
+            {"text": "Mesquita", "label": "Location"},
+        ]
+        self.assertTrue(_has_degenerate_merged_span(seeds))
+
+    def test_detects_obvious_truncation(self):
+        self.assertTrue(_has_obvious_truncation([{"text": "Petropolis", "label": "Location"}]))
 
 
 if __name__ == "__main__":
