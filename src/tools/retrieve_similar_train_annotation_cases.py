@@ -94,6 +94,13 @@ def _feature_dict(row: dict, *, person_only_short_text_max_length: int) -> dict[
 
     denom = max(seed_count, 1)
     avg_seed_tokens = (sum(token_lengths) / len(token_lengths)) if token_lengths else 0.0
+    multi_token_location_count = 0
+    for ent in seeds:
+        if str(ent.get("label", "")).strip() != "Location":
+            continue
+        mention = str(ent.get("text", "")).strip()
+        if len([tok for tok in mention.split() if tok]) >= 2:
+            multi_token_location_count += 1
     return {
         "text_length_norm": min(len(text), 500) / 500.0,
         "seed_count_norm": min(seed_count, 8) / 8.0,
@@ -108,6 +115,7 @@ def _feature_dict(row: dict, *, person_only_short_text_max_length: int) -> dict[
         "has_narrative": 1.0 if _has_narrative_markers(text) else 0.0,
         "has_locative": 1.0 if _has_locative_markers(text) else 0.0,
         "avg_seed_tokens_norm": min(avg_seed_tokens, 4.0) / 4.0,
+        "multi_token_location_ratio": multi_token_location_count / max(label_counts["Location"], 1),
         "priority_score": min(max(priority_score, 0.0), 1.0),
     }
 
@@ -181,15 +189,28 @@ def main() -> None:
         if source_id and source_id in excluded_source_ids:
             continue
         vec = _feature_dict(row, person_only_short_text_max_length=args.person_only_short_text_max_length)
+        seed_count = len(_seed_entities(row))
+        if seed_count < 2:
+            continue
         sim_pos = _similarity(vec, positive_proto)
         sim_neg = _similarity(vec, negative_proto) if negative_proto else 0.0
-        final_score = sim_pos - (0.35 * sim_neg) + (0.15 * vec["priority_score"])
+        penalties = 0.0
+        if vec["priority_score"] <= 0.05:
+            penalties += 0.20
+        if vec["seed_count_norm"] <= 0.25:
+            penalties += 0.10
+        if vec["multi_token_location_ratio"] <= 0.25:
+            penalties += 0.10
+        if vec["location_ratio"] >= 0.95 and vec["seed_count_norm"] >= 0.625:
+            penalties += 0.15
+        final_score = sim_pos - (0.35 * sim_neg) + (0.15 * vec["priority_score"]) - penalties
         enriched = dict(row)
         enriched["prototype_similarity_score"] = round(final_score, 6)
         enriched["similarity_to_positive"] = round(sim_pos, 6)
         enriched["similarity_to_negative"] = round(sim_neg, 6)
         enriched["_prototype_similarity"] = {
             "features": vec,
+            "penalties": round(penalties, 6),
             "positive_prototype": positive_proto,
             "negative_prototype": negative_proto,
         }

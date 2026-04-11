@@ -63,6 +63,20 @@ class RetrieveSimilarTrainAnnotationCasesTests(unittest.TestCase):
         dissimilar_score = _similarity(_feature_dict(dissimilar, person_only_short_text_max_length=80), proto)
         self.assertGreater(similar_score, dissimilar_score)
 
+    def test_feature_dict_tracks_multi_token_location_ratio(self):
+        row = {
+            "text": "Rua Sergipe com rua Amazonas localidade Coreia em Mesquita",
+            "metadata": {},
+            "review_seed_entities": [
+                {"text": "Amazonas", "label": "Location"},
+                {"text": "Coreia", "label": "Location"},
+                {"text": "Mesquita", "label": "Location"},
+                {"text": "Rua Sergipe", "label": "Location"},
+            ],
+        }
+        vec = _feature_dict(row, person_only_short_text_max_length=80)
+        self.assertAlmostEqual(vec["multi_token_location_ratio"], 0.25)
+
 
 if __name__ == "__main__":
     unittest.main()
