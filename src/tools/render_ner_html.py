@@ -28,6 +28,11 @@ DEFAULT_SCORE_FIELDS = [
     "confidence",
     "probability",
 ]
+DEFAULT_RECORD_SCORE_FIELDS = [
+    "adjudication_priority_score",
+    "record_score",
+    "score",
+]
 
 
 def parse_args():
@@ -203,6 +208,14 @@ def _pick_span_score(span, score_fields):
     return None, ""
 
 
+def _pick_record_score(record, score_fields=None):
+    for key in (score_fields or DEFAULT_RECORD_SCORE_FIELDS):
+        score = _safe_float(record.get(key))
+        if score is not None:
+            return score, key
+    return None, ""
+
+
 def render_text_with_spans(text, spans, label_colors, score_fields=None):
     if not spans:
         return escape(text)
@@ -346,15 +359,19 @@ def render_html(rows, output_path, title, max_reports, span_field="auto", score_
         entity_list_html = render_entity_list(text, spans, score_fields=score_fields)
         source_id = escape(str(row.get("source_id", ""))).strip()
         decision = escape(str(row.get("decision", ""))).strip()
+        record_score, record_score_key = _pick_record_score(row)
         header_bits = [f"Record #{idx}"]
         if source_id:
             header_bits.append(f"source_id={source_id}")
         if decision:
             header_bits.append(f"decision={decision}")
+        meta_bits = [f"entities={len(spans)}"]
+        if record_score is not None:
+            meta_bits.append(f"{escape(record_score_key)}={record_score:.3f}")
         rendered_rows.append(
             "<section class='report'>"
             f"<h3>{' | '.join(header_bits)}</h3>"
-            f"<div class='meta'>entities={len(spans)}</div>"
+            f"<div class='meta'>{' | '.join(meta_bits)}</div>"
             f"<div class='text'>{rendered_text}</div>"
             f"{entity_list_html}"
             "</section>"

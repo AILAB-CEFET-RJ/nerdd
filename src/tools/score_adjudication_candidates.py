@@ -56,6 +56,11 @@ DOMAIN_NOISE_MARKERS = (
 )
 
 
+def _separator_count(text: str) -> int:
+    raw = str(text or "")
+    return raw.count("/") + raw.count(";") + raw.count(":") + raw.count(",")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Score adjudication candidates for training utility before LLM review.")
     parser.add_argument("--input", required=True, help="Input JSONL from prepare_adjudication_cases.py")
@@ -108,6 +113,10 @@ def compute_adjudication_priority(row: dict, *, person_only_short_text_max_lengt
         + int(metadata.get("entity_count_gliner2_only", 0) or 0)
     )
     text_length = len(text)
+    seed_count = len(seeds)
+    person_seed_count = int(seed_label_counts.get("Person", 0))
+    organization_seed_count = int(seed_label_counts.get("Organization", 0))
+    separator_count = _separator_count(text)
 
     domain_score = 0.0
     if location_seed_count > 0:
@@ -149,9 +158,9 @@ def compute_adjudication_priority(row: dict, *, person_only_short_text_max_lengt
         location_seed_score = 0.0
 
     adjudicability_score = 0.0
-    if 1 <= len(seeds) <= 4:
+    if 1 <= seed_count <= 4:
         adjudicability_score += 0.5
-    elif 5 <= len(seeds) <= 6:
+    elif 5 <= seed_count <= 6:
         adjudicability_score += 0.2
     if 30 <= text_length <= 500:
         adjudicability_score += 0.3
@@ -163,19 +172,44 @@ def compute_adjudication_priority(row: dict, *, person_only_short_text_max_lengt
         adjudicability_score += 0.1
     adjudicability_score = _clamp(adjudicability_score)
 
+    micro_edit_score = 0.0
+    if 1 <= seed_count <= 4:
+        micro_edit_score += 0.4
+    elif seed_count == 5:
+        micro_edit_score += 0.15
+    if 1 <= location_seed_count <= 3:
+        micro_edit_score += 0.3
+    elif location_seed_count == 4:
+        micro_edit_score += 0.15
+    if union_count <= 6:
+        micro_edit_score += 0.2
+    elif union_count <= 8:
+        micro_edit_score += 0.1
+    if separator_count <= 2:
+        micro_edit_score += 0.1
+    micro_edit_score = _clamp(micro_edit_score)
+
     penalties = {
         "generic_seed_penalty": 0.15 * generic_seed_count,
         "list_like_person_penalty": 0.8 if _is_list_like_person_dump(row) else 0.0,
         "person_only_short_penalty": 0.8 if _is_person_only_short_text(row, person_only_short_text_max_length) else 0.0,
         "domain_noise_penalty": 0.25 if _has_domain_noise(text) else 0.0,
+        "separator_density_penalty": 0.25 if separator_count >= 6 else (0.1 if separator_count >= 4 else 0.0),
+        "location_expansion_risk_penalty": (
+            0.35
+            if location_seed_count >= 5
+            else (0.15 if location_seed_count == 4 and person_seed_count == 0 and organization_seed_count == 0 else 0.0)
+        ),
+        "seed_count_risk_penalty": 0.2 if seed_count >= 6 else 0.0,
     }
 
     score = 0.0
-    score += 0.30 * domain_score
+    score += 0.28 * domain_score
     score += 0.25 * disagreement_midband_score
-    score += 0.20 * record_score_midband_score
+    score += 0.18 * record_score_midband_score
     score += 0.15 * location_seed_score
     score += 0.10 * adjudicability_score
+    score += 0.04 * micro_edit_score
     score -= sum(penalties.values())
 
     reasons = []
@@ -189,6 +223,8 @@ def compute_adjudication_priority(row: dict, *, person_only_short_text_max_lengt
         reasons.append("has_location_seed")
     if adjudicability_score >= 0.8:
         reasons.append("easy_to_adjudicate")
+    if micro_edit_score >= 0.8:
+        reasons.append("small_fix_profile")
     if penalties["generic_seed_penalty"] > 0:
         reasons.append("generic_seed_penalty")
     if penalties["list_like_person_penalty"] > 0:
@@ -197,6 +233,12 @@ def compute_adjudication_priority(row: dict, *, person_only_short_text_max_lengt
         reasons.append("person_only_short_penalty")
     if penalties["domain_noise_penalty"] > 0:
         reasons.append("domain_noise_penalty")
+    if penalties["separator_density_penalty"] > 0:
+        reasons.append("separator_density_penalty")
+    if penalties["location_expansion_risk_penalty"] > 0:
+        reasons.append("location_expansion_risk_penalty")
+    if penalties["seed_count_risk_penalty"] > 0:
+        reasons.append("seed_count_risk_penalty")
 
     components = {
         "domain_score": domain_score,
@@ -204,15 +246,18 @@ def compute_adjudication_priority(row: dict, *, person_only_short_text_max_lengt
         "record_score_midband_score": record_score_midband_score,
         "location_seed_score": location_seed_score,
         "adjudicability_score": adjudicability_score,
+        "micro_edit_score": micro_edit_score,
     }
     diagnostics = {
         "text_length": text_length,
-        "seed_count": len(seeds),
+        "seed_count": seed_count,
         "location_seed_count": location_seed_count,
+        "person_seed_count": person_seed_count,
         "generic_seed_count": generic_seed_count,
         "agreement_ratio": agreement_ratio,
         "record_score": record_score,
         "union_count": union_count,
+        "separator_count": separator_count,
     }
     return score, components, penalties, reasons
 
@@ -229,12 +274,16 @@ def build_summary(rows: list[dict]) -> dict:
         "record_score_midband_score",
         "location_seed_score",
         "adjudicability_score",
+        "micro_edit_score",
     )
     penalty_keys = (
         "generic_seed_penalty",
         "list_like_person_penalty",
         "person_only_short_penalty",
         "domain_noise_penalty",
+        "separator_density_penalty",
+        "location_expansion_risk_penalty",
+        "seed_count_risk_penalty",
     )
     reason_counts = Counter()
     for row in rows:

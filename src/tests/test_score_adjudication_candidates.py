@@ -68,6 +68,50 @@ class ScoreAdjudicationCandidatesTests(unittest.TestCase):
         self.assertGreater(penalties["list_like_person_penalty"], 0.0)
         self.assertIn("list_like_person_penalty", reasons)
 
+    def test_penalizes_dense_location_directory_style_case(self):
+        compact = {
+            "text": "Colocaram barricada rua comendador Luis de matos, engenheiro Belford, são João de Meriti.",
+            "record_score": 0.62,
+            "metadata": {
+                "agreement_ratio": 0.31,
+                "entity_count_agreed": 2,
+                "entity_count_baseline_only": 1,
+                "entity_count_gliner2_only": 0,
+            },
+            "review_seed_entities": [
+                {"text": "engenheiro Belford", "label": "Location", "seed_origin": "agreed_exact"},
+                {"text": "são João de Meriti", "label": "Location", "seed_origin": "baseline_high_score"},
+            ],
+        }
+        dense = {
+            "text": "Na rua da mata na Vila verde/travessa do canal no final do valão/Terreirão rua 1 / macega rua 2 /cachopa/dioneia",
+            "record_score": 0.60,
+            "metadata": {
+                "agreement_ratio": 0.28,
+                "entity_count_agreed": 3,
+                "entity_count_baseline_only": 2,
+                "entity_count_gliner2_only": 1,
+            },
+            "review_seed_entities": [
+                {"text": "Vila verde", "label": "Location", "seed_origin": "agreed_exact"},
+                {"text": "final do valão", "label": "Location", "seed_origin": "baseline_high_score"},
+                {"text": "macega", "label": "Location", "seed_origin": "baseline_high_score"},
+                {"text": "cachopa", "label": "Location", "seed_origin": "baseline_high_score"},
+                {"text": "dioneia", "label": "Location", "seed_origin": "baseline_high_score"},
+            ],
+        }
+        compact_score, _, compact_penalties, compact_reasons = compute_adjudication_priority(
+            compact, person_only_short_text_max_length=80
+        )
+        dense_score, _, dense_penalties, dense_reasons = compute_adjudication_priority(
+            dense, person_only_short_text_max_length=80
+        )
+        self.assertGreater(compact_score, dense_score)
+        self.assertEqual(compact_penalties["separator_density_penalty"], 0.0)
+        self.assertGreater(dense_penalties["separator_density_penalty"], 0.0)
+        self.assertIn("location_expansion_risk_penalty", dense_reasons)
+        self.assertIn("small_fix_profile", compact_reasons)
+
 
 if __name__ == "__main__":
     unittest.main()

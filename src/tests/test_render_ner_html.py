@@ -5,7 +5,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from tools.render_ner_html import DEFAULT_SCORE_FIELDS, get_spans, parse_args, render_text_with_spans
+from tools.render_ner_html import (
+    DEFAULT_SCORE_FIELDS,
+    _pick_record_score,
+    get_spans,
+    parse_args,
+    render_text_with_spans,
+)
 
 
 class RenderNerHtmlTests(unittest.TestCase):
@@ -47,6 +53,11 @@ class RenderNerHtmlTests(unittest.TestCase):
         with patch.object(sys, "argv", ["render_ner_html.py", "--input", "in.jsonl", "--output", "out.html"]):
             args = parse_args()
         self.assertEqual(args.score_fields, ",".join(DEFAULT_SCORE_FIELDS))
+
+    def test_pick_record_score_prefers_adjudication_priority_score(self):
+        score, key = _pick_record_score({"record_score": 0.4, "adjudication_priority_score": 0.7})
+        self.assertEqual(score, 0.7)
+        self.assertEqual(key, "adjudication_priority_score")
 
 
 if __name__ == "__main__":
