@@ -56,7 +56,28 @@ def parse_args():
             "gliner2_entities, or adjudication.entities_final."
         ),
     )
+    parser.add_argument(
+        "--score-fields",
+        default="",
+        help=(
+            "Optional comma-separated score fields to display per entity, "
+            "for example score_context_boosted,score_calibrated,score."
+        ),
+    )
     return parser.parse_args()
+
+
+def _parse_csv(value):
+    if not value:
+        return []
+    return [item.strip() for item in str(value).split(",") if item.strip()]
+
+
+def _safe_float(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _parse_jsonl(text):
@@ -131,7 +152,11 @@ def normalize_span(span):
         return None
     if end <= start:
         return None
-    return {"start": start, "end": end, "label": label.strip()}
+    normalized = {"start": start, "end": end, "label": label.strip()}
+    for key, value in span.items():
+        if key not in normalized:
+            normalized[key] = value
+    return normalized
 
 
 def build_label_colors(rows, span_field="auto"):
@@ -162,9 +187,18 @@ def sanitize_spans(text, spans):
     return sorted(valid, key=lambda s: (s["start"], s["end"]))
 
 
-def render_text_with_spans(text, spans, label_colors):
+def _pick_span_score(span, score_fields):
+    for key in score_fields:
+        score = _safe_float(span.get(key))
+        if score is not None:
+            return score, key
+    return None, ""
+
+
+def render_text_with_spans(text, spans, label_colors, score_fields=None):
     if not spans:
         return escape(text)
+    score_fields = score_fields or []
 
     parts = []
     cursor = 0
@@ -180,9 +214,13 @@ def render_text_with_spans(text, spans, label_colors):
         color = label_colors.get(label, "#444444")
         mention = escape(text[start:end])
         label_html = escape(label)
+        score, score_key = _pick_span_score(span, score_fields)
+        score_html = ""
+        if score is not None:
+            score_html = f"<span class='score' title='{escape(score_key)}'>{score:.3f}</span>"
         parts.append(
             f"<span class='entity' style='background:{color};' "
-            f"title='{label_html}'>{mention}<span class='tag'>{label_html}</span></span>"
+            f"title='{label_html}'>{mention}<span class='tag'>{label_html}{score_html}</span></span>"
         )
         cursor = end
 
@@ -191,15 +229,18 @@ def render_text_with_spans(text, spans, label_colors):
     return "".join(parts)
 
 
-def render_entity_list(text, spans):
+def render_entity_list(text, spans, score_fields=None):
     if not spans:
         return "<div class='entity-list muted'>No valid entities.</div>"
+    score_fields = score_fields or []
 
     items = []
     for span in spans:
         mention = escape(text[span["start"]:span["end"]])
         label = escape(span["label"])
-        items.append(f"<li><code>{mention}</code> <span class='entity-kind'>({label})</span></li>")
+        score, score_key = _pick_span_score(span, score_fields)
+        score_suffix = f" <span class='entity-score' title='{escape(score_key)}'>[{score:.3f}]</span>" if score is not None else ""
+        items.append(f"<li><code>{mention}</code> <span class='entity-kind'>({label})</span>{score_suffix}</li>")
     return f"<div class='entity-list'><b>Entities</b><ul>{''.join(items)}</ul></div>"
 
 
@@ -226,8 +267,10 @@ def build_html(title, rows_html, legend_html, summary_html):
     .entity-list ul { margin: 6px 0 0 18px; padding: 0; }
     .entity-list li { margin: 2px 0; }
     .entity-kind { color: #6b7280; }
+    .entity-score { color: #6b7280; font-size: 12px; }
     .entity { color: #fff; border-radius: 4px; padding: 0 4px; margin: 0 1px; display: inline-block; }
     .entity .tag { font-size: 10px; margin-left: 6px; opacity: 0.9; }
+    .entity .score { font-size: 9px; vertical-align: super; margin-left: 4px; opacity: 0.95; }
     .swatch { width: 28px; height: 14px; border-radius: 3px; display: inline-block; border: 1px solid #11111133; }
   </style>
 </head>
@@ -248,9 +291,10 @@ def build_html(title, rows_html, legend_html, summary_html):
     )
 
 
-def render_html(rows, output_path, title, max_reports, span_field="auto"):
+def render_html(rows, output_path, title, max_reports, span_field="auto", score_fields=None):
     if max_reports > 0:
         rows = rows[:max_reports]
+    score_fields = score_fields or []
 
     label_colors = build_label_colors(rows, span_field=span_field)
     label_counts = Counter()
@@ -290,8 +334,8 @@ def render_html(rows, output_path, title, max_reports, span_field="auto"):
     for idx, row in enumerate(rows, start=1):
         text = get_text(row)
         spans = sanitize_spans(text, get_spans(row, span_field=span_field))
-        rendered_text = render_text_with_spans(text, spans, label_colors)
-        entity_list_html = render_entity_list(text, spans)
+        rendered_text = render_text_with_spans(text, spans, label_colors, score_fields=score_fields)
+        entity_list_html = render_entity_list(text, spans, score_fields=score_fields)
         source_id = escape(str(row.get("source_id", ""))).strip()
         decision = escape(str(row.get("decision", ""))).strip()
         header_bits = [f"Record #{idx}"]
@@ -316,7 +360,14 @@ def render_html(rows, output_path, title, max_reports, span_field="auto"):
 def main():
     args = parse_args()
     rows = load_corpus(args.input)
-    render_html(rows, args.output, args.title, args.max_reports, span_field=args.span_field)
+    render_html(
+        rows,
+        args.output,
+        args.title,
+        args.max_reports,
+        span_field=args.span_field,
+        score_fields=_parse_csv(args.score_fields),
+    )
     print(f"[ok] HTML saved to: {args.output}")
 
 

@@ -103,6 +103,7 @@ Entradas principais:
 - `--output`
 - `--title`
 - `--span-field`
+- `--score-fields`
 
 Observações metodológicas:
 
@@ -113,6 +114,7 @@ Observações metodológicas:
   - `baseline_entities`
   - `gliner2_entities`
   - `adjudication.entities_final`
+- com `--score-fields`, você pode mostrar a confiança ao lado de cada entidade usando um ou mais campos de score em ordem de fallback
 
 Saída:
 

@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from tools.render_ner_html import get_spans
+from tools.render_ner_html import get_spans, render_text_with_spans
 
 
 class RenderNerHtmlTests(unittest.TestCase):
@@ -32,6 +32,15 @@ class RenderNerHtmlTests(unittest.TestCase):
         spans = get_spans(row, span_field="adjudication.entities_final")
         self.assertEqual(len(spans), 1)
         self.assertEqual(spans[0]["text"], "Rua Alpha")
+
+    def test_render_text_with_spans_shows_score_when_configured(self):
+        text = "Rua Alpha com Joao"
+        spans = [
+            {"text": "Rua Alpha", "label": "Location", "start": 0, "end": 9, "score_context_boosted": 0.91234},
+        ]
+        html = render_text_with_spans(text, spans, {"Location": "#0B6E4F"}, score_fields=["score_context_boosted"])
+        self.assertIn("0.912", html)
+        self.assertIn("score_context_boosted", html)
 
 
 if __name__ == "__main__":
