@@ -71,6 +71,15 @@ class TestRunLlmAdjudication(unittest.TestCase):
         self.assertIn("not restricted to review_seed_entities", body["input"][0]["content"])
         self.assertIn("Road and address markers", body["input"][0]["content"])
 
+    def test_build_messages_train_annotation_open_allows_new_entities_instruction(self):
+        row = {
+            "source_id": "tip-1",
+            "text": "Ivete Sangalo mora em Salvador",
+            "review_seed_entities": [{"text": "Ivete Sangalo", "label": "Person", "start": 0, "end": 13}],
+        }
+        messages = build_messages(row, annotation_mode="train_annotation_open")
+        self.assertIn("not restricted to review_seed_entities", messages[0]["content"])
+
     def test_build_request_body_omits_temperature_for_gpt5_models(self):
         body = build_request_body({"text": "abc"}, model="gpt-5-mini", temperature=0.7)
         self.assertEqual(body["model"], "gpt-5-mini")
@@ -213,6 +222,26 @@ class TestRunLlmAdjudication(unittest.TestCase):
             },
             source_row,
             annotation_mode="train_annotation",
+        )
+        self.assertEqual(len(validated["entities_final"]), 2)
+
+    def test_validate_adjudication_train_annotation_open_allows_new_literal_entities(self):
+        source_row = {
+            "text": "Ivete Sangalo em Salvador",
+            "review_seed_entities": [{"text": "Ivete Sangalo", "label": "Person", "start": 0, "end": 13}],
+        }
+        validated = validate_adjudication(
+            {
+                "decision": "accept_with_edits",
+                "review_confidence": "high",
+                "entities_final": [
+                    {"text": "Ivete Sangalo", "label": "Person", "start": 0, "end": 13},
+                    {"text": "Salvador", "label": "Location", "start": 17, "end": 25},
+                ],
+                "justification": "literal training extraction",
+            },
+            source_row,
+            annotation_mode="train_annotation_open",
         )
         self.assertEqual(len(validated["entities_final"]), 2)
 

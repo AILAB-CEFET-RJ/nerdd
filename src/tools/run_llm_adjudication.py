@@ -41,7 +41,7 @@ DEFAULT_DOTENV_PATH = ".env"
 DEFAULT_TEMPERATURE = 0.0
 ALLOWED_DECISIONS = {"accept", "accept_with_edits", "reject"}
 ALLOWED_LABELS = set(DEFAULT_ALLOWED_LABELS)
-ALLOWED_ANNOTATION_MODES = {"literal_review", "train_annotation"}
+ALLOWED_ANNOTATION_MODES = {"literal_review", "train_annotation", "train_annotation_open"}
 
 ADJUDICATION_SCHEMA = {
     "type": "object",
@@ -263,7 +263,7 @@ def build_messages(row: dict, *, annotation_mode: str = "literal_review") -> lis
         "review_seed_entities": _serialize_entities(row.get("review_seed_entities")),
     }
 
-    if annotation_mode == "train_annotation":
+    if annotation_mode in {"train_annotation", "train_annotation_open"}:
         system_message = (
             "You are producing conservative Portuguese NER training annotations for Brazilian crime-tip records.\n"
             "Return JSON only.\n"
@@ -757,7 +757,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--annotation-mode",
         default="literal_review",
-        choices=["literal_review", "train_annotation"],
+        choices=["literal_review", "train_annotation", "train_annotation_open"],
         help="Prompt/validation mode for adjudication.",
     )
     return parser.parse_args()

@@ -55,7 +55,7 @@ state = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 print(state.get("annotation_mode", "literal_review"))
 PY
 )"
-  if [[ "$annotation_mode" == "train_annotation" ]]; then
+  if [[ "$annotation_mode" == "train_annotation" || "$annotation_mode" == "train_annotation_open" ]]; then
     step_note "$1" "Modo train_annotation: entities_final pode incluir novas entidades literais fora de review_seed_entities."
     step_note "$1" "Priorize spans completos, conservadores e defensáveis; omita entidades genéricas, espúrias ou ambíguas."
   else

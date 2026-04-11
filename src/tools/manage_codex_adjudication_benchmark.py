@@ -281,7 +281,7 @@ def parse_args():
     init_parser.add_argument(
         "--annotation-mode",
         default="literal_review",
-        choices=["literal_review", "train_annotation"],
+        choices=["literal_review", "train_annotation", "train_annotation_open"],
         help="Validation mode for adjudication ingestion.",
     )
 
