@@ -14,7 +14,9 @@ class SelectTrainAdjudicationCandidatesTests(unittest.TestCase):
         min_seed_entities = 1
         max_seed_entities = 4
         max_union_entities = 8
+        max_baseline_entities = 12
         max_gliner2_noise_proxy = 0.6
+        max_person_seed_ratio = 0.6
         min_agreement_ratio = 0.15
         max_agreement_ratio = 0.8
         require_agreed_or_baseline_seed = True
@@ -153,6 +155,48 @@ class SelectTrainAdjudicationCandidatesTests(unittest.TestCase):
         ok, reasons = row_passes_filters(row, self.Args())
         self.assertFalse(ok)
         self.assertIn("missing_domain_context", reasons)
+
+    def test_filters_overdense_baseline_case(self):
+        row = {
+            "text": "Tráfico em muitas ruas do bairro",
+            "metadata": {
+                "agreement_ratio": 0.4,
+                "gliner2_noise_proxy": 0.2,
+                "entity_count_baseline": 18,
+                "entity_count_agreed": 2,
+                "entity_count_baseline_only": 4,
+                "entity_count_gliner2_only": 1,
+            },
+            "review_seed_entities": [
+                {"text": "bairro alfa", "label": "Location", "seed_origin": "agreed_exact"},
+                {"text": "rua beta", "label": "Location", "seed_origin": "baseline_high_score"},
+            ],
+        }
+        ok, reasons = row_passes_filters(row, self.Args())
+        self.assertFalse(ok)
+        self.assertIn("too_many_baseline_entities", reasons)
+
+    def test_filters_person_heavy_seed_set(self):
+        row = {
+            "text": "Trafico com Joao, Pedro e Carlos na favela Coreia",
+            "metadata": {
+                "agreement_ratio": 0.4,
+                "gliner2_noise_proxy": 0.2,
+                "entity_count_baseline": 5,
+                "entity_count_agreed": 2,
+                "entity_count_baseline_only": 1,
+                "entity_count_gliner2_only": 0,
+            },
+            "review_seed_entities": [
+                {"text": "Joao", "label": "Person", "seed_origin": "agreed_exact"},
+                {"text": "Pedro", "label": "Person", "seed_origin": "agreed_exact"},
+                {"text": "Carlos", "label": "Person", "seed_origin": "baseline_high_score"},
+                {"text": "Coreia", "label": "Location", "seed_origin": "agreed_exact"},
+            ],
+        }
+        ok, reasons = row_passes_filters(row, self.Args())
+        self.assertFalse(ok)
+        self.assertIn("person_seed_ratio_too_high", reasons)
 
 
 if __name__ == "__main__":

@@ -86,7 +86,9 @@ def parse_args():
     parser.add_argument("--min-seed-entities", type=int, default=1)
     parser.add_argument("--max-seed-entities", type=int, default=4)
     parser.add_argument("--max-union-entities", type=int, default=8)
+    parser.add_argument("--max-baseline-entities", type=int, default=12)
     parser.add_argument("--max-gliner2-noise-proxy", type=float, default=0.6)
+    parser.add_argument("--max-person-seed-ratio", type=float, default=0.6)
     parser.add_argument("--min-agreement-ratio", type=float, default=0.15)
     parser.add_argument("--max-agreement-ratio", type=float, default=0.8)
     parser.add_argument("--require-agreed-or-baseline-seed", action="store_true")
@@ -263,8 +265,18 @@ def row_passes_filters(row: dict, args) -> tuple[bool, list[str]]:
         + int(metadata.get("entity_count_baseline_only", 0) or 0)
         + int(metadata.get("entity_count_gliner2_only", 0) or 0)
     )
+    baseline_entity_count = int(metadata.get("entity_count_baseline", 0) or 0)
     if union_count > args.max_union_entities:
         reasons.append("too_many_union_entities")
+    if baseline_entity_count > args.max_baseline_entities:
+        reasons.append("too_many_baseline_entities")
+
+    label_counts = _seed_label_counts(row)
+    seed_total = sum(int(v) for v in label_counts.values())
+    if seed_total > 0:
+        person_seed_ratio = int(label_counts.get("Person", 0)) / seed_total
+        if person_seed_ratio > args.max_person_seed_ratio:
+            reasons.append("person_seed_ratio_too_high")
 
     if args.require_agreed_or_baseline_seed:
         seed_origins = _seed_origin_counts(row)
@@ -387,6 +399,8 @@ def build_summary(input_rows, kept_pool, selected_rows, dropped_counter, args):
         "filters": {
             "min_text_length": args.min_text_length,
             "max_text_length": args.max_text_length,
+            "max_baseline_entities": args.max_baseline_entities,
+            "max_person_seed_ratio": args.max_person_seed_ratio,
             "drop_list_like_person_dumps": args.drop_list_like_person_dumps,
             "drop_person_only_short_texts": args.drop_person_only_short_texts,
             "person_only_short_text_max_length": args.person_only_short_text_max_length,
