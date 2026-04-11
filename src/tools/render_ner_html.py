@@ -20,6 +20,14 @@ PALETTE = [
     "#264653",
     "#7A3E00",
 ]
+DEFAULT_SCORE_FIELDS = [
+    "ner_score",
+    "score_context_boosted",
+    "score_calibrated",
+    "score",
+    "confidence",
+    "probability",
+]
 
 
 def parse_args():
@@ -58,10 +66,10 @@ def parse_args():
     )
     parser.add_argument(
         "--score-fields",
-        default="",
+        default=",".join(DEFAULT_SCORE_FIELDS),
         help=(
-            "Optional comma-separated score fields to display per entity, "
-            "for example score_context_boosted,score_calibrated,score."
+            "Comma-separated score fields to display per entity. "
+            "Defaults to ner_score,score_context_boosted,score_calibrated,score,confidence,probability."
         ),
     )
     return parser.parse_args()

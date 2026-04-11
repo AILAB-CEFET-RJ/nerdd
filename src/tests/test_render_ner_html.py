@@ -1,10 +1,11 @@
 import sys
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from tools.render_ner_html import get_spans, render_text_with_spans
+from tools.render_ner_html import DEFAULT_SCORE_FIELDS, get_spans, parse_args, render_text_with_spans
 
 
 class RenderNerHtmlTests(unittest.TestCase):
@@ -41,6 +42,11 @@ class RenderNerHtmlTests(unittest.TestCase):
         html = render_text_with_spans(text, spans, {"Location": "#0B6E4F"}, score_fields=["score_context_boosted"])
         self.assertIn("0.912", html)
         self.assertIn("score_context_boosted", html)
+
+    def test_parse_args_uses_default_score_fields(self):
+        with patch.object(sys, "argv", ["render_ner_html.py", "--input", "in.jsonl", "--output", "out.html"]):
+            args = parse_args()
+        self.assertEqual(args.score_fields, ",".join(DEFAULT_SCORE_FIELDS))
 
 
 if __name__ == "__main__":
