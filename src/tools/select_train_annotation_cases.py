@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import math
 import sys
 from collections import Counter
 from pathlib import Path
@@ -35,6 +34,28 @@ GENERIC_ENTITY_TEXTS = {
     "estado",
 }
 
+NARRATIVE_MARKERS = (
+    "trafico",
+    "tráfico",
+    "roubo",
+    "assalto",
+    "arma",
+    "armado",
+    "drog",
+    "morro",
+    "favela",
+    "bairro",
+    "rua",
+    "travessa",
+    "avenida",
+    "estrada",
+    "comunidade",
+    "milicia",
+    "milícia",
+    "policia",
+    "polícia",
+)
+
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -44,6 +65,7 @@ def parse_args():
     parser.add_argument("--output-jsonl", required=True, help="Selected output JSONL")
     parser.add_argument("--summary-json", default="", help="Optional summary JSON")
     parser.add_argument("--top-n", type=int, default=100)
+    parser.add_argument("--min-text-length", type=int, default=20)
     parser.add_argument("--max-text-length", type=int, default=900)
     parser.add_argument("--min-seed-entities", type=int, default=1)
     parser.add_argument("--max-seed-entities", type=int, default=4)
@@ -53,6 +75,9 @@ def parse_args():
     parser.add_argument("--max-agreement-ratio", type=float, default=0.8)
     parser.add_argument("--require-agreed-or-baseline-seed", action="store_true")
     parser.add_argument("--penalize-generic-seeds", action="store_true")
+    parser.add_argument("--drop-list-like-person-dumps", action="store_true")
+    parser.add_argument("--drop-person-only-short-texts", action="store_true")
+    parser.add_argument("--person-only-short-text-max-length", type=int, default=80)
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     return parser.parse_args()
 
@@ -83,6 +108,15 @@ def _review_seed_entities(row: dict) -> list[dict]:
     return seeds if isinstance(seeds, list) else []
 
 
+def _seed_label_counts(row: dict) -> Counter:
+    counts = Counter()
+    for ent in _review_seed_entities(row):
+        label = str(ent.get("label", "")).strip()
+        if label:
+            counts[label] += 1
+    return counts
+
+
 def _generic_seed_count(row: dict) -> int:
     count = 0
     for ent in _review_seed_entities(row):
@@ -101,6 +135,49 @@ def _seed_origin_counts(row: dict) -> Counter:
     return counts
 
 
+def _normalized_text(text: str) -> str:
+    return " ".join(str(text).strip().lower().split())
+
+
+def _has_narrative_markers(text: str) -> bool:
+    lowered = _normalized_text(text)
+    return any(marker in lowered for marker in NARRATIVE_MARKERS)
+
+
+def _is_list_like_person_dump(row: dict) -> bool:
+    text = _text(row)
+    if not isinstance(text, str):
+        return False
+    separators = text.count(",") + text.count(";")
+    if separators < 2:
+        return False
+    label_counts = _seed_label_counts(row)
+    person_count = int(label_counts.get("Person", 0))
+    entity_total = sum(int(v) for v in label_counts.values())
+    if person_count < 2 or entity_total == 0:
+        return False
+    if person_count / entity_total < 0.8:
+        return False
+    if _has_narrative_markers(text):
+        return False
+    return True
+
+
+def _is_person_only_short_text(row: dict, max_length: int) -> bool:
+    text = _text(row)
+    if not text.strip() or len(text) > max_length:
+        return False
+    label_counts = _seed_label_counts(row)
+    entity_total = sum(int(v) for v in label_counts.values())
+    if entity_total == 0:
+        return False
+    if label_counts.get("Person", 0) != entity_total:
+        return False
+    if _has_narrative_markers(text):
+        return False
+    return True
+
+
 def row_passes_filters(row: dict, args) -> tuple[bool, list[str]]:
     reasons = []
     text = _text(row)
@@ -109,6 +186,8 @@ def row_passes_filters(row: dict, args) -> tuple[bool, list[str]]:
 
     if not text.strip():
         reasons.append("missing_text")
+    if len(text) < args.min_text_length:
+        reasons.append("text_too_short")
     if len(text) > args.max_text_length:
         reasons.append("text_too_long")
     if len(seeds) < args.min_seed_entities:
@@ -138,6 +217,10 @@ def row_passes_filters(row: dict, args) -> tuple[bool, list[str]]:
         seed_origins = _seed_origin_counts(row)
         if seed_origins.get("agreed_exact", 0) <= 0 and seed_origins.get("baseline_high_score", 0) <= 0:
             reasons.append("no_stable_seed_origin")
+    if args.drop_list_like_person_dumps and _is_list_like_person_dump(row):
+        reasons.append("list_like_person_dump")
+    if args.drop_person_only_short_texts and _is_person_only_short_text(row, args.person_only_short_text_max_length):
+        reasons.append("person_only_short_text")
 
     return len(reasons) == 0, reasons
 
@@ -199,7 +282,7 @@ def compute_trainability_score(row: dict, args) -> tuple[float, list[str], dict]
     return score, reasons, penalties
 
 
-def build_summary(input_rows, kept_pool, selected_rows, dropped_counter):
+def build_summary(input_rows, kept_pool, selected_rows, dropped_counter, args):
     def _avg(key):
         values = [_safe_float((_metadata(row)).get(key), None) for row in selected_rows]
         values = [v for v in values if v is not None]
@@ -226,6 +309,13 @@ def build_summary(input_rows, kept_pool, selected_rows, dropped_counter):
             else 0.0,
             "review_seed_label_counts": dict(label_counts),
             "review_seed_origin_counts": dict(origin_counts),
+        },
+        "filters": {
+            "min_text_length": args.min_text_length,
+            "max_text_length": args.max_text_length,
+            "drop_list_like_person_dumps": args.drop_list_like_person_dumps,
+            "drop_person_only_short_texts": args.drop_person_only_short_texts,
+            "person_only_short_text_max_length": args.person_only_short_text_max_length,
         },
     }
 
@@ -272,7 +362,7 @@ def main():
     LOGGER.info("Saved selected train-adjudication candidates: %s", args.output_jsonl)
 
     if args.summary_json:
-        summary = build_summary(rows, kept_pool, selected_rows, dropped_counter)
+        summary = build_summary(rows, kept_pool, selected_rows, dropped_counter, args)
         summary_path = Path(args.summary_json)
         summary_path.parent.mkdir(parents=True, exist_ok=True)
         summary_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")

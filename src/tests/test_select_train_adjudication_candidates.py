@@ -9,6 +9,7 @@ from tools.select_train_annotation_cases import compute_trainability_score, row_
 
 class SelectTrainAdjudicationCandidatesTests(unittest.TestCase):
     class Args:
+        min_text_length = 20
         max_text_length = 900
         min_seed_entities = 1
         max_seed_entities = 4
@@ -18,6 +19,9 @@ class SelectTrainAdjudicationCandidatesTests(unittest.TestCase):
         max_agreement_ratio = 0.8
         require_agreed_or_baseline_seed = True
         penalize_generic_seeds = True
+        drop_list_like_person_dumps = True
+        drop_person_only_short_texts = True
+        person_only_short_text_max_length = 80
 
     def test_filters_out_rows_without_stable_seed_origin(self):
         row = {
@@ -73,6 +77,44 @@ class SelectTrainAdjudicationCandidatesTests(unittest.TestCase):
         strong_score, _, _ = compute_trainability_score(strong, self.Args())
         weak_score, _, _ = compute_trainability_score(weak, self.Args())
         self.assertGreater(strong_score, weak_score)
+
+    def test_filters_list_like_person_dump(self):
+        row = {
+            "text": "Ivete Sangalo, Xuxa Meneguel, Anita thainara carvalho, são taradas",
+            "metadata": {
+                "agreement_ratio": 0.4,
+                "gliner2_noise_proxy": 0.2,
+                "entity_count_agreed": 2,
+                "entity_count_baseline_only": 1,
+                "entity_count_gliner2_only": 0,
+            },
+            "review_seed_entities": [
+                {"text": "Ivete Sangalo", "label": "Person", "seed_origin": "agreed_exact"},
+                {"text": "Xuxa Meneguel", "label": "Person", "seed_origin": "agreed_exact"},
+                {"text": "Anita thainara carvalho", "label": "Person", "seed_origin": "baseline_high_score"},
+            ],
+        }
+        ok, reasons = row_passes_filters(row, self.Args())
+        self.assertFalse(ok)
+        self.assertIn("list_like_person_dump", reasons)
+
+    def test_filters_person_only_short_text(self):
+        row = {
+            "text": "Lucas de aparecida Gonçalves",
+            "metadata": {
+                "agreement_ratio": 0.4,
+                "gliner2_noise_proxy": 0.2,
+                "entity_count_agreed": 1,
+                "entity_count_baseline_only": 0,
+                "entity_count_gliner2_only": 0,
+            },
+            "review_seed_entities": [
+                {"text": "Lucas de aparecida Gonçalves", "label": "Person", "seed_origin": "agreed_exact"},
+            ],
+        }
+        ok, reasons = row_passes_filters(row, self.Args())
+        self.assertFalse(ok)
+        self.assertIn("person_only_short_text", reasons)
 
 
 if __name__ == "__main__":
