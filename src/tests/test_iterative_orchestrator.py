@@ -22,7 +22,7 @@ class IterativeOrchestratorTests(unittest.TestCase):
                 refit_pseudolabel_path="../artifacts/accumulated/kept_acc_01.jsonl",
                 use_calibration=False,
                 evaluate_refit=True,
-                eval_gt_jsonl="../data/dd_corpus_small_test_final.json",
+                eval_gt_jsonl="../data/dd_corpus_small_test.json",
                 eval_model_max_length=384,
                 eval_map_location="cuda",
                 prepare_next_iteration=True,

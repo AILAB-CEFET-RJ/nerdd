@@ -139,7 +139,7 @@ def build_cycle_command(args, chunk_path: Path, run_dir: Path):
         "0.01",
         "--evaluate-refit",
         "--eval-gt-jsonl",
-        "../data/dd_corpus_small_test_final.json",
+        "../data/dd_corpus_small_test.json",
         "--eval-batch-size",
         "8",
         "--eval-max-tokens",

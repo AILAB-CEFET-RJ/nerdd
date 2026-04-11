@@ -289,7 +289,7 @@ def build_runtime_table(eval_rows, pseudo_rows, base_rows):
 def write_methodological_notes(path: Path):
     content = """# Methodological Notes
 
-- Use `dd_corpus_small_test_final.json` as the external holdout.
+- Use `dd_corpus_small_test.json` as the external holdout.
 - Treat results based on `dd_corpus_small_test_filtered.json` as legacy/exploratory unless explicitly revalidated.
 - The principal supervised baseline is the fine-tuned `multi` model, not the raw backbone.
 - Historical runtime measurements taken before explicit `map_location=cuda` support may reflect CPU inference rather than GPU inference.

@@ -62,7 +62,7 @@ python3 -m base_model_training.train_nested_kfold \
 ```bash
 python3 base_model_training/evaluate_gliner.py \
   --model-path ./artifacts/base_model_training/experiments/run_batch16/best_overall_gliner_model \
-  --gt-jsonl ../data/dd_corpus_small_test_final.json \
+  --gt-jsonl ../data/dd_corpus_small_test.json \
   --pred-jsonl ./artifacts/base_model_training/experiments/run_batch16/eval/pred.jsonl \
   --report-path ./artifacts/base_model_training/experiments/run_batch16/eval/report.txt \
   --calibrated-thresholds-json ./artifacts/base_model_training/experiments/run_batch16/eval/thresholds.json \

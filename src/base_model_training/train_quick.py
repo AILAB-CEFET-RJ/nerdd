@@ -44,7 +44,7 @@ LOGGER = logging.getLogger(__name__)
 @dataclass
 class QuickTrainConfig:
     train_path: str = "../data/dd_corpus_small_train.json"
-    test_path: str = "../data/dd_corpus_small_test_final.json"
+    test_path: str = "../data/dd_corpus_small_test.json"
     pseudolabel_path: str = ""
     train_mode: str = "supervised_only"
     model_base: str = "urchade/gliner_multi-v2.1"
