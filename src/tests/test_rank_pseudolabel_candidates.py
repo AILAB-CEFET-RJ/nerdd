@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from tools.rank_pseudolabel_candidates import rank_candidates
+from tools.rank_pseudolabel_candidates import build_candidate, rank_candidates
 
 
 class RankPseudolabelCandidatesTests(unittest.TestCase):
@@ -35,8 +35,15 @@ class RankPseudolabelCandidatesTests(unittest.TestCase):
             entity_score_fields=["score_context_boosted"],
             label_field="label",
             min_record_score=0.0,
+            min_entities=0,
             max_entities=0,
+            min_text_length=0,
+            max_low_score_share=1.0,
+            max_location_ratio=1.0,
             max_short_span_ratio=1.0,
+            drop_generic_entity_texts=False,
+            drop_list_like_person_dumps=False,
+            drop_political_copypasta=False,
             short_span_max_chars=3,
             high_entity_score_threshold=0.8,
             low_entity_score_threshold=0.6,
@@ -74,8 +81,15 @@ class RankPseudolabelCandidatesTests(unittest.TestCase):
             entity_score_fields=["score_context_boosted"],
             label_field="label",
             min_record_score=0.0,
+            min_entities=0,
             max_entities=2,
+            min_text_length=0,
+            max_low_score_share=1.0,
+            max_location_ratio=1.0,
             max_short_span_ratio=1.0,
+            drop_generic_entity_texts=False,
+            drop_list_like_person_dumps=False,
+            drop_political_copypasta=False,
             short_span_max_chars=3,
             high_entity_score_threshold=0.8,
             low_entity_score_threshold=0.6,
@@ -85,6 +99,52 @@ class RankPseudolabelCandidatesTests(unittest.TestCase):
         self.assertEqual(counters["rows_kept"], 0)
         self.assertEqual(counters["dropped_required_labels"], 1)
         self.assertEqual(counters["dropped_entity_count"], 1)
+
+    def test_short_location_abbreviation_is_not_counted_as_suspicious_short_span(self):
+        row = {
+            "relato": "Ocorrencia em RJ e na Rua Alfa.",
+            "record_score": 0.8,
+            "entities": [
+                {"start": 14, "end": 16, "label": "Location", "text": "RJ", "score_context_boosted": 0.91},
+                {"start": 22, "end": 30, "label": "Location", "text": "Rua Alfa", "score_context_boosted": 0.92},
+            ],
+        }
+
+        candidate = build_candidate(
+            row,
+            row_index=1,
+            record_score_fields=["record_score"],
+            entity_score_fields=["score_context_boosted"],
+            label_field="label",
+            short_span_max_chars=3,
+            high_entity_score_threshold=0.8,
+            low_entity_score_threshold=0.6,
+        )
+
+        self.assertEqual(candidate["_candidate_rank"]["short_span_ratio"], 0.0)
+
+    def test_short_location_marker_standalone_remains_suspicious(self):
+        row = {
+            "relato": "Ocorrencia na tr e depois em RJ.",
+            "record_score": 0.8,
+            "entities": [
+                {"start": 14, "end": 16, "label": "Location", "text": "tr", "score_context_boosted": 0.91},
+                {"start": 29, "end": 31, "label": "Location", "text": "RJ", "score_context_boosted": 0.92},
+            ],
+        }
+
+        candidate = build_candidate(
+            row,
+            row_index=1,
+            record_score_fields=["record_score"],
+            entity_score_fields=["score_context_boosted"],
+            label_field="label",
+            short_span_max_chars=3,
+            high_entity_score_threshold=0.8,
+            low_entity_score_threshold=0.6,
+        )
+
+        self.assertAlmostEqual(candidate["_candidate_rank"]["short_span_ratio"], 0.5, places=6)
 
 
 if __name__ == "__main__":

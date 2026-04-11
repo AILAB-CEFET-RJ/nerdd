@@ -608,6 +608,13 @@ Use quando:
 
 Use este script como etapa padrão de `04_ranked_candidates`.
 
+Observações metodológicas:
+
+- o script penaliza densidade excessiva, cauda de scores baixos e sobrecarga de `Organization`
+- `Location` dominante não deve ser tratada como suspeita por default neste domínio; por isso `--max-location-ratio` fica desabilitado e não é a recomendação operacional
+- spans curtos agora usam exceções sensíveis ao corpus: abreviações locativas válidas como `RJ`, `SG`, `SJM` e `rio` não contam automaticamente como spans curtos suspeitos, enquanto marcadores isolados como `tr` e `av` continuam suspeitos
+- o `candidate_quality_score` agora combina `record_score`, média de entidades e `min_entity_score` para evitar que duas entidades muito boas lavem uma entidade muito ruim
+
 Saídas:
 
 - CSV com features e ranking

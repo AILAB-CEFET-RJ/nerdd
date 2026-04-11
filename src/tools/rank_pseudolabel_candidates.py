@@ -37,6 +37,15 @@ DEFAULT_POLITICAL_COPYPASTA_TERMS = (
     "investigad",
     "esquema",
 )
+DEFAULT_SHORT_SPAN_LOCATION_MARKERS = {
+    "r",
+    "ru",
+    "rua",
+    "av",
+    "tv",
+    "tr",
+    "trv",
+}
 
 
 def _safe_float(value):
@@ -127,10 +136,48 @@ def _entity_length(entity):
     return 0
 
 
+def _entity_text(entity):
+    text = entity.get("text")
+    if isinstance(text, str):
+        return text
+    return ""
+
+
+def _compact_alnum(text):
+    return "".join(ch for ch in str(text) if ch.isalnum())
+
+
+def _is_suspicious_short_span(entity, short_span_max_chars, label_field):
+    length = _entity_length(entity)
+    if length == 0 or length > short_span_max_chars:
+        return False
+
+    label = str(entity.get(label_field, "UNKNOWN"))
+    text = _entity_text(entity)
+    normalized = _normalize_entity_text(text)
+    compact = _compact_alnum(text)
+
+    # Domain-specific exceptions:
+    # - short Location abbreviations such as RJ, SG, SJM, rio appear as valid corpus spans
+    # - short Organization abbreviations such as DP/UPP can also be valid
+    # Standalone locative markers like "tr" or "av" remain suspicious.
+    if label == "Location":
+        if normalized in DEFAULT_SHORT_SPAN_LOCATION_MARKERS:
+            return True
+        if compact.isalpha() and 2 <= len(compact) <= short_span_max_chars:
+            return False
+    if label == "Organization":
+        if compact.isalpha() and 2 <= len(compact) <= short_span_max_chars:
+            return False
+
+    return True
+
+
 def _compute_candidate_quality(
     *,
     record_score,
     mean_entity_score,
+    min_entity_score,
     high_score_share,
     low_score_share,
     short_span_ratio,
@@ -141,9 +188,10 @@ def _compute_candidate_quality(
     density_penalty = min(entity_density_per_1k_chars / 30.0, 1.0)
     organization_overload = min(max(organization_ratio - 0.5, 0.0) / 0.5, 1.0)
     quality = (
-        0.45 * record_score
-        + 0.30 * mean_entity_score
-        + 0.15 * high_score_share
+        0.50 * record_score
+        + 0.15 * mean_entity_score
+        + 0.15 * (min_entity_score if min_entity_score is not None else 0.0)
+        + 0.10 * high_score_share
         + 0.10 * location_max_score
         - 0.20 * low_score_share
         - 0.20 * short_span_ratio
@@ -187,7 +235,7 @@ def build_candidate(
                 low_score_count += 1
             if label == "Location":
                 location_scores.append(score)
-        if _entity_length(entity) <= short_span_max_chars:
+        if _is_suspicious_short_span(entity, short_span_max_chars, label_field):
             short_span_count += 1
 
     entity_count = len(entities)
@@ -216,6 +264,7 @@ def build_candidate(
     quality_score = _compute_candidate_quality(
         record_score=effective_record_score,
         mean_entity_score=mean_entity_score,
+        min_entity_score=min_entity_score,
         high_score_share=high_score_share,
         low_score_share=low_score_share,
         short_span_ratio=short_span_ratio,
@@ -549,14 +598,24 @@ def parse_args():
     parser.add_argument("--max-entities", type=int, default=0, help="Maximum entities per tip allowed before dropping (0 = unlimited).")
     parser.add_argument("--min-text-length", type=int, default=0, help="Minimum text length in characters required to keep (0 = disabled).")
     parser.add_argument("--max-low-score-share", type=float, default=1.0, help="Maximum allowed share of low-score entities before dropping.")
-    parser.add_argument("--max-location-ratio", type=float, default=1.0, help="Maximum allowed share of Location entities before dropping.")
+    parser.add_argument(
+        "--max-location-ratio",
+        type=float,
+        default=1.0,
+        help="Maximum allowed share of Location entities before dropping. Disabled by default and not recommended for corpus-aligned operational ranking.",
+    )
     parser.add_argument(
         "--max-short-span-ratio",
         type=float,
         default=1.0,
         help="Maximum allowed share of short spans before dropping.",
     )
-    parser.add_argument("--short-span-max-chars", type=int, default=3, help="Spans of this length or shorter count as short.")
+    parser.add_argument(
+        "--short-span-max-chars",
+        type=int,
+        default=3,
+        help="Spans of this length or shorter count as suspicious short spans unless exempted by domain-aware rules.",
+    )
     parser.add_argument(
         "--high-entity-score-threshold",
         type=float,
