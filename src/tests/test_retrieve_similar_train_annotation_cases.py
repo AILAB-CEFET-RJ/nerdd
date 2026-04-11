@@ -9,6 +9,7 @@ from tools.retrieve_similar_train_annotation_cases import (
     _has_degenerate_merged_span,
     _has_obvious_truncation,
     _mean_feature_vector,
+    _selector_filter_args,
     _similarity,
 )
 
@@ -92,6 +93,35 @@ class RetrieveSimilarTrainAnnotationCasesTests(unittest.TestCase):
 
     def test_detects_obvious_truncation(self):
         self.assertTrue(_has_obvious_truncation([{"text": "Petropolis", "label": "Location"}]))
+
+    def test_selector_filter_args_enable_hard_gates(self):
+        args = _selector_filter_args(
+            type(
+                "Args",
+                (),
+                {
+                    "min_text_length": 20,
+                    "max_text_length": 900,
+                    "min_seed_entities": 1,
+                    "max_seed_entities": 6,
+                    "max_union_entities": 16,
+                    "max_baseline_entities": 28,
+                    "max_gliner2_noise_proxy": 0.7,
+                    "max_person_seed_ratio": 0.9,
+                    "min_agreement_ratio": 0.0,
+                    "max_agreement_ratio": 0.9,
+                    "require_agreed_or_baseline_seed": True,
+                    "penalize_generic_seeds": True,
+                    "drop_list_like_person_dumps": True,
+                    "drop_person_only_short_texts": True,
+                    "person_only_short_text_max_length": 80,
+                    "require_location_seed": True,
+                    "require_domain_context": True,
+                },
+            )()
+        )
+        self.assertTrue(args.require_location_seed)
+        self.assertTrue(args.drop_list_like_person_dumps)
 
 
 if __name__ == "__main__":

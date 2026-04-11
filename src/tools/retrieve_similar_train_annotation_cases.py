@@ -7,6 +7,7 @@ import argparse
 import json
 import logging
 import sys
+from types import SimpleNamespace
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -20,6 +21,7 @@ from tools.select_train_annotation_cases import (
     _metadata,
     _safe_float,
     _text,
+    row_passes_filters,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -46,6 +48,22 @@ def parse_args() -> argparse.Namespace:
         help="Repeatable JSONL/JSON source whose source_id values will be excluded from retrieval output.",
     )
     parser.add_argument("--person-only-short-text-max-length", type=int, default=80)
+    parser.add_argument("--min-text-length", type=int, default=20)
+    parser.add_argument("--max-text-length", type=int, default=900)
+    parser.add_argument("--min-seed-entities", type=int, default=1)
+    parser.add_argument("--max-seed-entities", type=int, default=6)
+    parser.add_argument("--max-union-entities", type=int, default=16)
+    parser.add_argument("--max-baseline-entities", type=int, default=28)
+    parser.add_argument("--max-gliner2-noise-proxy", type=float, default=0.7)
+    parser.add_argument("--max-person-seed-ratio", type=float, default=0.9)
+    parser.add_argument("--min-agreement-ratio", type=float, default=0.0)
+    parser.add_argument("--max-agreement-ratio", type=float, default=0.9)
+    parser.add_argument("--require-agreed-or-baseline-seed", action="store_true", default=True)
+    parser.add_argument("--penalize-generic-seeds", action="store_true", default=True)
+    parser.add_argument("--drop-list-like-person-dumps", action="store_true", default=True)
+    parser.add_argument("--drop-person-only-short-texts", action="store_true", default=True)
+    parser.add_argument("--require-location-seed", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--require-domain-context", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     return parser.parse_args()
 
@@ -203,6 +221,28 @@ def _build_summary(rows: list[dict], positive_count: int, negative_count: int, e
     }
 
 
+def _selector_filter_args(args: argparse.Namespace) -> SimpleNamespace:
+    return SimpleNamespace(
+        min_text_length=args.min_text_length,
+        max_text_length=args.max_text_length,
+        min_seed_entities=args.min_seed_entities,
+        max_seed_entities=args.max_seed_entities,
+        max_union_entities=args.max_union_entities,
+        max_baseline_entities=args.max_baseline_entities,
+        max_gliner2_noise_proxy=args.max_gliner2_noise_proxy,
+        max_person_seed_ratio=args.max_person_seed_ratio,
+        min_agreement_ratio=args.min_agreement_ratio,
+        max_agreement_ratio=args.max_agreement_ratio,
+        require_agreed_or_baseline_seed=args.require_agreed_or_baseline_seed,
+        penalize_generic_seeds=args.penalize_generic_seeds,
+        drop_list_like_person_dumps=args.drop_list_like_person_dumps,
+        drop_person_only_short_texts=args.drop_person_only_short_texts,
+        person_only_short_text_max_length=args.person_only_short_text_max_length,
+        require_location_seed=args.require_location_seed,
+        require_domain_context=args.require_domain_context,
+    )
+
+
 def main() -> None:
     args = parse_args()
     logging.basicConfig(
@@ -223,11 +263,15 @@ def main() -> None:
         if negatives
         else None
     )
+    filter_args = _selector_filter_args(args)
 
     ranked = []
     for row in candidates:
         source_id = str(row.get("source_id", "")).strip()
         if source_id and source_id in excluded_source_ids:
+            continue
+        passes_filters, _ = row_passes_filters(row, filter_args)
+        if not passes_filters:
             continue
         seeds = _seed_entities(row)
         vec = _feature_dict(row, person_only_short_text_max_length=args.person_only_short_text_max_length)
