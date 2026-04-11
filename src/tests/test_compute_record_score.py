@@ -10,7 +10,7 @@ from pseudolabelling.compute_record_score import compute_record_score
 class ComputeRecordScoreTests(unittest.TestCase):
     def test_mean_aggregation(self):
         record = {"entities": [{"score": 0.2}, {"score": 0.6}]}
-        score, valid, invalid, empty = compute_record_score(
+        score, valid, invalid, empty, deduped = compute_record_score(
             record,
             score_field="score",
             entity_key="entities",
@@ -21,10 +21,11 @@ class ComputeRecordScoreTests(unittest.TestCase):
         self.assertEqual(valid, 2)
         self.assertEqual(invalid, 0)
         self.assertFalse(empty)
+        self.assertEqual(deduped, 0)
 
     def test_max_aggregation(self):
         record = {"entities": [{"score": 0.2}, {"score": 0.6}]}
-        score, _, _, _ = compute_record_score(
+        score, _, _, _, _ = compute_record_score(
             record,
             score_field="score",
             entity_key="entities",
@@ -35,7 +36,7 @@ class ComputeRecordScoreTests(unittest.TestCase):
 
     def test_median_aggregation(self):
         record = {"entities": [{"score": 0.1}, {"score": 0.9}, {"score": 0.5}]}
-        score, _, _, _ = compute_record_score(
+        score, _, _, _, _ = compute_record_score(
             record,
             score_field="score",
             entity_key="entities",
@@ -46,7 +47,7 @@ class ComputeRecordScoreTests(unittest.TestCase):
 
     def test_p75_aggregation(self):
         record = {"entities": [{"score": 0.1}, {"score": 0.2}, {"score": 0.9}, {"score": 0.95}]}
-        score, _, _, _ = compute_record_score(
+        score, _, _, _, _ = compute_record_score(
             record,
             score_field="score",
             entity_key="entities",
@@ -57,7 +58,7 @@ class ComputeRecordScoreTests(unittest.TestCase):
 
     def test_mean_times_min_aggregation_penalizes_low_tail(self):
         record = {"entities": [{"score": 0.99}, {"score": 0.99}, {"score": 0.1}]}
-        score, _, _, _ = compute_record_score(
+        score, _, _, _, _ = compute_record_score(
             record,
             score_field="score",
             entity_key="entities",
@@ -68,7 +69,7 @@ class ComputeRecordScoreTests(unittest.TestCase):
 
     def test_empty_policy_null(self):
         record = {"entities": []}
-        score, valid, invalid, empty = compute_record_score(
+        score, valid, invalid, empty, deduped = compute_record_score(
             record,
             score_field="score",
             entity_key="entities",
@@ -79,6 +80,7 @@ class ComputeRecordScoreTests(unittest.TestCase):
         self.assertEqual(valid, 0)
         self.assertEqual(invalid, 0)
         self.assertTrue(empty)
+        self.assertEqual(deduped, 0)
 
     def test_empty_policy_error(self):
         record = {"entities": [{"score": "n/a"}]}
@@ -93,7 +95,7 @@ class ComputeRecordScoreTests(unittest.TestCase):
 
     def test_ner_fallback(self):
         record = {"ner": [{"score": 0.8}]}
-        score, _, _, _ = compute_record_score(
+        score, _, _, _, _ = compute_record_score(
             record,
             score_field="score",
             entity_key="entities",
@@ -101,6 +103,28 @@ class ComputeRecordScoreTests(unittest.TestCase):
             empty_entities_policy="zero",
         )
         self.assertAlmostEqual(score, 0.8, places=6)
+
+    def test_label_text_dedup_keeps_best_duplicate(self):
+        record = {
+            "entities": [
+                {"text": "Nilópolis", "label": "Location", "score": 0.7},
+                {"text": "Nilópolis", "label": "Location", "score": 0.9},
+                {"text": "Paiol de pólvora", "label": "Location", "score": 0.8},
+            ]
+        }
+        score, valid, invalid, empty, deduped = compute_record_score(
+            record,
+            score_field="score",
+            entity_key="entities",
+            aggregation="mean",
+            empty_entities_policy="zero",
+            dedupe_mode="label_text",
+        )
+        self.assertAlmostEqual(score, (0.9 + 0.8) / 2.0, places=6)
+        self.assertEqual(valid, 2)
+        self.assertEqual(invalid, 0)
+        self.assertFalse(empty)
+        self.assertEqual(deduped, 1)
 
 
 if __name__ == "__main__":

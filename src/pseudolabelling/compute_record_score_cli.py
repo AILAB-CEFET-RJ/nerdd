@@ -22,6 +22,12 @@ def parse_args():
         default="zero",
         help="How to handle records without valid entity scores",
     )
+    parser.add_argument(
+        "--dedupe-mode",
+        choices=["off", "label_text"],
+        default="off",
+        help="Optional intra-record deduplication before aggregation.",
+    )
     parser.add_argument("--trace-key", default="_record_score_meta", help="Optional metadata key to store per-record trace")
     parser.add_argument("--no-trace", action="store_true", help="Disable per-record trace metadata")
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])

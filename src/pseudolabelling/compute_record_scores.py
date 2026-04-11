@@ -20,6 +20,7 @@ def main():
         entity_key=args.entity_key,
         aggregation=args.aggregation,
         empty_entities_policy=args.empty_entities_policy,
+        dedupe_mode=args.dedupe_mode,
         trace_key=args.trace_key,
         write_trace=(not args.no_trace),
         script_path=__file__,

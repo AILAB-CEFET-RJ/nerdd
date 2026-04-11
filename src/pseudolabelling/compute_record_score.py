@@ -1,5 +1,6 @@
 import json
 import logging
+import unicodedata
 from collections import Counter
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -31,6 +32,50 @@ def _get_entities(record, entity_key):
     return []
 
 
+def _strip_accents(text):
+    normalized = unicodedata.normalize("NFKD", str(text))
+    return "".join(char for char in normalized if not unicodedata.combining(char))
+
+
+def _normalize_entity_text(text):
+    text = " ".join(str(text).strip().lower().split())
+    text = _strip_accents(text)
+    return text.strip(" \t\r\n.,;:!?()[]{}\"'")
+
+
+def _dedupe_entities(entities, score_field, dedupe_mode):
+    if dedupe_mode == "off":
+        return entities, 0
+
+    if dedupe_mode != "label_text":
+        raise ValueError(f"Unsupported dedupe_mode: {dedupe_mode}")
+
+    deduped = []
+    seen = {}
+    removed = 0
+    for entity in entities:
+        label = str(entity.get("label", "")).strip()
+        normalized_text = _normalize_entity_text(entity.get("text", ""))
+        if not label or not normalized_text:
+            deduped.append(entity)
+            continue
+
+        key = (label, normalized_text)
+        current_score = _safe_float(entity.get(score_field))
+        if key not in seen:
+            seen[key] = len(deduped)
+            deduped.append(entity)
+            continue
+
+        prev_idx = seen[key]
+        prev_score = _safe_float(deduped[prev_idx].get(score_field))
+        if current_score is not None and (prev_score is None or current_score > prev_score):
+            deduped[prev_idx] = entity
+        removed += 1
+
+    return deduped, removed
+
+
 def _aggregate(values, aggregation):
     if aggregation == "mean":
         return float(mean(values))
@@ -47,8 +92,9 @@ def _aggregate(values, aggregation):
     raise ValueError(f"Unsupported aggregation: {aggregation}")
 
 
-def compute_record_score(record, *, score_field, entity_key, aggregation, empty_entities_policy):
+def compute_record_score(record, *, score_field, entity_key, aggregation, empty_entities_policy, dedupe_mode="off"):
     entities = _get_entities(record, entity_key)
+    entities, deduped_entities = _dedupe_entities(entities, score_field=score_field, dedupe_mode=dedupe_mode)
     valid_scores = []
     invalid_scores = 0
     for entity in entities:
@@ -60,12 +106,12 @@ def compute_record_score(record, *, score_field, entity_key, aggregation, empty_
         valid_scores.append(parsed)
 
     if valid_scores:
-        return _aggregate(valid_scores, aggregation), len(valid_scores), invalid_scores, False
+        return _aggregate(valid_scores, aggregation), len(valid_scores), invalid_scores, False, deduped_entities
 
     if empty_entities_policy == "zero":
-        return 0.0, 0, invalid_scores, True
+        return 0.0, 0, invalid_scores, True, deduped_entities
     if empty_entities_policy == "null":
-        return None, 0, invalid_scores, True
+        return None, 0, invalid_scores, True, deduped_entities
     raise ValueError(
         f"No valid entity scores found for record and empty-entities-policy=error "
         f"(score_field={score_field}, entity_key={entity_key})"
@@ -90,6 +136,7 @@ def run_compute_record_score(
     entity_key="entities",
     aggregation="mean",
     empty_entities_policy="zero",
+    dedupe_mode="off",
     trace_key="_record_score_meta",
     write_trace=True,
     script_path,
@@ -115,12 +162,13 @@ def run_compute_record_score(
 
     for row in rows:
         updated = deepcopy(row)
-        score, n_valid, n_invalid, was_empty = compute_record_score(
+        score, n_valid, n_invalid, was_empty, deduped_entities = compute_record_score(
             updated,
             score_field=score_field,
             entity_key=entity_key,
             aggregation=aggregation,
             empty_entities_policy=empty_entities_policy,
+            dedupe_mode=dedupe_mode,
         )
 
         updated[output_field] = score
@@ -131,8 +179,10 @@ def run_compute_record_score(
                 "score_field": score_field,
                 "entity_key": entity_key,
                 "aggregation": aggregation,
+                "dedupe_mode": dedupe_mode,
                 "valid_entity_scores": n_valid,
                 "invalid_entity_scores": n_invalid,
+                "deduped_entities": deduped_entities,
                 "empty_entities_fallback": bool(was_empty),
             }
 
@@ -140,6 +190,7 @@ def run_compute_record_score(
         counters["rows_empty_entity_scores"] += int(was_empty)
         counters["valid_entity_scores_total"] += n_valid
         counters["invalid_entity_scores_total"] += n_invalid
+        counters["deduped_entities_total"] += deduped_entities
         if score is not None:
             record_scores.append(float(score))
         output_rows.append(updated)
@@ -161,6 +212,7 @@ def run_compute_record_score(
             "legacy_field_alias": legacy_field_alias or None,
             "entity_key": entity_key,
             "aggregation": aggregation,
+            "dedupe_mode": dedupe_mode,
             "empty_entities_policy": empty_entities_policy,
             "trace_key": trace_key if write_trace else None,
         },
@@ -169,6 +221,7 @@ def run_compute_record_score(
             "rows_empty_entity_scores": int(counters["rows_empty_entity_scores"]),
             "valid_entity_scores_total": int(counters["valid_entity_scores_total"]),
             "invalid_entity_scores_total": int(counters["invalid_entity_scores_total"]),
+            "deduped_entities_total": int(counters["deduped_entities_total"]),
             "record_score_mean": (sum(record_scores) / len(record_scores)) if record_scores else None,
             "record_score_min": min(record_scores) if record_scores else None,
             "record_score_max": max(record_scores) if record_scores else None,

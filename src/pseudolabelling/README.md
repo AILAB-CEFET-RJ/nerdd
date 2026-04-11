@@ -141,11 +141,14 @@ python3 -m pseudolabelling.compute_record_scores \
   --output-field record_score \
   --legacy-field-alias score_relato \
   --aggregation mean_times_min \
+  --dedupe-mode label_text \
   --empty-entities-policy zero \
   --log-level INFO
 ```
 
 `mean_times_min` is useful when a single low-confidence entity should strongly penalize the whole record instead of being washed out by a simple arithmetic mean.
+
+`label_text` deduplication is useful when repeated occurrences of the same location string inside one relato would otherwise inflate the record-level score.
 
 ## Split Example
 
