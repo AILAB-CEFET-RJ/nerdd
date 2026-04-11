@@ -27,6 +27,7 @@ class ContextBoostConfig:
     output_jsonl: str = "dd_corpus_large_context_boosted.jsonl"
     stats_json: str = "context_boost_stats.json"
     details_jsonl: str = ""
+    boosted_entities_jsonl: str = ""
     text_field_priority: list[str] = field(default_factory=lambda: ["relato", "text"])
     metadata_fields: list[str] = field(
         default_factory=lambda: [

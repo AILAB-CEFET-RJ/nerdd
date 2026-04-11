@@ -334,6 +334,7 @@ def _build_stats_payload(config, summary, started_at, finished_at, runtime_secon
             "text_field_priority": config.text_field_priority,
             "metadata_fields": config.metadata_fields,
             "details_jsonl": config.details_jsonl or None,
+            "boosted_entities_jsonl": config.boosted_entities_jsonl or None,
             "base_score_field": config.base_score_field,
             "fallback_score_fields": config.fallback_score_fields,
             "output_score_field": config.output_score_field,
@@ -351,6 +352,45 @@ def _build_stats_payload(config, summary, started_at, finished_at, runtime_secon
     }
 
 
+def _build_boosted_entity_audit_rows(record, *, row_index: int, config) -> list[dict]:
+    trace = record.get("_context_boost_trace", {})
+    entities = record.get("entities")
+    if not isinstance(entities, list):
+        return []
+    raw_text, _ = get_primary_text(record, config.text_field_priority)
+    sample_id = record.get("sample_id")
+    record_id = record.get("id")
+    rows = []
+    for entity in entities:
+        if not isinstance(entity, dict):
+            continue
+        if not entity.get("_context_boost_applied"):
+            continue
+        rows.append(
+            {
+                "row_index": row_index,
+                "sample_id": sample_id,
+                "id": record_id,
+                "entity_text": entity.get("text", ""),
+                "label": entity.get(config.label_field, ""),
+                "start": entity.get("start"),
+                "end": entity.get("end"),
+                "score_before": entity.get("_context_boost_score_source") and _safe_float(
+                    entity.get(entity.get("_context_boost_score_source"))
+                ),
+                "score_after": _safe_float(entity.get(config.output_score_field)),
+                "score_source": entity.get("_context_boost_score_source"),
+                "boost_multiplier": _safe_float(entity.get("_context_boost_multiplier")),
+                "boost_reason": entity.get("_context_boost_reason"),
+                "entity_metadata_match": bool(entity.get("_context_entity_metadata_match")),
+                "matched_metadata_fields": trace.get("matched_metadata_fields", []),
+                "matched_metadata_values": trace.get("matched_metadata_values", []),
+                "text_preview": raw_text[:220],
+            }
+        )
+    return rows
+
+
 def run_context_boost(config, script_path):
     started_at = datetime.now(timezone.utc).isoformat()
     timer = perf_counter()
@@ -360,6 +400,9 @@ def run_context_boost(config, script_path):
     output_jsonl = resolve_path(script_dir, config.output_jsonl)
     stats_json = resolve_path(script_dir, config.stats_json)
     details_jsonl = resolve_path(script_dir, config.details_jsonl) if config.details_jsonl else None
+    boosted_entities_jsonl = (
+        resolve_path(script_dir, config.boosted_entities_jsonl) if config.boosted_entities_jsonl else None
+    )
 
     if not input_jsonl.exists():
         raise FileNotFoundError(f"Input JSONL not found: {input_jsonl}")
@@ -370,12 +413,15 @@ def run_context_boost(config, script_path):
     stats_json.parent.mkdir(parents=True, exist_ok=True)
     if details_jsonl:
         details_jsonl.parent.mkdir(parents=True, exist_ok=True)
+    if boosted_entities_jsonl:
+        boosted_entities_jsonl.parent.mkdir(parents=True, exist_ok=True)
 
     rows = load_jsonl(str(input_jsonl))
     LOGGER.info("Loaded %s rows from %s", len(rows), input_jsonl)
 
     output_rows = []
     detail_rows = []
+    boosted_entity_rows = []
     counters = Counter()
     score_sums = Counter()
 
@@ -407,10 +453,16 @@ def run_context_boost(config, script_path):
                     "entity_trace": trace.get("entity_trace", []),
                 }
             )
+        if boosted_entities_jsonl and config.write_trace_fields:
+            boosted_entity_rows.extend(
+                _build_boosted_entity_audit_rows(boosted, row_index=index, config=config)
+            )
 
     save_jsonl(str(output_jsonl), output_rows)
     if details_jsonl:
         save_jsonl(str(details_jsonl), detail_rows)
+    if boosted_entities_jsonl:
+        save_jsonl(str(boosted_entities_jsonl), boosted_entity_rows)
 
     records_total = max(counters["records_total"], 1)
     entities_total = max(counters["entities_total"], 1)
@@ -440,6 +492,8 @@ def run_context_boost(config, script_path):
     LOGGER.info("Saved context-boosted JSONL to: %s", output_jsonl)
     if details_jsonl:
         LOGGER.info("Saved context-boost details JSONL to: %s", details_jsonl)
+    if boosted_entities_jsonl:
+        LOGGER.info("Saved boosted-entities audit JSONL to: %s", boosted_entities_jsonl)
     LOGGER.info("Saved context-boost run stats to: %s", stats_json)
     LOGGER.info(
         "Context boost finished | rows=%s matches=%s entities_boosted=%s runtime=%s",

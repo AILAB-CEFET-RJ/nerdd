@@ -6,6 +6,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from pseudolabelling.config import ContextBoostConfig
 from pseudolabelling.context_boost import (
+    _build_boosted_entity_audit_rows,
     apply_context_boost_to_record,
     normalize_text,
     _entity_matches_metadata,
@@ -147,6 +148,25 @@ class ContextBoostTests(unittest.TestCase):
         self.assertAlmostEqual(boosted["entities"][1]["score_context_boosted"], 0.9, places=6)
         self.assertTrue(boosted["entities"][0]["_context_boost_applied"])
         self.assertFalse(boosted["entities"][1]["_context_boost_applied"])
+
+    def test_build_boosted_entity_audit_rows_keeps_only_boosted_entities(self):
+        config = self._base_config()
+        config.boost_scope = "location-matched-only"
+        record = {
+            "sample_id": "tip-1",
+            "relato": "Ocorrencia na Rua Faia com apoio da policia.",
+            "logradouroLocal": "Rua Faia",
+            "entities": [
+                {"text": "Rua Faia", "label": "Location", "score_calibrated": 0.9, "start": 14, "end": 22},
+                {"text": "policia", "label": "Organization", "score_calibrated": 0.9, "start": 36, "end": 43},
+            ],
+        }
+        boosted, _ = apply_context_boost_to_record(record, config)
+        rows = _build_boosted_entity_audit_rows(boosted, row_index=1, config=config)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["entity_text"], "Rua Faia")
+        self.assertEqual(rows[0]["label"], "Location")
+        self.assertEqual(rows[0]["boost_reason"], "location-entity-overlaps-metadata")
 
 
 if __name__ == "__main__":

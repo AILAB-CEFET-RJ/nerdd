@@ -17,6 +17,7 @@ def parse_args():
     parser.add_argument("--output-jsonl", default=defaults.output_jsonl)
     parser.add_argument("--stats-json", default=defaults.stats_json)
     parser.add_argument("--details-jsonl", default=defaults.details_jsonl)
+    parser.add_argument("--boosted-entities-jsonl", default=defaults.boosted_entities_jsonl)
     parser.add_argument("--text-field-priority", default=",".join(defaults.text_field_priority))
     parser.add_argument("--metadata-fields", default=",".join(defaults.metadata_fields))
     parser.add_argument("--label-field", default=defaults.label_field)
@@ -50,6 +51,7 @@ def build_config(args):
         output_jsonl=args.output_jsonl,
         stats_json=args.stats_json,
         details_jsonl=args.details_jsonl,
+        boosted_entities_jsonl=args.boosted_entities_jsonl,
         text_field_priority=_parse_csv_list(args.text_field_priority),
         metadata_fields=_parse_csv_list(args.metadata_fields),
         label_field=args.label_field,

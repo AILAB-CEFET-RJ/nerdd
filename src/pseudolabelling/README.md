@@ -109,6 +109,7 @@ python3 -m pseudolabelling.apply_context_boost \
   --input-jsonl ../artifacts/pseudolabelling/iter01/01_predictions.jsonl \
   --output-jsonl ../artifacts/pseudolabelling/iter01/02_context_boosted.jsonl \
   --stats-json ../artifacts/pseudolabelling/iter01/02_context_boost_stats.json \
+  --boosted-entities-jsonl ../artifacts/pseudolabelling/iter01/02_context_boost_boosted_entities.jsonl \
   --base-score-field score \
   --fallback-score-fields score_calibrated,score_ts,score_iso \
   --output-score-field score_context_boosted \
@@ -117,6 +118,15 @@ python3 -m pseudolabelling.apply_context_boost \
   --boost-scope location-matched-only \
   --match-policy any-metadata-in-text \
   --log-level INFO
+```
+
+To summarize either the per-record details JSONL or the flattened boosted-entities JSONL:
+
+```bash
+python3 ../src/tools/summarize_context_boost_audit.py \
+  --boosted-entities-jsonl ../artifacts/pseudolabelling/iter01/02_context_boost_boosted_entities.jsonl \
+  --summary-json ../artifacts/pseudolabelling/iter01/02_context_boost_boosted_entities_summary.json \
+  --rows-csv ../artifacts/pseudolabelling/iter01/02_context_boost_boosted_entities.csv
 ```
 
 ## Record Score Example

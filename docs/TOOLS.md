@@ -790,6 +790,7 @@ Use quando:
 Entradas principais:
 
 - `--details-jsonl`
+- `--boosted-entities-jsonl`
 - `--summary-json`
 - `--rows-csv`
 - `--top-n`
