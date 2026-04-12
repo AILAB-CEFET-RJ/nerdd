@@ -131,6 +131,21 @@ def _build_error_row(row_index: int, sample: dict, gold_spans: list[dict], pred_
     }
 
 
+def _materialize_holdout_rows(dataset: list[dict]) -> list[dict]:
+    from base_model_training.cv import _prepare_char_offsets
+
+    rows = []
+    for sample, (text, spans) in zip(dataset, _prepare_char_offsets(dataset)):
+        rows.append(
+            {
+                "sample_id": sample.get("sample_id"),
+                "text": text,
+                "spans": spans,
+            }
+        )
+    return rows
+
+
 def main() -> None:
     import torch
 
@@ -220,7 +235,7 @@ def main() -> None:
         if model is None:
             raise RuntimeError(f"Training failed for fold {fold_idx}.")
 
-        holdout_gold = _prepare_char_offsets(holdout_data)
+        holdout_gold = _materialize_holdout_rows(holdout_data)
         holdout_pred = []
         for sample in holdout_gold:
             preds = predict_entities_for_text(model, sample["text"], entity_labels, args.threshold)
