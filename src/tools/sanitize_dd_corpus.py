@@ -212,6 +212,22 @@ def _relato_value(row: dict) -> str:
     return str(value)
 
 
+def build_exclusion_sets(rows: list[dict]) -> tuple[set[str], set[str]]:
+    exact = set()
+    normalized = set()
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        relato = _relato_value(row)
+        if not relato:
+            continue
+        exact.add(relato)
+        normalized_relato = normalize_relato(relato)
+        if normalized_relato:
+            normalized.add(normalized_relato)
+    return exact, normalized
+
+
 def _safe_int(value):
     try:
         return int(value)
@@ -225,6 +241,8 @@ def classify_row(
     row_index: int,
     seen_exact: set[str],
     seen_normalized: set[str],
+    excluded_exact: set[str],
+    excluded_normalized: set[str],
     max_relato_chars: int,
     min_flag_short_chars: int,
 ) -> tuple[str, list[str], dict]:
@@ -244,6 +262,10 @@ def classify_row(
         dropped_reasons.append("empty_relato")
     elif PUNCT_ONLY_RE.match(relato_stripped):
         dropped_reasons.append("punctuation_only_relato")
+    elif relato in excluded_exact:
+        dropped_reasons.append("overlap_exact_external_relato")
+    elif normalized_relato and normalized_relato in excluded_normalized:
+        dropped_reasons.append("overlap_normalized_external_relato")
     elif relato in seen_exact:
         dropped_reasons.append("duplicate_exact_relato")
     elif normalized_relato and normalized_relato in seen_normalized:
@@ -292,6 +314,7 @@ def build_summary(
     counters: Counter,
     max_relato_chars: int,
     min_flag_short_chars: int,
+    exclude_inputs: list[str],
 ) -> dict:
     all_rows = kept_rows + dropped_rows + flagged_rows
     lengths = [
@@ -308,6 +331,7 @@ def build_summary(
         "config": {
             "max_relato_chars": max_relato_chars,
             "min_flag_short_chars": min_flag_short_chars,
+            "exclude_inputs": exclude_inputs,
         },
         "rows_total": len(all_rows),
         "rows_kept": len(kept_rows),
@@ -335,6 +359,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--summary-json", required=True, help="Output JSON summary.")
     parser.add_argument("--max-relato-chars", type=int, default=5000, help="Hard drop records whose relato exceeds this length.")
     parser.add_argument("--min-flag-short-chars", type=int, default=20, help="Flag records shorter than this many chars.")
+    parser.add_argument("--exclude-json", action="append", default=[], help="Optional JSON/JSONL corpus whose relatos should be excluded from the large corpus. Repeatable.")
     return parser.parse_args()
 
 
@@ -344,6 +369,14 @@ def main() -> None:
 
     seen_exact: set[str] = set()
     seen_normalized: set[str] = set()
+    excluded_exact: set[str] = set()
+    excluded_normalized: set[str] = set()
+    for raw_path in args.exclude_json:
+        exclude_rows = read_json_or_jsonl(resolve_repo_artifact_path(__file__, raw_path))
+        part_exact, part_normalized = build_exclusion_sets(exclude_rows)
+        excluded_exact.update(part_exact)
+        excluded_normalized.update(part_normalized)
+
     counters = Counter()
     kept_rows = []
     dropped_rows = []
@@ -359,6 +392,8 @@ def main() -> None:
             row_index=row_index,
             seen_exact=seen_exact,
             seen_normalized=seen_normalized,
+            excluded_exact=excluded_exact,
+            excluded_normalized=excluded_normalized,
             max_relato_chars=args.max_relato_chars,
             min_flag_short_chars=args.min_flag_short_chars,
         )
@@ -399,6 +434,7 @@ def main() -> None:
         counters=counters,
         max_relato_chars=args.max_relato_chars,
         min_flag_short_chars=args.min_flag_short_chars,
+        exclude_inputs=[str(resolve_repo_artifact_path(__file__, raw_path)) for raw_path in args.exclude_json],
     )
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     summary_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
