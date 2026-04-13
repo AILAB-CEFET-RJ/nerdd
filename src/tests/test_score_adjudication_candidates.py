@@ -112,6 +112,50 @@ class ScoreAdjudicationCandidatesTests(unittest.TestCase):
         self.assertIn("location_expansion_risk_penalty", dense_reasons)
         self.assertIn("small_fix_profile", compact_reasons)
 
+    def test_prefers_canonical_small_address_fix_over_mixed_label_case(self):
+        canonical = {
+            "text": "Carro roubado rua ramalho Monteiro boassu são Gonçalo",
+            "record_score": 1e-12,
+            "metadata": {
+                "agreement_ratio": 0.22,
+                "entity_count_agreed": 1,
+                "entity_count_baseline_only": 2,
+                "entity_count_gliner2_only": 1,
+            },
+            "review_seed_entities": [
+                {"text": "boassu", "label": "Location", "seed_origin": "agreed_exact"},
+                {"text": "são Gonçalo", "label": "Location", "seed_origin": "baseline_high_score"},
+                {"text": "Gonçalo", "label": "Location", "seed_origin": "gliner2_location_metadata_match"},
+            ],
+        }
+        mixed = {
+            "text": "Mateus Lima facção comando vermelho morro caixa da água Juscelino",
+            "record_score": 0.4,
+            "metadata": {
+                "agreement_ratio": 0.35,
+                "entity_count_agreed": 2,
+                "entity_count_baseline_only": 2,
+                "entity_count_gliner2_only": 1,
+            },
+            "review_seed_entities": [
+                {"text": "Mateus Lima", "label": "Person", "seed_origin": "agreed_exact"},
+                {"text": "comando vermelho", "label": "Organization", "seed_origin": "baseline_high_score"},
+                {"text": "morro caixa da água", "label": "Location", "seed_origin": "baseline_high_score"},
+                {"text": "Juscelino", "label": "Location", "seed_origin": "baseline_high_score"},
+            ],
+        }
+        canonical_score, canonical_components, canonical_penalties, canonical_reasons = compute_adjudication_priority(
+            canonical, person_only_short_text_max_length=80
+        )
+        mixed_score, _, mixed_penalties, _ = compute_adjudication_priority(
+            mixed, person_only_short_text_max_length=80
+        )
+        self.assertGreater(canonical_score, mixed_score)
+        self.assertGreater(canonical_components["canonical_address_score"], 0.0)
+        self.assertIn("canonical_address_profile", canonical_reasons)
+        self.assertEqual(canonical_penalties["mixed_label_risk_penalty"], 0.0)
+        self.assertGreater(mixed_penalties["mixed_label_risk_penalty"], 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()

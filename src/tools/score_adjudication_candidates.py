@@ -85,6 +85,25 @@ def _has_domain_noise(text: str) -> bool:
     return any(marker in lowered for marker in DOMAIN_NOISE_MARKERS)
 
 
+def _has_intersection_pattern(text: str) -> bool:
+    lowered = _normalized_text(text)
+    return (" esquina com " in lowered) or (" com rua " in lowered) or (" entre a rua " in lowered)
+
+
+def _has_address_number(text: str) -> bool:
+    lowered = _normalized_text(text)
+    return any(token in lowered for token in (" n ", " n°", " numero ", " nº ", " no ", " lote ", " quadra "))
+
+
+def _has_street_marker_seed(seeds: list[dict]) -> bool:
+    for seed in seeds:
+        label = str(seed.get("label", ""))
+        text = _normalized_text(seed.get("text", ""))
+        if label == "Location" and any(text.startswith(marker + " ") for marker in LOCATIVE_MARKERS):
+            return True
+    return False
+
+
 def _clamp(value: float, lo: float = 0.0, hi: float = 1.0) -> float:
     return max(lo, min(hi, value))
 
@@ -117,6 +136,10 @@ def compute_adjudication_priority(row: dict, *, person_only_short_text_max_lengt
     person_seed_count = int(seed_label_counts.get("Person", 0))
     organization_seed_count = int(seed_label_counts.get("Organization", 0))
     separator_count = _separator_count(text)
+    location_only_case = location_seed_count > 0 and person_seed_count == 0 and organization_seed_count == 0
+    street_marker_seed = _has_street_marker_seed(seeds)
+    intersection_pattern = _has_intersection_pattern(text)
+    address_number_pattern = _has_address_number(text)
 
     domain_score = 0.0
     if location_seed_count > 0:
@@ -189,6 +212,32 @@ def compute_adjudication_priority(row: dict, *, person_only_short_text_max_lengt
         micro_edit_score += 0.1
     micro_edit_score = _clamp(micro_edit_score)
 
+    canonical_address_score = 0.0
+    if _has_locative_markers(text):
+        canonical_address_score += 0.35
+    if street_marker_seed:
+        canonical_address_score += 0.25
+    if intersection_pattern:
+        canonical_address_score += 0.2
+    if address_number_pattern:
+        canonical_address_score += 0.1
+    if location_only_case:
+        canonical_address_score += 0.1
+    canonical_address_score = _clamp(canonical_address_score)
+
+    small_clean_edit_score = 0.0
+    if seed_count <= 4:
+        small_clean_edit_score += 0.3
+    if union_count <= 6:
+        small_clean_edit_score += 0.25
+    if location_only_case:
+        small_clean_edit_score += 0.2
+    if person_seed_count == 0 and organization_seed_count <= 1:
+        small_clean_edit_score += 0.15
+    if generic_seed_count == 0:
+        small_clean_edit_score += 0.1
+    small_clean_edit_score = _clamp(small_clean_edit_score)
+
     penalties = {
         "generic_seed_penalty": 0.15 * generic_seed_count,
         "list_like_person_penalty": 0.8 if _is_list_like_person_dump(row) else 0.0,
@@ -201,15 +250,22 @@ def compute_adjudication_priority(row: dict, *, person_only_short_text_max_lengt
             else (0.15 if location_seed_count == 4 and person_seed_count == 0 and organization_seed_count == 0 else 0.0)
         ),
         "seed_count_risk_penalty": 0.2 if seed_count >= 6 else 0.0,
+        "mixed_label_risk_penalty": (
+            0.28
+            if ((person_seed_count >= 1 or organization_seed_count >= 1) and location_seed_count >= 2)
+            else 0.0
+        ),
     }
 
     score = 0.0
     score += 0.28 * domain_score
     score += 0.25 * disagreement_midband_score
-    score += 0.18 * record_score_midband_score
+    score += 0.10 * record_score_midband_score
     score += 0.15 * location_seed_score
     score += 0.10 * adjudicability_score
     score += 0.04 * micro_edit_score
+    score += 0.08 * canonical_address_score
+    score += 0.05 * small_clean_edit_score
     score -= sum(penalties.values())
 
     reasons = []
@@ -225,6 +281,10 @@ def compute_adjudication_priority(row: dict, *, person_only_short_text_max_lengt
         reasons.append("easy_to_adjudicate")
     if micro_edit_score >= 0.8:
         reasons.append("small_fix_profile")
+    if canonical_address_score >= 0.4:
+        reasons.append("canonical_address_profile")
+    if small_clean_edit_score >= 0.7:
+        reasons.append("small_clean_edit_profile")
     if penalties["generic_seed_penalty"] > 0:
         reasons.append("generic_seed_penalty")
     if penalties["list_like_person_penalty"] > 0:
@@ -247,6 +307,8 @@ def compute_adjudication_priority(row: dict, *, person_only_short_text_max_lengt
         "location_seed_score": location_seed_score,
         "adjudicability_score": adjudicability_score,
         "micro_edit_score": micro_edit_score,
+        "canonical_address_score": canonical_address_score,
+        "small_clean_edit_score": small_clean_edit_score,
     }
     diagnostics = {
         "text_length": text_length,
@@ -258,6 +320,10 @@ def compute_adjudication_priority(row: dict, *, person_only_short_text_max_lengt
         "record_score": record_score,
         "union_count": union_count,
         "separator_count": separator_count,
+        "location_only_case": location_only_case,
+        "street_marker_seed": street_marker_seed,
+        "intersection_pattern": intersection_pattern,
+        "address_number_pattern": address_number_pattern,
     }
     return score, components, penalties, reasons
 
@@ -275,6 +341,8 @@ def build_summary(rows: list[dict]) -> dict:
         "location_seed_score",
         "adjudicability_score",
         "micro_edit_score",
+        "canonical_address_score",
+        "small_clean_edit_score",
     )
     penalty_keys = (
         "generic_seed_penalty",
@@ -284,6 +352,7 @@ def build_summary(rows: list[dict]) -> dict:
         "separator_density_penalty",
         "location_expansion_risk_penalty",
         "seed_count_risk_penalty",
+        "mixed_label_risk_penalty",
     )
     reason_counts = Counter()
     for row in rows:
