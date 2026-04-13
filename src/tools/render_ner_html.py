@@ -152,6 +152,9 @@ def get_spans(record, span_field="auto"):
     ner = record.get("ner")
     if isinstance(ner, list):
         return ner
+    review_seed_entities = record.get("review_seed_entities")
+    if isinstance(review_seed_entities, list):
+        return review_seed_entities
     return []
 
 
