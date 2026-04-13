@@ -68,6 +68,18 @@ class SanitizeDdCorpusTests(unittest.TestCase):
         self.assertEqual(status, "dropped_safe")
         self.assertIn("overlap_normalized_external_relato", reasons)
 
+    def test_build_exclusion_sets_accepts_text_field(self):
+        excluded_exact, excluded_normalized = build_exclusion_sets(
+            [{"text": "Traficantes na Rua Alpha em Mesquita"}]
+        )
+        status, reasons, _ = self.classify(
+            "Traficantes na Rua Alpha em Mesquita",
+            excluded_exact=excluded_exact,
+            excluded_normalized=excluded_normalized,
+        )
+        self.assertEqual(status, "dropped_safe")
+        self.assertIn("overlap_exact_external_relato", reasons)
+
 
 if __name__ == "__main__":
     unittest.main()

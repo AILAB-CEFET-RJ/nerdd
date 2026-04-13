@@ -205,6 +205,9 @@ def _looks_like_low_context_for_review(text: str) -> bool:
 
 def _relato_value(row: dict) -> str:
     value = row.get("relato")
+    if isinstance(value, str) and value.strip():
+        return value
+    value = row.get("text")
     if isinstance(value, str):
         return value
     if value is None:
