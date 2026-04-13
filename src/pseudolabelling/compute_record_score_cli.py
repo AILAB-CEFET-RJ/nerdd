@@ -13,7 +13,7 @@ def parse_args():
     parser.add_argument(
         "--aggregation",
         choices=["mean", "max", "median", "p75", "mean_times_min"],
-        default="mean",
+        default="median",
         help="Aggregation method for record-level score",
     )
     parser.add_argument(

@@ -134,7 +134,7 @@ def run_compute_record_score(
     output_field="record_score",
     legacy_field_alias="score_relato",
     entity_key="entities",
-    aggregation="mean",
+    aggregation="median",
     empty_entities_policy="zero",
     dedupe_mode="off",
     trace_key="_record_score_meta",

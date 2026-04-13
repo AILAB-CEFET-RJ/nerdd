@@ -140,13 +140,15 @@ python3 -m pseudolabelling.compute_record_scores \
   --score-field score_context_boosted \
   --output-field record_score \
   --legacy-field-alias score_relato \
-  --aggregation mean_times_min \
+  --aggregation median \
   --dedupe-mode label_text \
   --empty-entities-policy zero \
   --log-level INFO
 ```
 
-`mean_times_min` is useful when a single low-confidence entity should strongly penalize the whole record instead of being washed out by a simple arithmetic mean.
+`median` is the current default operational choice for train-annotation candidate mining because it is less brittle than `mean_times_min` while still resisting single-span outliers better than plain arithmetic mean.
+
+`mean_times_min` remains available when you explicitly want a much more conservative ranking that strongly penalizes a single low-confidence entity.
 
 `label_text` deduplication is useful when repeated occurrences of the same location string inside one relato would otherwise inflate the record-level score.
 

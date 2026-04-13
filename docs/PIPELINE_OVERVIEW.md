@@ -105,6 +105,8 @@ Rationale:
 3. Aggregate to record-level score (`mean`, `max`, `median`, `p75`, `mean_times_min`).
 4. Write record-level score field and run stats JSON.
 
+Current operational default for train-annotation candidate mining is `median`.
+
 ## GLiNER2 Prediction Flow (`src/tools/generate_gliner2_predictions.py`)
 1. Read ranked candidate rows that already carry the baseline predictions.
 2. Load the configured GLiNER2 base model and optional adapter.

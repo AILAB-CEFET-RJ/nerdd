@@ -153,14 +153,13 @@ single `record_score` per relato before ranking or thresholding candidates.
 
 Recommended aggregation for current pseudolabelling runs:
 
-- `mean_times_min`
+- `median`
 
 Rationale:
 
-- keeps records with uniformly strong entities near the top
-- strongly penalizes a single low-confidence entity
-- avoids the overly optimistic behavior of plain arithmetic mean when one bad span is
-  washed out by two strong ones
+- keeps the candidate pool broad enough for downstream adjudication-oriented filtering
+- is less brittle than `mean_times_min` when a small number of entities are good and one span is still correctable
+- remains more robust than plain arithmetic mean against single noisy entity scores
 
 Example:
 
@@ -173,7 +172,7 @@ python3 -m pseudolabelling.compute_record_scores \
   --score-field score_context_boosted \
   --output-field record_score \
   --legacy-field-alias score_relato \
-  --aggregation mean_times_min \
+  --aggregation median \
   --empty-entities-policy zero \
   --log-level INFO
 ```
