@@ -33,6 +33,80 @@ def _parse_csv_list(raw_value):
     return [piece.strip() for piece in raw_value.split(",") if piece.strip()]
 
 
+def _reliability_rows(scores, targets, bins=10):
+    edges = np.linspace(0.0, 1.0, bins + 1)
+    bin_ids = np.digitize(scores, edges[1:-1], right=True)
+    rows = []
+    for idx in range(bins):
+        mask = bin_ids == idx
+        lower = float(edges[idx])
+        upper = float(edges[idx + 1])
+        count = int(np.sum(mask))
+        if count == 0:
+            rows.append(
+                {
+                    "bin": idx,
+                    "bin_lower": lower,
+                    "bin_upper": upper,
+                    "count": 0,
+                    "conf_mean": None,
+                    "acc": None,
+                    "gap": None,
+                }
+            )
+            continue
+        conf_mean = float(np.mean(scores[mask]))
+        acc = float(np.mean(targets[mask]))
+        rows.append(
+            {
+                "bin": idx,
+                "bin_lower": lower,
+                "bin_upper": upper,
+                "count": count,
+                "conf_mean": conf_mean,
+                "acc": acc,
+                "gap": float(abs(acc - conf_mean)),
+            }
+        )
+    return rows
+
+
+def _ece_mce_from_rows(rows):
+    valid_rows = [row for row in rows if row["count"] > 0 and row["gap"] is not None]
+    total = sum(int(row["count"]) for row in valid_rows)
+    if total <= 0:
+        return float("nan"), float("nan")
+    ece = sum((row["count"] / total) * row["gap"] for row in valid_rows)
+    mce = max(row["gap"] for row in valid_rows)
+    return float(ece), float(mce)
+
+
+def _save_reliability_plot(output_path, raw_rows, calibrated_rows):
+    import matplotlib.pyplot as plt
+
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    diagonal = np.linspace(0.0, 1.0, 201)
+    plt.figure(figsize=(6, 6), dpi=140)
+    plt.plot(diagonal, diagonal, linestyle="--", linewidth=1.0, label="Perfect calibration")
+
+    for rows, label in ((raw_rows, "RAW"), (calibrated_rows, "Calibrated")):
+        xs = [row["conf_mean"] for row in rows if row["count"] > 0 and row["conf_mean"] is not None]
+        ys = [row["acc"] for row in rows if row["count"] > 0 and row["acc"] is not None]
+        if xs and ys:
+            plt.plot(xs, ys, marker="o", label=label)
+
+    plt.xlabel("Mean confidence per bin")
+    plt.ylabel("Empirical accuracy per bin")
+    plt.title("Reliability Curve")
+    plt.legend()
+    plt.grid(True, alpha=0.25)
+    plt.tight_layout()
+    plt.savefig(output_path)
+    plt.close()
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Fit and persist a score calibrator from a labeled calibration CSV.")
     parser.add_argument("--method", choices=["temperature", "temperature-per-class", "isotonic"], default="temperature")
@@ -46,6 +120,8 @@ def parse_args():
     parser.add_argument("--temperature-min", type=float, default=0.5)
     parser.add_argument("--temperature-max", type=float, default=5.0)
     parser.add_argument("--temperature-grid-size", type=int, default=181)
+    parser.add_argument("--reliability-bins", type=int, default=10)
+    parser.add_argument("--reliability-plot", default="")
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     return parser.parse_args()
 
@@ -206,6 +282,10 @@ def main():
 
     brier_before = float(brier_score_loss(labels, scores))
     brier_after = float(brier_score_loss(labels, calibrated))
+    raw_reliability = _reliability_rows(scores, labels, bins=args.reliability_bins)
+    calibrated_reliability = _reliability_rows(calibrated, labels, bins=args.reliability_bins)
+    ece_before, mce_before = _ece_mce_from_rows(raw_reliability)
+    ece_after, mce_after = _ece_mce_from_rows(calibrated_reliability)
     finished_at = datetime.now(timezone.utc).isoformat()
     runtime_seconds = perf_counter() - timer
 
@@ -237,14 +317,23 @@ def main():
             "temperature_min": args.temperature_min,
             "temperature_max": args.temperature_max,
             "temperature_grid_size": args.temperature_grid_size,
+            "reliability_bins": args.reliability_bins,
         },
         "summary": {
             "rows": int(len(scores)),
             "positive_rate": float(np.mean(labels)),
             "brier_before": brier_before,
             "brier_after": brier_after,
+            "ece_before": ece_before,
+            "ece_after": ece_after,
+            "mce_before": mce_before,
+            "mce_after": mce_after,
             "rows_by_class": dict(sorted(Counter(classes).items())),
             "rows_by_validation": dict(sorted(Counter(int(x) for x in labels.tolist()).items())),
+        },
+        "reliability": {
+            "raw_bins": raw_reliability,
+            "calibrated_bins": calibrated_reliability,
         },
         "calibrator": calibrator,
     }
@@ -252,12 +341,17 @@ def main():
     save_calibrator(args.output_calibrator, calibrator)
     stats_path = Path(args.stats_json)
     stats_path.parent.mkdir(parents=True, exist_ok=True)
+    plot_path = Path(args.reliability_plot) if args.reliability_plot else stats_path.with_name("reliability_curve.png")
+    _save_reliability_plot(plot_path, raw_reliability, calibrated_reliability)
+    stats_payload["artifacts"] = {"reliability_plot": str(plot_path.resolve())}
     stats_path.write_text(json.dumps(stats_payload, indent=2, ensure_ascii=False), encoding="utf-8")
 
     LOGGER.info("Fitted calibrator method: %s", args.method)
     LOGGER.info("Calibration rows: %s", len(scores))
     LOGGER.info("Brier before: %.6f | after: %.6f", brier_before, brier_after)
+    LOGGER.info("ECE before: %.6f | after: %.6f", ece_before, ece_after)
     LOGGER.info("Saved calibrator to: %s", args.output_calibrator)
+    LOGGER.info("Saved reliability plot to: %s", plot_path)
     LOGGER.info("Saved calibration fit stats to: %s", args.stats_json)
 
 
