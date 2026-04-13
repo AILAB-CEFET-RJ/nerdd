@@ -156,6 +156,25 @@ class ScoreAdjudicationCandidatesTests(unittest.TestCase):
         self.assertEqual(canonical_penalties["mixed_label_risk_penalty"], 0.0)
         self.assertGreater(mixed_penalties["mixed_label_risk_penalty"], 0.0)
 
+    def test_compact_mixed_location_org_case_avoids_mixed_label_penalty(self):
+        compact_mixed = {
+            "text": "Milícia de cabucu toma queimados",
+            "record_score": 1e-13,
+            "metadata": {
+                "agreement_ratio": 0.24,
+                "entity_count_agreed": 1,
+                "entity_count_baseline_only": 2,
+                "entity_count_gliner2_only": 0,
+            },
+            "review_seed_entities": [
+                {"text": "cabucu", "label": "Location", "seed_origin": "agreed_exact"},
+                {"text": "toma queimados", "label": "Location", "seed_origin": "baseline_high_score"},
+                {"text": "Milícia", "label": "Organization", "seed_origin": "baseline_high_score"},
+            ],
+        }
+        _, _, penalties, _ = compute_adjudication_priority(compact_mixed, person_only_short_text_max_length=80)
+        self.assertEqual(penalties["mixed_label_risk_penalty"], 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()

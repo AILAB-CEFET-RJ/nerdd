@@ -137,6 +137,13 @@ def compute_adjudication_priority(row: dict, *, person_only_short_text_max_lengt
     organization_seed_count = int(seed_label_counts.get("Organization", 0))
     separator_count = _separator_count(text)
     location_only_case = location_seed_count > 0 and person_seed_count == 0 and organization_seed_count == 0
+    compact_mixed_case = (
+        seed_count <= 4
+        and union_count <= 6
+        and location_seed_count >= 1
+        and person_seed_count == 0
+        and organization_seed_count <= 1
+    )
     street_marker_seed = _has_street_marker_seed(seeds)
     intersection_pattern = _has_intersection_pattern(text)
     address_number_pattern = _has_address_number(text)
@@ -252,7 +259,10 @@ def compute_adjudication_priority(row: dict, *, person_only_short_text_max_lengt
         "seed_count_risk_penalty": 0.2 if seed_count >= 6 else 0.0,
         "mixed_label_risk_penalty": (
             0.28
-            if ((person_seed_count >= 1 or organization_seed_count >= 1) and location_seed_count >= 2)
+            if (
+                ((person_seed_count >= 1 or organization_seed_count >= 1) and location_seed_count >= 2)
+                and not compact_mixed_case
+            )
             else 0.0
         ),
     }
@@ -321,6 +331,7 @@ def compute_adjudication_priority(row: dict, *, person_only_short_text_max_lengt
         "union_count": union_count,
         "separator_count": separator_count,
         "location_only_case": location_only_case,
+        "compact_mixed_case": compact_mixed_case,
         "street_marker_seed": street_marker_seed,
         "intersection_pattern": intersection_pattern,
         "address_number_pattern": address_number_pattern,
