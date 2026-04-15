@@ -136,6 +136,60 @@ def _project_record(
     return projected, counters
 
 
+def build_refit_pseudolabel_dataset(
+    rows: list[dict],
+    *,
+    allowed_decisions: set[str],
+    allowed_labels: set[str],
+    include_source_payload: bool,
+    top_n: int = 0,
+) -> tuple[list[dict], dict]:
+    if top_n < 0:
+        raise ValueError("--top-n must be >= 0.")
+
+    selected_rows = rows[:top_n] if top_n else rows
+    emitted = []
+    counters = Counter(
+        {
+            "input_records": len(rows),
+            "selected_input_records": len(selected_rows),
+        }
+    )
+    label_counts = Counter()
+
+    for index, row in enumerate(selected_rows, start=1):
+        try:
+            projected, row_counts = _project_record(
+                row,
+                allowed_decisions=allowed_decisions,
+                allowed_labels=allowed_labels,
+                include_source_payload=include_source_payload,
+            )
+        except Exception as exc:
+            source_id = row.get("source_id", f"row_{index}")
+            raise RuntimeError(f"Failed to project adjudication row {source_id!r}: {exc}") from exc
+        counters.update(row_counts)
+        if projected is None:
+            continue
+        emitted.append(projected)
+        label_counts.update(entity["label"] for entity in projected["entities"])
+
+    summary = {
+        "records_total": len(rows),
+        "records_selected": len(selected_rows),
+        "records_emitted": len(emitted),
+        "top_n": top_n,
+        "allowed_decisions": sorted(allowed_decisions),
+        "allowed_labels": sorted(allowed_labels),
+        "summary": {
+            **dict(counters),
+            "label_counts": dict(label_counts),
+            "avg_entities_per_record": (sum(len(row["entities"]) for row in emitted) / len(emitted)) if emitted else 0.0,
+        },
+    }
+    return emitted, summary
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Convert LLM adjudication outputs into a refit-ready pseudolabel dataset."
@@ -163,6 +217,12 @@ def parse_args():
         help="Preserve the original _source payload in each emitted record for auditability.",
     )
     parser.add_argument(
+        "--top-n",
+        type=int,
+        default=0,
+        help="If > 0, keep only the first N adjudicated rows from the input before projection.",
+    )
+    parser.add_argument(
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -181,26 +241,13 @@ def main():
     allowed_labels = set(_parse_csv(args.allowed_labels))
 
     rows = read_json_or_jsonl(args.input)
-    emitted = []
-    counters = Counter({"input_records": len(rows)})
-    label_counts = Counter()
-
-    for index, row in enumerate(rows, start=1):
-        try:
-            projected, row_counts = _project_record(
-                row,
-                allowed_decisions=allowed_decisions,
-                allowed_labels=allowed_labels,
-                include_source_payload=args.include_source_payload,
-            )
-        except Exception as exc:
-            source_id = row.get("source_id", f"row_{index}")
-            raise RuntimeError(f"Failed to project adjudication row {source_id!r}: {exc}") from exc
-        counters.update(row_counts)
-        if projected is None:
-            continue
-        emitted.append(projected)
-        label_counts.update(entity["label"] for entity in projected["entities"])
+    emitted, summary = build_refit_pseudolabel_dataset(
+        rows,
+        allowed_decisions=allowed_decisions,
+        allowed_labels=allowed_labels,
+        include_source_payload=args.include_source_payload,
+        top_n=args.top_n,
+    )
 
     write_jsonl(args.output_jsonl, emitted)
     LOGGER.info("Saved refit pseudolabel dataset: %s", args.output_jsonl)
@@ -208,15 +255,7 @@ def main():
     summary = {
         "input": str(Path(args.input).resolve()),
         "output_jsonl": str(Path(args.output_jsonl).resolve()),
-        "records_total": len(rows),
-        "records_emitted": len(emitted),
-        "allowed_decisions": sorted(allowed_decisions),
-        "allowed_labels": sorted(allowed_labels),
-        "summary": {
-            **dict(counters),
-            "label_counts": dict(label_counts),
-            "avg_entities_per_record": (sum(len(row["entities"]) for row in emitted) / len(emitted)) if emitted else 0.0,
-        },
+        **summary,
     }
 
     if args.summary_json:

@@ -556,6 +556,20 @@ python3 src/tools/build_refit_pseudolabel_dataset.py \
   --summary-json artifacts/pseudolabelling/baseline_quick_2026-04-03/07_refit_pseudolabels_t06_top1000_summary.json
 ```
 
+To reuse a larger already-adjudicated ranking prefix and emit only the first `n`
+examples in refit format, pass `--top-n`:
+
+```bash
+cd src
+python3 tools/build_refit_pseudolabel_dataset.py \
+  --input ../artifacts/benchmarks/codex_train_annotation_top20_median_v1/codex_output.jsonl \
+  --output-jsonl ../artifacts/benchmarks/codex_train_annotation_top10_median_v1/refit_pseudolabels.jsonl \
+  --summary-json ../artifacts/benchmarks/codex_train_annotation_top10_median_v1/refit_pseudolabels_summary.json \
+  --top-n 10
+```
+
+This avoids re-adjudicating `top10` when `top20` has already been adjudicated.
+
 Recommended defaults:
 
 - keep `accept` and `accept_with_edits`

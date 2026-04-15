@@ -257,6 +257,11 @@ Dependência relevante:
 
 Converte a saída de `src/tools/run_llm_adjudication.py` em um JSONL pronto para `--pseudolabel-path` do refit.
 
+Pontos relevantes:
+
+- aceita `--top-n` para reaproveitar um lote já adjudicado maior e emitir só os primeiros `n` exemplos no formato consumido por `train_quick.py`
+- mantém o filtro por decisão (`accept`, `accept_with_edits`) antes de emitir o dataset final
+
 ### `src/tools/run_llm_adjudication.py`
 
 Executa adjudicação automática via Responses API sobre um JSONL de entrada.
