@@ -39,6 +39,7 @@ Regra prática:
 | `src/tools/prune_pseudolabel_tips.py` | limpeza | JSON, JSONL | sobrescreve saída | podar entidades de pseudolabel por score e densidade por tip |
 | `src/tools/rank_pseudolabel_candidates.py` | auditoria | JSON, JSONL | sobrescreve saída | ranquear candidatos de pseudolabel para revisão manual |
 | `src/tools/review_model_predictions.py` | auditoria | conjunto anotado | sobrescreve saída | gerar revisão HTML lado a lado de gold vs predição do modelo |
+| `src/tools/review_adjudication_cases.py` | auditoria | JSON, JSONL | sobrescreve saída | gerar revisão HTML multicamada de baseline, GLiNER2, seeds e entidades finais adjudicadas |
 | `src/tools/reshuffle_train_test_split.py` | split | JSON, JSONL | sobrescreve saída | recombinar train/test, opcionalmente remover duplicatas exatas entre inputs, e reemitir novos splits |
 | `src/tools/list_distinct_labels.py` | inspeção | JSON, JSONL | seguro | listar labels distintas encontradas em um corpus |
 | `src/tools/profile_pseudolabelling_inference.py` | profiling | JSONL | sobrescreve saída opcional | medir custo de inferência do pipeline de pseudolabel |
@@ -119,6 +120,27 @@ Observações metodológicas:
 Saída:
 
 - relatório HTML estático
+
+### `src/tools/review_adjudication_cases.py`
+
+Gera um HTML lado a lado para auditoria de casos de adjudicação, mostrando múltiplas camadas de entidades no mesmo relato.
+
+Use quando:
+
+- você quer inspecionar, no mesmo relatório, as entidades do baseline, do GLiNER2, as `review_seed_entities` e as entidades finais adjudicadas
+- precisa comparar origem das seeds e scores por camada sem abrir vários HTMLs separados
+
+Entradas principais:
+
+- `--input`
+- `--output`
+- `--title`
+- `--layers`
+- `--score-fields`
+
+Saída:
+
+- relatório HTML estático multicamada por registro
 
 ## Calibração
 
