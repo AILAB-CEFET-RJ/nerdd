@@ -296,6 +296,7 @@ def build_messages(row: dict, *, annotation_mode: str = "literal_review") -> lis
             "- Allow autonomous toponyms such as bairros and comunidades as Location.\n"
             "- Allow institutional mentions such as polícia as Organization when clearly used as institutions.\n"
             "- Keep address parts separated when the corpus convention prefers multiple Location spans instead of a single fused span.\n"
+            "- Boundary caution: keep the minimal literal Location span. Include locative markers only when they are part of the corpus convention, but do not absorb address numbers or administrative introducers by default. For example, prefer 'rua Barra Mansa' over 'rua Barra Mansa 153', 'bela Vista' over 'bairro bela Vista', and 'Mesquita' over 'cidade Mesquita'.\n"
             "- Omit weak, generic, partial, corrupted, or ambiguous entities.\n\n"
             f"TEXT:\n{text}\n\n"
             "CANDIDATE DATA:\n"

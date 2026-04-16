@@ -37,10 +37,10 @@ class ScoreAdjudicationCandidatesTests(unittest.TestCase):
                 {"text": "Mesquita", "label": "Location", "seed_origin": "agreed_exact"},
             ],
         }
-        useful_score, useful_components, _, useful_reasons = compute_adjudication_priority(
+        useful_score, useful_components, _, useful_reasons, _ = compute_adjudication_priority(
             useful, person_only_short_text_max_length=80
         )
-        trivial_score, trivial_components, _, _ = compute_adjudication_priority(
+        trivial_score, trivial_components, _, _, _ = compute_adjudication_priority(
             trivial, person_only_short_text_max_length=80
         )
         self.assertGreater(useful_score, trivial_score)
@@ -63,7 +63,7 @@ class ScoreAdjudicationCandidatesTests(unittest.TestCase):
                 {"text": "Anita thainara carvalho", "label": "Person", "seed_origin": "baseline_high_score"},
             ],
         }
-        score, _, penalties, reasons = compute_adjudication_priority(row, person_only_short_text_max_length=80)
+        score, _, penalties, reasons, _ = compute_adjudication_priority(row, person_only_short_text_max_length=80)
         self.assertLess(score, 0.0)
         self.assertGreater(penalties["list_like_person_penalty"], 0.0)
         self.assertIn("list_like_person_penalty", reasons)
@@ -100,10 +100,10 @@ class ScoreAdjudicationCandidatesTests(unittest.TestCase):
                 {"text": "dioneia", "label": "Location", "seed_origin": "baseline_high_score"},
             ],
         }
-        compact_score, _, compact_penalties, compact_reasons = compute_adjudication_priority(
+        compact_score, _, compact_penalties, compact_reasons, _ = compute_adjudication_priority(
             compact, person_only_short_text_max_length=80
         )
-        dense_score, _, dense_penalties, dense_reasons = compute_adjudication_priority(
+        dense_score, _, dense_penalties, dense_reasons, _ = compute_adjudication_priority(
             dense, person_only_short_text_max_length=80
         )
         self.assertGreater(compact_score, dense_score)
@@ -144,10 +144,10 @@ class ScoreAdjudicationCandidatesTests(unittest.TestCase):
                 {"text": "Juscelino", "label": "Location", "seed_origin": "baseline_high_score"},
             ],
         }
-        canonical_score, canonical_components, canonical_penalties, canonical_reasons = compute_adjudication_priority(
+        canonical_score, canonical_components, canonical_penalties, canonical_reasons, _ = compute_adjudication_priority(
             canonical, person_only_short_text_max_length=80
         )
-        mixed_score, _, mixed_penalties, _ = compute_adjudication_priority(
+        mixed_score, _, mixed_penalties, _, _ = compute_adjudication_priority(
             mixed, person_only_short_text_max_length=80
         )
         self.assertGreater(canonical_score, mixed_score)
@@ -172,8 +172,63 @@ class ScoreAdjudicationCandidatesTests(unittest.TestCase):
                 {"text": "Milícia", "label": "Organization", "seed_origin": "baseline_high_score"},
             ],
         }
-        _, _, penalties, _ = compute_adjudication_priority(compact_mixed, person_only_short_text_max_length=80)
+        _, _, penalties, _, _ = compute_adjudication_priority(compact_mixed, person_only_short_text_max_length=80)
         self.assertEqual(penalties["mixed_label_risk_penalty"], 0.0)
+
+    def test_novelty_features_reward_unseen_location_seeds(self):
+        row = {
+            "text": "Barricadas na comunidade Az de Ouro em Olinda",
+            "record_score": 0.5,
+            "metadata": {
+                "agreement_ratio": 0.4,
+                "entity_count_agreed": 1,
+                "entity_count_baseline_only": 1,
+                "entity_count_gliner2_only": 0,
+            },
+            "review_seed_entities": [
+                {"text": "comunidade Az de Ouro", "label": "Location", "seed_origin": "baseline_high_score"},
+                {"text": "Olinda", "label": "Location", "seed_origin": "agreed_exact"},
+            ],
+        }
+        novelty_context = {
+            "location_texts": {"mesquita", "olinda"},
+            "location_frequencies": {"mesquita": 3, "olinda": 1},
+        }
+
+        score, components, _, reasons, _ = compute_adjudication_priority(
+            row,
+            person_only_short_text_max_length=80,
+            novelty_context=novelty_context,
+        )
+
+        self.assertGreater(score, 0.0)
+        self.assertAlmostEqual(components["toponym_novelty_ratio"], 0.5, places=6)
+        self.assertGreater(components["toponym_rarity_score"], 0.0)
+        self.assertGreater(components["novelty_adjusted_priority_score"], score)
+        self.assertIn("novel_toponyms", reasons)
+
+    def test_novelty_features_default_to_empty_without_context(self):
+        row = {
+            "text": "Barricadas na comunidade Az de Ouro em Olinda",
+            "record_score": 0.5,
+            "metadata": {
+                "agreement_ratio": 0.4,
+                "entity_count_agreed": 1,
+                "entity_count_baseline_only": 1,
+                "entity_count_gliner2_only": 0,
+            },
+            "review_seed_entities": [
+                {"text": "comunidade Az de Ouro", "label": "Location", "seed_origin": "baseline_high_score"},
+            ],
+        }
+
+        _, components, _, reasons, _ = compute_adjudication_priority(
+            row,
+            person_only_short_text_max_length=80,
+        )
+
+        self.assertNotIn("toponym_novelty_ratio", components)
+        self.assertNotIn("novel_toponyms", reasons)
 
 
 if __name__ == "__main__":

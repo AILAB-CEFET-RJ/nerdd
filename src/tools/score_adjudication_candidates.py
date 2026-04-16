@@ -9,10 +9,11 @@ import logging
 import sys
 from collections import Counter
 from pathlib import Path
+import unicodedata
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from tools.inspect_dense_tips import read_json_or_jsonl, write_jsonl
+from tools.inspect_dense_tips import get_spans, read_json_or_jsonl, write_jsonl
 from tools.select_train_annotation_cases import (
     _generic_seed_count,
     _has_narrative_markers,
@@ -55,6 +56,14 @@ DOMAIN_NOISE_MARKERS = (
     "bbb",
 )
 
+ADMINISTRATIVE_LOCATION_PREFIXES = (
+    "bairro",
+    "cidade",
+    "municipio",
+    "município",
+    "distrito",
+)
+
 
 def _separator_count(text: str) -> int:
     raw = str(text or "")
@@ -66,6 +75,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--input", required=True, help="Input JSONL from prepare_adjudication_cases.py")
     parser.add_argument("--output-jsonl", required=True, help="Output JSONL with adjudication priority scores")
     parser.add_argument("--summary-json", default="", help="Optional summary JSON")
+    parser.add_argument(
+        "--train-path",
+        default="",
+        help="Optional supervised-train corpus used to compute location novelty and rarity features.",
+    )
     parser.add_argument("--person-only-short-text-max-length", type=int, default=80)
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     return parser.parse_args()
@@ -73,6 +87,21 @@ def parse_args() -> argparse.Namespace:
 
 def _normalized_text(text: str) -> str:
     return " ".join(str(text).strip().lower().split())
+
+
+def _strip_accents(text: str) -> str:
+    text = unicodedata.normalize("NFKD", str(text or ""))
+    return "".join(ch for ch in text if not unicodedata.combining(ch))
+
+
+def _normalized_location_name(text: str) -> str:
+    normalized = _normalized_text(_strip_accents(text))
+    for prefix in ADMINISTRATIVE_LOCATION_PREFIXES:
+        prefix_normalized = _normalized_text(_strip_accents(prefix))
+        if normalized.startswith(prefix_normalized + " "):
+            normalized = normalized[len(prefix_normalized) + 1 :].strip()
+            break
+    return normalized
 
 
 def _has_locative_markers(text: str) -> bool:
@@ -116,7 +145,74 @@ def _band_score(value: float, *, sweet_min: float, sweet_max: float, near_min: f
     return 0.2
 
 
-def compute_adjudication_priority(row: dict, *, person_only_short_text_max_length: int) -> tuple[float, dict, dict, list[str]]:
+def _location_seed_names(row: dict) -> list[str]:
+    names = []
+    for seed in _review_seed_entities(row):
+        if str(seed.get("label", "")).strip() != "Location":
+            continue
+        normalized = _normalized_location_name(seed.get("text", ""))
+        if normalized:
+            names.append(normalized)
+    return names
+
+
+def _build_train_location_inventory(train_path: str) -> dict:
+    rows = read_json_or_jsonl(train_path)
+    frequencies = Counter()
+    for row in rows:
+        for span in get_spans(row):
+            if str(span.get("label", "")).strip() != "Location":
+                continue
+            normalized = _normalized_location_name(span.get("text", ""))
+            if normalized:
+                frequencies[normalized] += 1
+    return {
+        "path": str(Path(train_path).resolve()),
+        "location_frequencies": frequencies,
+        "location_texts": set(frequencies),
+    }
+
+
+def _compute_novelty_features(row: dict, novelty_context: dict | None) -> tuple[dict, list[str]]:
+    if not novelty_context:
+        return {}, []
+
+    seed_names = _location_seed_names(row)
+    if not seed_names:
+        return {
+            "toponym_novelty_ratio": 0.0,
+            "toponym_rarity_score": 0.0,
+            "novelty_score": 0.0,
+            "novelty_adjusted_priority_score": None,
+        }, []
+
+    train_texts = novelty_context["location_texts"]
+    train_freq = novelty_context["location_frequencies"]
+    unseen_count = sum(1 for name in seed_names if name not in train_texts)
+    novelty_ratio = unseen_count / len(seed_names)
+    rarity_score = sum(1.0 / (1.0 + float(train_freq.get(name, 0))) for name in seed_names) / len(seed_names)
+    novelty_score = _clamp((0.6 * novelty_ratio) + (0.4 * rarity_score))
+
+    reasons = []
+    if novelty_ratio >= 0.5:
+        reasons.append("novel_toponyms")
+    if rarity_score >= 0.5:
+        reasons.append("rare_toponyms")
+
+    return {
+        "toponym_novelty_ratio": novelty_ratio,
+        "toponym_rarity_score": rarity_score,
+        "novelty_score": novelty_score,
+        "novelty_adjusted_priority_score": None,
+    }, reasons
+
+
+def compute_adjudication_priority(
+    row: dict,
+    *,
+    person_only_short_text_max_length: int,
+    novelty_context: dict | None = None,
+) -> tuple[float, dict, dict, list[str], dict]:
     text = _text(row)
     metadata = _metadata(row)
     seeds = _review_seed_entities(row)
@@ -278,6 +374,11 @@ def compute_adjudication_priority(row: dict, *, person_only_short_text_max_lengt
     score += 0.05 * small_clean_edit_score
     score -= sum(penalties.values())
 
+    novelty_components, novelty_reasons = _compute_novelty_features(row, novelty_context)
+    if novelty_components:
+        novelty_adjusted_priority_score = score * (0.7 + 0.6 * novelty_components["novelty_score"])
+        novelty_components["novelty_adjusted_priority_score"] = novelty_adjusted_priority_score
+
     reasons = []
     if domain_score >= 0.6:
         reasons.append("domain_aligned")
@@ -309,6 +410,7 @@ def compute_adjudication_priority(row: dict, *, person_only_short_text_max_lengt
         reasons.append("location_expansion_risk_penalty")
     if penalties["seed_count_risk_penalty"] > 0:
         reasons.append("seed_count_risk_penalty")
+    reasons.extend(novelty_reasons)
 
     components = {
         "domain_score": domain_score,
@@ -319,6 +421,7 @@ def compute_adjudication_priority(row: dict, *, person_only_short_text_max_lengt
         "micro_edit_score": micro_edit_score,
         "canonical_address_score": canonical_address_score,
         "small_clean_edit_score": small_clean_edit_score,
+        **novelty_components,
     }
     diagnostics = {
         "text_length": text_length,
@@ -336,7 +439,7 @@ def compute_adjudication_priority(row: dict, *, person_only_short_text_max_lengt
         "intersection_pattern": intersection_pattern,
         "address_number_pattern": address_number_pattern,
     }
-    return score, components, penalties, reasons
+    return score, components, penalties, reasons, diagnostics
 
 
 def build_summary(rows: list[dict]) -> dict:
@@ -354,6 +457,10 @@ def build_summary(rows: list[dict]) -> dict:
         "micro_edit_score",
         "canonical_address_score",
         "small_clean_edit_score",
+        "toponym_novelty_ratio",
+        "toponym_rarity_score",
+        "novelty_score",
+        "novelty_adjusted_priority_score",
     )
     penalty_keys = (
         "generic_seed_penalty",
@@ -374,6 +481,7 @@ def build_summary(rows: list[dict]) -> dict:
         "rows_total": len(rows),
         "summary": {
             "avg_adjudication_priority_score": _avg_top_level("adjudication_priority_score"),
+            "avg_novelty_adjusted_priority_score": _avg_top_level("novelty_adjusted_priority_score"),
             "avg_domain_score": _avg_top_level("domain_score"),
             "avg_disagreement_midband_score": _avg_top_level("disagreement_midband_score"),
             "avg_record_score_midband_score": _avg_top_level("record_score_midband_score"),
@@ -410,11 +518,19 @@ def main() -> None:
     )
 
     rows = read_json_or_jsonl(args.input)
+    novelty_context = _build_train_location_inventory(args.train_path) if args.train_path else None
+    if novelty_context:
+        LOGGER.info(
+            "Loaded train-relative novelty inventory from %s with %d distinct Location texts",
+            novelty_context["path"],
+            len(novelty_context["location_texts"]),
+        )
     output_rows = []
     for row in rows:
-        score, components, penalties, reasons = compute_adjudication_priority(
+        score, components, penalties, reasons, diagnostics = compute_adjudication_priority(
             row,
             person_only_short_text_max_length=args.person_only_short_text_max_length,
+            novelty_context=novelty_context,
         )
         enriched = dict(row)
         enriched["adjudication_priority_score"] = score
@@ -424,6 +540,7 @@ def main() -> None:
             "components": components,
             "penalties": penalties,
             "reasons": reasons,
+            "diagnostics": diagnostics,
         }
         output_rows.append(enriched)
 
