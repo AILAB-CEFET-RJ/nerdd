@@ -48,6 +48,7 @@ Regra prática:
 | `src/tools/run_remaining_chunk_probes.py` | operação | chunks JSONL | parcialmente idempotente | rodar probes restantes de chunks 50k com configuração fixa |
 | `src/tools/sample_large_corpus.py` | amostragem | JSON, JSONL | sobrescreve saída | gerar amostras reproduzíveis de corpus grande |
 | `src/tools/select_train_annotation_cases.py` | seleção | JSONL de adjudicação | sobrescreve saída | selecionar candidatos mais treináveis para adjudicação LLM voltada a treino |
+| `src/tools/select_top_utility_candidates.py` | seleção | JSON, JSONL scoreado | sobrescreve saída | selecionar top-K candidatos por score de utilidade e exportar JSONL/CSV/HTML |
 | `src/tools/split_dataset_for_calibration.py` | calibração | JSON array | sobrescreve saída | separar train/calibration com controle de perfil de labels |
 | `src/tools/split_large_corpus_into_chunks.py` | particionamento | JSON, JSONL | sobrescreve saída | dividir corpus grande em chunks fixos |
 | `src/tools/summarize_context_boost_audit.py` | auditoria | JSONL | sobrescreve saída | resumir artefatos de auditoria do context boost |
@@ -141,6 +142,30 @@ Entradas principais:
 Saída:
 
 - relatório HTML estático multicamada por registro
+
+### `src/tools/select_top_utility_candidates.py`
+
+Seleciona o top-K de um corpus já scoreado por um campo numérico de utilidade.
+
+Use quando:
+
+- você já materializou scores como `adjudication_priority_score`, `novelty_adjusted_priority_score` ou `novelty_pool_adjusted_priority_score`
+- quer comparar rapidamente diferentes critérios de ranking sem reimplementar a seleção
+- precisa exportar o top-K para JSONL, CSV e HTML
+
+Entradas principais:
+
+- `--input`
+- `--output-jsonl`
+- `--ranking-field`
+- `--top-n`
+- `--output-html`
+
+Saída:
+
+- JSONL com os candidatos selecionados
+- CSV opcional com metadados compactos
+- HTML opcional usando o viewer multicamada de adjudicação
 
 ## Calibração
 
