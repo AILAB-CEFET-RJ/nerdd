@@ -64,9 +64,32 @@ def _resolve_field_path(record: dict, field_path: str):
     current = record
     for part in str(field_path).split("."):
         if not isinstance(current, dict):
+            current = None
+            break
+        current = current.get(part)
+    if current is not None:
+        return current
+
+    source = record.get("_source")
+    if not isinstance(source, dict):
+        return None
+
+    current = source
+    for part in str(field_path).split("."):
+        if not isinstance(current, dict):
             return None
         current = current.get(part)
     return current
+
+
+def _record_text(record: dict) -> str:
+    text = get_text(record)
+    if text:
+        return text
+    source = record.get("_source")
+    if isinstance(source, dict):
+        return get_text(source)
+    return ""
 
 
 def _layer_title(field_path: str) -> str:
@@ -83,7 +106,7 @@ def _layer_spans(record: dict, field_path: str) -> list[dict]:
 
 def _record_meta_bits(record: dict) -> list[str]:
     bits = []
-    source_id = str(record.get("source_id", "")).strip()
+    source_id = str(record.get("source_id", "") or ((record.get("_source") or {}).get("source_id", ""))).strip()
     if source_id:
         bits.append(f"source_id={escape(source_id)}")
 
@@ -119,7 +142,7 @@ def _build_summary(rows: list[dict], layers: list[str]) -> tuple[str, str]:
     counts_by_layer = {layer: Counter() for layer in layers}
 
     for row in rows:
-        text = get_text(row)
+        text = _record_text(row)
         for layer in layers:
             spans = sanitize_spans(text, _layer_spans(row, layer))
             label_rows.append({"entities": spans})
@@ -172,7 +195,7 @@ def render_adjudication_review(
 
     label_rows = []
     for row in rows:
-        text = get_text(row)
+        text = _record_text(row)
         for layer in layers:
             label_rows.append({"entities": sanitize_spans(text, _layer_spans(row, layer))})
     label_colors = build_label_colors(label_rows)
@@ -180,7 +203,7 @@ def render_adjudication_review(
 
     rendered_rows = []
     for idx, row in enumerate(rows, start=1):
-        text = get_text(row)
+        text = _record_text(row)
         meta_bits = _record_meta_bits(row)
         sections = []
         for layer in layers:

@@ -13,18 +13,21 @@ class ReviewAdjudicationCasesTests(unittest.TestCase):
         rows = [
             {
                 "source_id": "candidate_rank_1",
-                "text": "Rua A em Belford Roxo",
                 "adjudication_priority_score": 0.91,
-                "baseline_entities": [
-                    {"text": "Rua A", "label": "Location", "start": 0, "end": 5, "ner_score": 0.81}
-                ],
-                "gliner2_entities": [
-                    {"text": "Belford Roxo", "label": "Location", "start": 9, "end": 21, "confidence": 0.92}
-                ],
-                "review_seed_entities": [
-                    {"text": "Rua A", "label": "Location", "start": 0, "end": 5, "ner_score": 0.81},
-                    {"text": "Belford Roxo", "label": "Location", "start": 9, "end": 21, "confidence": 0.92},
-                ],
+                "_source": {
+                    "source_id": "candidate_rank_1",
+                    "text": "Rua A em Belford Roxo",
+                    "baseline_entities": [
+                        {"text": "Rua A", "label": "Location", "start": 0, "end": 5, "ner_score": 0.81}
+                    ],
+                    "gliner2_entities": [
+                        {"text": "Belford Roxo", "label": "Location", "start": 9, "end": 21, "confidence": 0.92}
+                    ],
+                    "review_seed_entities": [
+                        {"text": "Rua A", "label": "Location", "start": 0, "end": 5, "ner_score": 0.81},
+                        {"text": "Belford Roxo", "label": "Location", "start": 9, "end": 21, "confidence": 0.92},
+                    ],
+                },
                 "adjudication": {
                     "decision": "accept_with_edits",
                     "review_confidence": "high",
