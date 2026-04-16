@@ -220,6 +220,12 @@ def _compute_novelty_features(row: dict, novelty_context: dict | None) -> tuple[
     }, reasons
 
 
+def _compute_conservative_novelty_adjusted_score(base_score: float, novelty_score: float) -> float:
+    if base_score < 0.9:
+        return base_score
+    return base_score + (0.05 * novelty_score)
+
+
 def compute_adjudication_priority(
     row: dict,
     *,
@@ -389,7 +395,9 @@ def compute_adjudication_priority(
 
     novelty_components, novelty_reasons = _compute_novelty_features(row, novelty_context)
     if novelty_components:
-        novelty_adjusted_priority_score = score * (0.7 + 0.6 * novelty_components["novelty_score"])
+        novelty_adjusted_priority_score = _compute_conservative_novelty_adjusted_score(
+            score, novelty_components["novelty_score"]
+        )
         novelty_components["novelty_adjusted_priority_score"] = novelty_adjusted_priority_score
 
     reasons = []

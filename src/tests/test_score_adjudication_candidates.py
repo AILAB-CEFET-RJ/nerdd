@@ -180,10 +180,10 @@ class ScoreAdjudicationCandidatesTests(unittest.TestCase):
     def test_novelty_features_reward_unseen_location_seeds(self):
         row = {
             "text": "Barricadas na comunidade Az de Ouro em Olinda",
-            "record_score": 0.5,
+            "record_score": 0.6,
             "metadata": {
-                "agreement_ratio": 0.4,
-                "entity_count_agreed": 1,
+                "agreement_ratio": 0.35,
+                "entity_count_agreed": 2,
                 "entity_count_baseline_only": 1,
                 "entity_count_gliner2_only": 0,
             },
@@ -206,7 +206,10 @@ class ScoreAdjudicationCandidatesTests(unittest.TestCase):
         self.assertGreater(score, 0.0)
         self.assertAlmostEqual(components["toponym_novelty_ratio"], 0.5, places=6)
         self.assertGreater(components["toponym_rarity_score"], 0.0)
-        self.assertGreater(components["novelty_adjusted_priority_score"], score)
+        if score >= 0.9:
+            self.assertGreater(components["novelty_adjusted_priority_score"], score)
+        else:
+            self.assertEqual(components["novelty_adjusted_priority_score"], score)
         self.assertIn("novel_toponyms", reasons)
 
     def test_novelty_features_default_to_empty_without_context(self):
