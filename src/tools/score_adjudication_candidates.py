@@ -80,6 +80,14 @@ def parse_args() -> argparse.Namespace:
         default="",
         help="Optional supervised-train corpus used to compute location novelty and rarity features.",
     )
+    parser.add_argument(
+        "--pool-path",
+        default="",
+        help=(
+            "Optional candidate pool used to estimate recurring Location seeds in the unlabeled pool. "
+            "Defaults to the current --input file."
+        ),
+    )
     parser.add_argument("--person-only-short-text-max-length", type=int, default=80)
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     return parser.parse_args()
@@ -186,6 +194,18 @@ def _build_train_location_inventory(train_path: str) -> dict:
     }
 
 
+def _build_pool_location_inventory(pool_path: str) -> dict:
+    rows = read_json_or_jsonl(pool_path)
+    frequencies = Counter()
+    for row in rows:
+        for name in _location_seed_names(row):
+            frequencies[name] += 1
+    return {
+        "path": str(Path(pool_path).resolve()),
+        "location_frequencies": frequencies,
+    }
+
+
 def _compute_novelty_features(row: dict, novelty_context: dict | None) -> tuple[dict, list[str]]:
     if not novelty_context:
         return {}, []
@@ -226,11 +246,49 @@ def _compute_conservative_novelty_adjusted_score(base_score: float, novelty_scor
     return base_score + (0.05 * novelty_score)
 
 
+def _compute_pool_frequency_features(row: dict, pool_context: dict | None) -> tuple[dict, list[str]]:
+    if not pool_context:
+        return {}, []
+
+    seed_names = _location_seed_names(row)
+    if not seed_names:
+        return {
+            "pool_toponym_frequency_score": 0.0,
+            "exoticity_penalty": 0.0,
+            "novelty_pool_adjusted_priority_score": None,
+        }, []
+
+    pool_freq = pool_context["location_frequencies"]
+    normalized_freqs = [min(float(pool_freq.get(name, 0)) / 3.0, 1.0) for name in seed_names]
+    pool_score = sum(normalized_freqs) / len(normalized_freqs)
+    reasons = []
+    if pool_score >= 0.5:
+        reasons.append("recurring_pool_toponyms")
+    return {
+        "pool_toponym_frequency_score": pool_score,
+        "exoticity_penalty": 0.0,
+        "novelty_pool_adjusted_priority_score": None,
+    }, reasons
+
+
+def _compute_novelty_pool_adjusted_score(
+    base_score: float,
+    novelty_score: float,
+    pool_toponym_frequency_score: float,
+) -> tuple[float, float]:
+    exoticity_penalty = 0.03 if novelty_score >= 0.5 and pool_toponym_frequency_score < 0.2 else 0.0
+    if base_score < 0.9:
+        return base_score, exoticity_penalty
+    adjusted = base_score + (0.03 * novelty_score) + (0.04 * pool_toponym_frequency_score) - exoticity_penalty
+    return adjusted, exoticity_penalty
+
+
 def compute_adjudication_priority(
     row: dict,
     *,
     person_only_short_text_max_length: int,
     novelty_context: dict | None = None,
+    pool_context: dict | None = None,
 ) -> tuple[float, dict, dict, list[str], dict]:
     text = _text(row)
     metadata = _metadata(row)
@@ -399,6 +457,16 @@ def compute_adjudication_priority(
             score, novelty_components["novelty_score"]
         )
         novelty_components["novelty_adjusted_priority_score"] = novelty_adjusted_priority_score
+    pool_components, pool_reasons = _compute_pool_frequency_features(row, pool_context)
+    if pool_components:
+        novelty_score = float(novelty_components.get("novelty_score", 0.0))
+        novelty_pool_adjusted_priority_score, exoticity_penalty = _compute_novelty_pool_adjusted_score(
+            score,
+            novelty_score,
+            float(pool_components["pool_toponym_frequency_score"]),
+        )
+        pool_components["exoticity_penalty"] = exoticity_penalty
+        pool_components["novelty_pool_adjusted_priority_score"] = novelty_pool_adjusted_priority_score
 
     reasons = []
     if domain_score >= 0.6:
@@ -432,6 +500,9 @@ def compute_adjudication_priority(
     if penalties["seed_count_risk_penalty"] > 0:
         reasons.append("seed_count_risk_penalty")
     reasons.extend(novelty_reasons)
+    reasons.extend(pool_reasons)
+    if float(pool_components.get("exoticity_penalty", 0.0)) > 0:
+        reasons.append("exoticity_penalty")
 
     components = {
         "domain_score": domain_score,
@@ -443,6 +514,7 @@ def compute_adjudication_priority(
         "canonical_address_score": canonical_address_score,
         "small_clean_edit_score": small_clean_edit_score,
         **novelty_components,
+        **pool_components,
     }
     diagnostics = {
         "text_length": text_length,
@@ -482,6 +554,9 @@ def build_summary(rows: list[dict]) -> dict:
         "toponym_rarity_score",
         "novelty_score",
         "novelty_adjusted_priority_score",
+        "pool_toponym_frequency_score",
+        "exoticity_penalty",
+        "novelty_pool_adjusted_priority_score",
     )
     penalty_keys = (
         "generic_seed_penalty",
@@ -503,6 +578,7 @@ def build_summary(rows: list[dict]) -> dict:
         "summary": {
             "avg_adjudication_priority_score": _avg_top_level("adjudication_priority_score"),
             "avg_novelty_adjusted_priority_score": _avg_top_level("novelty_adjusted_priority_score"),
+            "avg_novelty_pool_adjusted_priority_score": _avg_top_level("novelty_pool_adjusted_priority_score"),
             "avg_domain_score": _avg_top_level("domain_score"),
             "avg_disagreement_midband_score": _avg_top_level("disagreement_midband_score"),
             "avg_record_score_midband_score": _avg_top_level("record_score_midband_score"),
@@ -540,18 +616,26 @@ def main() -> None:
 
     rows = read_json_or_jsonl(args.input)
     novelty_context = _build_train_location_inventory(args.train_path) if args.train_path else None
+    pool_path = args.pool_path or args.input
+    pool_context = _build_pool_location_inventory(pool_path)
     if novelty_context:
         LOGGER.info(
             "Loaded train-relative novelty inventory from %s with %d distinct Location texts",
             novelty_context["path"],
             len(novelty_context["location_texts"]),
         )
+    LOGGER.info(
+        "Loaded pool-relative recurrence inventory from %s with %d distinct Location seed texts",
+        pool_context["path"],
+        len(pool_context["location_frequencies"]),
+    )
     output_rows = []
     for row in rows:
         score, components, penalties, reasons, diagnostics = compute_adjudication_priority(
             row,
             person_only_short_text_max_length=args.person_only_short_text_max_length,
             novelty_context=novelty_context,
+            pool_context=pool_context,
         )
         enriched = dict(row)
         enriched["adjudication_priority_score"] = score

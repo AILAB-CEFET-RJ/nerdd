@@ -196,11 +196,15 @@ class ScoreAdjudicationCandidatesTests(unittest.TestCase):
             "location_texts": {"mesquita", "olinda"},
             "location_frequencies": {"mesquita": 3, "olinda": 1},
         }
+        pool_context = {
+            "location_frequencies": {"comunidade az de ouro": 4, "olinda": 5},
+        }
 
         score, components, _, reasons, _ = compute_adjudication_priority(
             row,
             person_only_short_text_max_length=80,
             novelty_context=novelty_context,
+            pool_context=pool_context,
         )
 
         self.assertGreater(score, 0.0)
@@ -211,6 +215,13 @@ class ScoreAdjudicationCandidatesTests(unittest.TestCase):
         else:
             self.assertEqual(components["novelty_adjusted_priority_score"], score)
         self.assertIn("novel_toponyms", reasons)
+        self.assertGreater(components["pool_toponym_frequency_score"], 0.0)
+        self.assertEqual(components["exoticity_penalty"], 0.0)
+        if score >= 0.9:
+            self.assertGreaterEqual(components["novelty_pool_adjusted_priority_score"], score)
+        else:
+            self.assertEqual(components["novelty_pool_adjusted_priority_score"], score)
+        self.assertIn("recurring_pool_toponyms", reasons)
 
     def test_novelty_features_default_to_empty_without_context(self):
         row = {
@@ -234,6 +245,45 @@ class ScoreAdjudicationCandidatesTests(unittest.TestCase):
 
         self.assertNotIn("toponym_novelty_ratio", components)
         self.assertNotIn("novel_toponyms", reasons)
+
+    def test_exoticity_penalty_applies_when_novel_but_not_recurrent_in_pool(self):
+        row = {
+            "text": "Barricadas na localidade Boca da Paris",
+            "record_score": 0.6,
+            "metadata": {
+                "agreement_ratio": 0.35,
+                "entity_count_agreed": 2,
+                "entity_count_baseline_only": 1,
+                "entity_count_gliner2_only": 0,
+            },
+            "review_seed_entities": [
+                {"text": "Boca da Paris", "label": "Location", "seed_origin": "baseline_high_score"},
+                {"text": "Paris", "label": "Location", "seed_origin": "gliner2_location_metadata_match"},
+            ],
+        }
+        novelty_context = {
+            "location_texts": {"mesquita"},
+            "location_frequencies": {"mesquita": 3},
+        }
+        pool_context = {
+            "location_frequencies": {"boca da paris": 0, "paris": 0},
+        }
+
+        score, components, _, reasons, _ = compute_adjudication_priority(
+            row,
+            person_only_short_text_max_length=80,
+            novelty_context=novelty_context,
+            pool_context=pool_context,
+        )
+
+        self.assertGreaterEqual(components["toponym_novelty_ratio"], 0.5)
+        self.assertEqual(components["pool_toponym_frequency_score"], 0.0)
+        self.assertEqual(components["exoticity_penalty"], 0.03)
+        if score >= 0.9:
+            self.assertLess(components["novelty_pool_adjusted_priority_score"], score + (0.03 * components["novelty_score"]))
+        else:
+            self.assertEqual(components["novelty_pool_adjusted_priority_score"], score)
+        self.assertIn("exoticity_penalty", reasons)
 
     def test_train_inventory_recovers_location_text_from_offsets(self):
         rows = [
