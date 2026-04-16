@@ -1,10 +1,12 @@
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+import json
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from tools.score_adjudication_candidates import compute_adjudication_priority
+from tools.score_adjudication_candidates import _build_train_location_inventory, compute_adjudication_priority
 
 
 class ScoreAdjudicationCandidatesTests(unittest.TestCase):
@@ -229,6 +231,26 @@ class ScoreAdjudicationCandidatesTests(unittest.TestCase):
 
         self.assertNotIn("toponym_novelty_ratio", components)
         self.assertNotIn("novel_toponyms", reasons)
+
+    def test_train_inventory_recovers_location_text_from_offsets(self):
+        rows = [
+            {
+                "text": "Tiros na rua Alpha em Mesquita",
+                "spans": [
+                    {"start": 9, "end": 19, "label": "Location"},
+                    {"start": 22, "end": 30, "label": "Location"},
+                ],
+            }
+        ]
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "train.json"
+            path.write_text(json.dumps(rows, ensure_ascii=False), encoding="utf-8")
+            inventory = _build_train_location_inventory(str(path))
+
+        self.assertIn("rua alpha", inventory["location_texts"])
+        self.assertIn("mesquita", inventory["location_texts"])
+        self.assertEqual(inventory["location_frequencies"]["rua alpha"], 1)
+        self.assertEqual(inventory["location_frequencies"]["mesquita"], 1)
 
 
 if __name__ == "__main__":

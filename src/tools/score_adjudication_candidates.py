@@ -156,14 +156,27 @@ def _location_seed_names(row: dict) -> list[str]:
     return names
 
 
+def _extract_location_name_from_span(span: dict, *, text: str) -> str:
+    raw_text = span.get("text")
+    if isinstance(raw_text, str) and raw_text.strip():
+        return _normalized_location_name(raw_text)
+
+    start = span.get("start")
+    end = span.get("end")
+    if isinstance(start, int) and isinstance(end, int) and 0 <= start < end <= len(text):
+        return _normalized_location_name(text[start:end])
+    return ""
+
+
 def _build_train_location_inventory(train_path: str) -> dict:
     rows = read_json_or_jsonl(train_path)
     frequencies = Counter()
     for row in rows:
+        text = _text(row)
         for span in get_spans(row):
             if str(span.get("label", "")).strip() != "Location":
                 continue
-            normalized = _normalized_location_name(span.get("text", ""))
+            normalized = _extract_location_name_from_span(span, text=text)
             if normalized:
                 frequencies[normalized] += 1
     return {
