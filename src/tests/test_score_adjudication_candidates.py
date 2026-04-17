@@ -177,6 +177,32 @@ class ScoreAdjudicationCandidatesTests(unittest.TestCase):
         _, _, penalties, _, _ = compute_adjudication_priority(compact_mixed, person_only_short_text_max_length=80)
         self.assertEqual(penalties["mixed_label_risk_penalty"], 0.0)
 
+    def test_penalizes_low_separator_mixed_case_with_single_location(self):
+        row = {
+            "text": "Morro da caixa da água velha localidade rua cascata com irmã Maurício",
+            "record_score": 0.45410631597042084,
+            "metadata": {
+                "agreement_ratio": 1 / 3,
+                "entity_count_agreed": 1,
+                "entity_count_baseline_only": 1,
+                "entity_count_gliner2_only": 1,
+            },
+            "review_seed_entities": [
+                {"text": "Morro da caixa da água", "label": "Location", "seed_origin": "baseline_high_score"},
+                {"text": "irmã Maurício", "label": "Person", "seed_origin": "agreed_exact"},
+            ],
+        }
+
+        score, components, penalties, _, diagnostics = compute_adjudication_priority(
+            row, person_only_short_text_max_length=80
+        )
+
+        self.assertTrue(diagnostics["low_separator_mixed_case"])
+        self.assertGreater(penalties["mixed_label_risk_penalty"], 0.0)
+        self.assertLess(components["adjudicability_score"], 1.0)
+        self.assertLess(components["micro_edit_score"], 1.0)
+        self.assertLess(score, 0.9)
+
     def test_novelty_features_reward_unseen_location_seeds(self):
         row = {
             "text": "Barricadas na comunidade Az de Ouro em Olinda",

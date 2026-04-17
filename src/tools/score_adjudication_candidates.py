@@ -70,6 +70,22 @@ def _separator_count(text: str) -> int:
     return raw.count("/") + raw.count(";") + raw.count(":") + raw.count(",")
 
 
+def _low_separator_mixed_case(
+    *,
+    location_only_case: bool,
+    person_seed_count: int,
+    organization_seed_count: int,
+    seed_count: int,
+    separator_count: int,
+) -> bool:
+    return (
+        not location_only_case
+        and (person_seed_count >= 1 or organization_seed_count >= 1)
+        and seed_count >= 2
+        and separator_count <= 1
+    )
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Score adjudication candidates for training utility before LLM review.")
     parser.add_argument("--input", required=True, help="Input JSONL from prepare_adjudication_cases.py")
@@ -320,6 +336,13 @@ def compute_adjudication_priority(
     street_marker_seed = _has_street_marker_seed(seeds)
     intersection_pattern = _has_intersection_pattern(text)
     address_number_pattern = _has_address_number(text)
+    low_separator_mixed_case = _low_separator_mixed_case(
+        location_only_case=location_only_case,
+        person_seed_count=person_seed_count,
+        organization_seed_count=organization_seed_count,
+        seed_count=seed_count,
+        separator_count=separator_count,
+    )
 
     domain_score = 0.0
     if location_seed_count > 0:
@@ -373,6 +396,8 @@ def compute_adjudication_priority(
         adjudicability_score += 0.2
     elif union_count <= 10:
         adjudicability_score += 0.1
+    if low_separator_mixed_case:
+        adjudicability_score -= 0.25
     adjudicability_score = _clamp(adjudicability_score)
 
     micro_edit_score = 0.0
@@ -390,6 +415,10 @@ def compute_adjudication_priority(
         micro_edit_score += 0.1
     if separator_count <= 2:
         micro_edit_score += 0.1
+    if not location_only_case:
+        micro_edit_score -= 0.2
+    if low_separator_mixed_case:
+        micro_edit_score -= 0.25
     micro_edit_score = _clamp(micro_edit_score)
 
     canonical_address_score = 0.0
@@ -433,7 +462,13 @@ def compute_adjudication_priority(
         "mixed_label_risk_penalty": (
             0.28
             if (
-                ((person_seed_count >= 1 or organization_seed_count >= 1) and location_seed_count >= 2)
+                (
+                    (
+                        (person_seed_count >= 1 or organization_seed_count >= 1)
+                        and location_seed_count >= 2
+                    )
+                    or low_separator_mixed_case
+                )
                 and not compact_mixed_case
             )
             else 0.0
@@ -528,6 +563,7 @@ def compute_adjudication_priority(
         "separator_count": separator_count,
         "location_only_case": location_only_case,
         "compact_mixed_case": compact_mixed_case,
+        "low_separator_mixed_case": low_separator_mixed_case,
         "street_marker_seed": street_marker_seed,
         "intersection_pattern": intersection_pattern,
         "address_number_pattern": address_number_pattern,
