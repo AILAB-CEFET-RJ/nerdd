@@ -30,6 +30,28 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ranking-field", default=DEFAULT_RANKING_FIELD, help="Numeric field used to rank rows.")
     parser.add_argument("--top-n", type=int, default=100, help="Number of rows to emit.")
     parser.add_argument("--min-score", type=float, default=float("-inf"), help="Optional minimum ranking-field value.")
+    parser.add_argument(
+        "--min-base-score",
+        type=float,
+        default=float("-inf"),
+        help="Optional minimum adjudication_priority_score required before novelty/pool reranking.",
+    )
+    parser.add_argument(
+        "--max-seed-count",
+        type=int,
+        default=0,
+        help="Optional maximum number of review_seed_entities allowed; 0 disables the filter.",
+    )
+    parser.add_argument(
+        "--exclude-low-separator-mixed-case",
+        action="store_true",
+        help="Exclude rows flagged by score_adjudication_candidates.py as low_separator_mixed_case.",
+    )
+    parser.add_argument(
+        "--prefer-location-only",
+        action="store_true",
+        help="Prefer location_only_case rows during tie-breaking without changing the ranking-field score.",
+    )
     parser.add_argument("--title", default="Top Utility Candidates", help="HTML title when --output-html is used.")
     parser.add_argument("--html-layers", default=DEFAULT_HTML_LAYERS, help="Comma-separated layers for HTML review.")
     parser.add_argument("--score-fields", default="ner_score,confidence,score_calibrated,score", help="Comma-separated score fields for HTML/entity lists.")
@@ -44,20 +66,44 @@ def _top_level_score(row: dict, key: str):
     return _safe_float(row.get(key), None)
 
 
-def _sort_rows(rows: list[dict], ranking_field: str, min_score: float) -> list[dict]:
+def _sort_rows(
+    rows: list[dict],
+    ranking_field: str,
+    min_score: float,
+    *,
+    min_base_score: float = float("-inf"),
+    max_seed_count: int = 0,
+    exclude_low_separator_mixed_case: bool = False,
+    prefer_location_only: bool = False,
+) -> list[dict]:
     filtered = []
     for row in rows:
         score = _top_level_score(row, ranking_field)
         if score is None or score < min_score:
             continue
+        base_score = _top_level_score(row, "adjudication_priority_score")
+        if base_score is None or base_score < min_base_score:
+            continue
+        seed_count = len(_review_seed_entities(row))
+        if max_seed_count > 0 and seed_count > max_seed_count:
+            continue
+        low_separator_mixed_case = bool((row.get("_adjudication_priority", {}).get("diagnostics", {})).get("low_separator_mixed_case"))
+        if exclude_low_separator_mixed_case and low_separator_mixed_case:
+            continue
+        location_only_case = bool((row.get("_adjudication_priority", {}).get("diagnostics", {})).get("location_only_case"))
         enriched = dict(row)
         enriched["_selected_utility_score"] = score
+        enriched["_selected_base_score"] = base_score
+        enriched["_selected_seed_count"] = seed_count
+        enriched["_selected_low_separator_mixed_case"] = low_separator_mixed_case
+        enriched["_selected_location_only_case"] = location_only_case
         filtered.append(enriched)
     filtered.sort(
         key=lambda row: (
             -float(row["_selected_utility_score"]),
-            -float(_safe_float(row.get("adjudication_priority_score"), -1e9)),
-            len(_review_seed_entities(row)),
+            -(1 if prefer_location_only and row["_selected_location_only_case"] else 0),
+            -float(row["_selected_base_score"]),
+            row["_selected_seed_count"],
             len(get_text(row)),
         )
     )
@@ -66,8 +112,11 @@ def _sort_rows(rows: list[dict], ranking_field: str, min_score: float) -> list[d
             "rank": idx,
             "ranking_field": ranking_field,
             "ranking_score": row["_selected_utility_score"],
-            "seed_count": len(_review_seed_entities(row)),
+            "seed_count": row["_selected_seed_count"],
             "text_length": len(get_text(row)),
+            "base_score": row["_selected_base_score"],
+            "location_only_case": row["_selected_location_only_case"],
+            "low_separator_mixed_case": row["_selected_low_separator_mixed_case"],
         }
     return filtered
 
@@ -85,6 +134,8 @@ def _write_csv(path: str, rows: list[dict], ranking_field: str) -> None:
         "novelty_pool_adjusted_priority_score",
         "toponym_novelty_ratio",
         "pool_toponym_frequency_score",
+        "location_only_case",
+        "low_separator_mixed_case",
         "seed_count",
         "text_length",
         "text_preview",
@@ -105,6 +156,8 @@ def _write_csv(path: str, rows: list[dict], ranking_field: str) -> None:
                     "novelty_pool_adjusted_priority_score": row.get("novelty_pool_adjusted_priority_score"),
                     "toponym_novelty_ratio": row.get("toponym_novelty_ratio"),
                     "pool_toponym_frequency_score": row.get("pool_toponym_frequency_score"),
+                    "location_only_case": meta.get("location_only_case"),
+                    "low_separator_mixed_case": meta.get("low_separator_mixed_case"),
                     "seed_count": meta["seed_count"],
                     "text_length": meta["text_length"],
                     "text_preview": get_text(row).replace("\n", " ")[:160],
@@ -127,6 +180,12 @@ def _build_summary(rows: list[dict], *, input_path: str, ranking_field: str, top
             "min_ranking_score": min(ranking_scores) if ranking_scores else 0.0,
             "avg_seed_count": (sum(len(_review_seed_entities(row)) for row in rows) / len(rows)) if rows else 0.0,
             "avg_text_length": (sum(len(get_text(row)) for row in rows) / len(rows)) if rows else 0.0,
+            "location_only_fraction": (
+                sum(1 for row in rows if row["_utility_selection"].get("location_only_case")) / len(rows)
+            ) if rows else 0.0,
+            "low_separator_mixed_case_fraction": (
+                sum(1 for row in rows if row["_utility_selection"].get("low_separator_mixed_case")) / len(rows)
+            ) if rows else 0.0,
         },
     }
 
@@ -134,7 +193,15 @@ def _build_summary(rows: list[dict], *, input_path: str, ranking_field: str, top
 def main() -> None:
     args = parse_args()
     rows = read_json_or_jsonl(args.input)
-    ranked = _sort_rows(rows, args.ranking_field, args.min_score)
+    ranked = _sort_rows(
+        rows,
+        args.ranking_field,
+        args.min_score,
+        min_base_score=args.min_base_score,
+        max_seed_count=args.max_seed_count,
+        exclude_low_separator_mixed_case=args.exclude_low_separator_mixed_case,
+        prefer_location_only=args.prefer_location_only,
+    )
     if args.top_n > 0:
         ranked = ranked[: args.top_n]
 

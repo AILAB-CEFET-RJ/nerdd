@@ -160,6 +160,11 @@ Entradas principais:
 - `--ranking-field`
 - `--top-n`
 - `--output-html`
+- filtros conservadores opcionais:
+  - `--min-base-score`
+  - `--max-seed-count`
+  - `--exclude-low-separator-mixed-case`
+  - `--prefer-location-only`
 
 Saída:
 
@@ -667,6 +672,7 @@ Observações metodológicas:
 - em `supervised_plus_pseudolabels`, os pseudolabels entram apenas no split de treino
 - o split de validação permanece supervisionado-only
 - a deduplicação por `text`, quando habilitada, preserva a linha supervisionada
+- o default de `--batch-size` em `train_quick.py` é `16`
 
 ### `src/tools/reshuffle_train_test_split.py`
 

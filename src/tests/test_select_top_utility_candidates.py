@@ -29,6 +29,78 @@ class SelectTopUtilityCandidatesTests(unittest.TestCase):
         ranked = _sort_rows(rows, "adjudication_priority_score", 0.9)
         self.assertEqual([row["source_id"] for row in ranked], ["a"])
 
+    def test_sort_rows_supports_conservative_filters(self):
+        rows = [
+            {
+                "source_id": "a",
+                "adjudication_priority_score": 0.95,
+                "novelty_pool_adjusted_priority_score": 0.96,
+                "review_seed_entities": [{"label": "Location", "text": "A"}],
+                "text": "AA",
+                "_adjudication_priority": {"diagnostics": {"location_only_case": True, "low_separator_mixed_case": False}},
+            },
+            {
+                "source_id": "b",
+                "adjudication_priority_score": 0.89,
+                "novelty_pool_adjusted_priority_score": 0.99,
+                "review_seed_entities": [{"label": "Location", "text": "B"}],
+                "text": "BB",
+                "_adjudication_priority": {"diagnostics": {"location_only_case": True, "low_separator_mixed_case": False}},
+            },
+            {
+                "source_id": "c",
+                "adjudication_priority_score": 0.97,
+                "novelty_pool_adjusted_priority_score": 0.98,
+                "review_seed_entities": [{"label": "Location", "text": "C"} for _ in range(4)],
+                "text": "CC",
+                "_adjudication_priority": {"diagnostics": {"location_only_case": True, "low_separator_mixed_case": False}},
+            },
+            {
+                "source_id": "d",
+                "adjudication_priority_score": 0.97,
+                "novelty_pool_adjusted_priority_score": 0.97,
+                "review_seed_entities": [{"label": "Location", "text": "D"}],
+                "text": "DD",
+                "_adjudication_priority": {"diagnostics": {"location_only_case": False, "low_separator_mixed_case": True}},
+            },
+        ]
+        ranked = _sort_rows(
+            rows,
+            "novelty_pool_adjusted_priority_score",
+            float("-inf"),
+            min_base_score=0.9,
+            max_seed_count=3,
+            exclude_low_separator_mixed_case=True,
+        )
+        self.assertEqual([row["source_id"] for row in ranked], ["a"])
+
+    def test_sort_rows_can_prefer_location_only_cases_in_tiebreak(self):
+        rows = [
+            {
+                "source_id": "a",
+                "adjudication_priority_score": 0.95,
+                "novelty_pool_adjusted_priority_score": 0.96,
+                "review_seed_entities": [{"label": "Location", "text": "A"}],
+                "text": "AAAA",
+                "_adjudication_priority": {"diagnostics": {"location_only_case": False, "low_separator_mixed_case": False}},
+            },
+            {
+                "source_id": "b",
+                "adjudication_priority_score": 0.95,
+                "novelty_pool_adjusted_priority_score": 0.96,
+                "review_seed_entities": [{"label": "Location", "text": "B"}],
+                "text": "BBBB",
+                "_adjudication_priority": {"diagnostics": {"location_only_case": True, "low_separator_mixed_case": False}},
+            },
+        ]
+        ranked = _sort_rows(
+            rows,
+            "novelty_pool_adjusted_priority_score",
+            float("-inf"),
+            prefer_location_only=True,
+        )
+        self.assertEqual([row["source_id"] for row in ranked], ["b", "a"])
+
 
 if __name__ == "__main__":
     unittest.main()

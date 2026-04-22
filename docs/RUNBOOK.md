@@ -623,6 +623,7 @@ For both quick-training entrypoints:
 - the internal validation set remains supervised-only
 - pseudolabel rows are appended only to the training side
 - this avoids validation leakage from adjudicated pseudolabels
+- the default `--batch-size` is `16`
 
 Experimental note from the disagreement benchmarks:
 

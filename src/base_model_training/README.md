@@ -6,6 +6,7 @@ Training and evaluation stack for nested cross-validation fine-tuning.
 
 - `python3 -m base_model_training.train_nested_kfold`
 - `evaluate_gliner.py`
+- `python3 -m base_model_training.train_quick` (default `--batch-size 16`)
 
 ## Setup
 

@@ -56,7 +56,7 @@ class QuickTrainConfig:
     pseudolabel_sample_ratio: float = 1.0
     max_pseudolabel_records: int = 0
     tokenization_strategy: str = "whitespace"
-    batch_size: int = 4
+    batch_size: int = 16
     num_epochs: int = 20
     max_length: int = 384
     overlap: int = 100
