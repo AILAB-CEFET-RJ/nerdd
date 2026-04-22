@@ -56,6 +56,8 @@ def train_with_early_stopping(
     training_losses = []
     validation_losses = []
     best_metric = -1.0
+    best_epoch = None
+    best_state_dict = None
     patience_counter = 0
     stage_prefix = f"[{stage_label}] " if stage_label else ""
 
@@ -71,6 +73,8 @@ def train_with_early_stopping(
         improved = metric > best_metric
         if improved:
             best_metric = metric
+            best_epoch = epoch
+            best_state_dict = clone_model_state(model)
             patience_counter = 0
         else:
             patience_counter += 1
@@ -95,10 +99,14 @@ def train_with_early_stopping(
                 )
                 break
 
+    if best_state_dict is not None:
+        restore_model_state(model, best_state_dict, device)
+
     return {
         "training_losses": training_losses,
         "validation_losses": validation_losses,
         "best_metric": best_metric,
+        "best_epoch": best_epoch,
     }
 
 
