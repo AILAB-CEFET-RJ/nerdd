@@ -38,6 +38,104 @@ GENERIC_VALUES = {
     "travessa",
     "avenida",
 }
+ROAD_MARKERS = {
+    "alameda",
+    "av",
+    "avenida",
+    "beco",
+    "estrada",
+    "ladeira",
+    "largo",
+    "praca",
+    "praça",
+    "rodovia",
+    "rua",
+    "trav",
+    "travessa",
+    "trv",
+}
+CONNECTOR_TOKENS = {"d", "da", "das", "de", "do", "dos"}
+LOCATIVE_NAME_PREFIXES = {
+    "bairro",
+    "chacara",
+    "chácara",
+    "cidade",
+    "comunidade",
+    "conjunto",
+    "favela",
+    "jardim",
+    "loteamento",
+    "morro",
+    "parque",
+    "portal",
+    "praia",
+    "residencial",
+    "sitio",
+    "sítio",
+    "vila",
+}
+ORGISH_SINGLETONS = {
+    "bar",
+    "casa",
+    "cemiterio",
+    "cemitério",
+    "colegio",
+    "colégio",
+    "condominio",
+    "condomínio",
+    "creche",
+    "empresa",
+    "escola",
+    "fabrica",
+    "fábrica",
+    "frigorifico",
+    "frigorífico",
+    "hospital",
+    "igreja",
+    "mercado",
+    "shopping",
+    "supermercado",
+}
+STATE_NAMES = {
+    "acre",
+    "alagoas",
+    "amapa",
+    "amapá",
+    "amazonas",
+    "bahia",
+    "ceara",
+    "ceará",
+    "distrito federal",
+    "espirito santo",
+    "espírito santo",
+    "goias",
+    "goiás",
+    "maranhao",
+    "maranhão",
+    "mato grosso",
+    "mato grosso do sul",
+    "minas gerais",
+    "para",
+    "pará",
+    "paraiba",
+    "paraíba",
+    "parana",
+    "paraná",
+    "pernambuco",
+    "piaui",
+    "piauí",
+    "rio de janeiro",
+    "rio grande do norte",
+    "rio grande do sul",
+    "rondonia",
+    "rondônia",
+    "roraima",
+    "santa catarina",
+    "sao paulo",
+    "são paulo",
+    "sergipe",
+    "tocantins",
+}
 
 
 def parse_args():
@@ -77,6 +175,18 @@ def parse_args():
         type=int,
         default=6,
         help="Minimum length for a single-token location value.",
+    )
+    parser.add_argument(
+        "--require-logradouro-marker",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Require logradouroLocal values to contain a road-like marker such as rua/av/estrada.",
+    )
+    parser.add_argument(
+        "--drop-bairro-equal-city",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Drop bairroLocal values that normalize to the same string as cidadeLocal.",
     )
     parser.add_argument(
         "--field-bonus-json",
@@ -147,6 +257,30 @@ def _is_viable_location_value(value: str, *, min_normalized_length: int, min_sin
     return True
 
 
+def _is_viable_logradouro(value: str, *, require_logradouro_marker: bool) -> bool:
+    normalized = normalize_text(value)
+    tokens = normalized.split()
+    if require_logradouro_marker and not any(token in ROAD_MARKERS for token in tokens):
+        return False
+    return True
+
+
+def _is_viable_bairro(value: str, *, city_value: str, drop_bairro_equal_city: bool) -> bool:
+    normalized = normalize_text(value)
+    city_normalized = normalize_text(city_value)
+    tokens = normalized.split()
+
+    if normalized in STATE_NAMES:
+        return False
+    if drop_bairro_equal_city and city_normalized and normalized == city_normalized:
+        return False
+    if len(tokens) == 1 and tokens[0] in ORGISH_SINGLETONS:
+        return False
+    if tokens and tokens[0] in CONNECTOR_TOKENS and not any(token in LOCATIVE_NAME_PREFIXES for token in tokens):
+        return False
+    return True
+
+
 def _rows_have_overlap(spans: list[dict]) -> bool:
     spans = sorted(spans, key=lambda item: (item["start"], item["end"]))
     for left, right in zip(spans, spans[1:]):
@@ -208,6 +342,8 @@ def build_candidates(
     max_entities_per_row: int,
     min_normalized_length: int,
     min_single_token_length: int,
+    require_logradouro_marker: bool,
+    drop_bairro_equal_city: bool,
 ) -> tuple[list[dict], dict]:
     stats = Counter()
     candidates = []
@@ -229,6 +365,19 @@ def build_candidates(
                 min_normalized_length=min_normalized_length,
                 min_single_token_length=min_single_token_length,
             ):
+                continue
+            if field == "logradouroLocal" and not _is_viable_logradouro(
+                value,
+                require_logradouro_marker=require_logradouro_marker,
+            ):
+                stats["dropped_invalid_logradouro_value"] += 1
+                continue
+            if field == "bairroLocal" and not _is_viable_bairro(
+                value,
+                city_value=row.get("cidadeLocal", ""),
+                drop_bairro_equal_city=drop_bairro_equal_city,
+            ):
+                stats["dropped_invalid_bairro_value"] += 1
                 continue
             found = _find_literal_case_insensitive(text, value)
             if not found:
@@ -355,6 +504,8 @@ def main():
         max_entities_per_row=args.max_entities_per_row,
         min_normalized_length=args.min_normalized_length,
         min_single_token_length=args.min_single_token_length,
+        require_logradouro_marker=args.require_logradouro_marker,
+        drop_bairro_equal_city=args.drop_bairro_equal_city,
     )
 
     review_rows = candidates[: args.top_n]
