@@ -21,6 +21,7 @@ Regra prática:
 | `src/tools/audit_calibration_by_label.py` | auditoria | CSV de calibração | sobrescreve saída | auditar scores brutos vs calibrados por label e por validade |
 | `src/tools/audit_refit_regressions.py` | auditoria | gold + predictions.jsonl | sobrescreve saída | auditar regressões entre baseline e refit, com wins/losses/ties e confusões de label |
 | `src/tools/build_calibration_dataset.py` | calibração | JSON, JSONL | sobrescreve saída | montar dataset de calibração a partir de previsões do modelo |
+| `src/tools/build_metadata_location_pseudolabels.py` | seleção | JSON, JSONL | sobrescreve saída | montar um pool conservador de pseudolabels `Location` por match literal de metadado no relato |
 | `src/tools/build_train_annotation_prompt_probe.py` | auditoria | audits + lote fonte | sobrescreve saída | montar um probe pequeno e diagnóstico para testar prompts de adjudicação voltados a treino |
 | `src/tools/manage_codex_adjudication_benchmark.py` | operação | JSONL de adjudicação | resumível | gerenciar benchmark chunkado de adjudicação assistida por Codex |
 | `src/tools/run_llm_adjudication.py` | operação | JSONL de adjudicação | resumível | chamar a Responses API para adjudicação literal ou `train_annotation`, inclusive em chunks |
@@ -214,6 +215,34 @@ Entradas principais:
 - `--model-path`
 - `--input`
 - `--output-csv` ou artefato equivalente definido no script
+
+### `src/tools/build_metadata_location_pseudolabels.py`
+
+Monta um lote conservador de pseudolabels `Location` usando campos de metadado que aparecem literalmente no `relato`.
+
+Use quando:
+
+- você quer testar uma trilha `Location-only` antes de voltar a incluir `Person`
+- precisa de um pool inicial de alta precisão ancorado em `bairroLocal` e `logradouroLocal`
+- quer ranquear candidatos por novidade relativa ao treino supervisionado e por prioridade de `assunto`
+
+Pontos relevantes:
+
+- aceita JSON e JSONL
+- produz um pool completo e um top-N separado para revisão manual
+- pode emitir diretamente um `refit_pseudolabels.jsonl` já compatível com `train_quick.py`
+- o ranking atual favorece matches de `logradouroLocal` e `bairroLocal` e penaliza topônimos já muito saturados no treino
+
+Entradas principais:
+
+- `--input`
+- `--train`
+- `--output-pool-jsonl`
+- `--output-review-jsonl`
+- `--summary-json`
+- `--output-pseudolabel-jsonl` opcional
+- `--top-n`
+- `--metadata-fields`
 
 ### `src/tools/build_calibration_dataset_gliner2.py`
 
@@ -1016,6 +1045,21 @@ python3 tools/profile_pseudolabelling_inference.py \
   --score-threshold 0.0 \
   --limit 100 \
   --map-location cuda
+```
+
+### `build_metadata_location_pseudolabels.py`
+
+```bash
+cd src
+python3 tools/build_metadata_location_pseudolabels.py \
+  --input ../artifacts/corpus_sanitization/dd_corpus_large_sanitized.jsonl \
+  --train ../data/dd_corpus_small_train.json \
+  --output-pool-jsonl ../artifacts/benchmarks/metadata_location_literal_top20_v1/candidate_pool.jsonl \
+  --output-review-jsonl ../artifacts/benchmarks/metadata_location_literal_top20_v1/top100_review.jsonl \
+  --summary-json ../artifacts/benchmarks/metadata_location_literal_top20_v1/summary.json \
+  --output-pseudolabel-jsonl ../artifacts/benchmarks/metadata_location_literal_top20_v1/refit_pseudolabels_top100.jsonl \
+  --top-n 100 \
+  --metadata-fields logradouroLocal,bairroLocal
 ```
 
 ### `split_large_corpus_into_chunks.py`

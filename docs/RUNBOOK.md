@@ -873,6 +873,55 @@ Interpretation:
 - treat `quick_supervised_only_locprefix_expanded` as the candidate reference baseline for subsequent comparisons
 - normalize the corpus first, then re-evaluate pseudolabel experiments on top of the corrected baseline
 
+## 12g) Conservative Metadata-Anchored `Location` Pilot
+
+If recent train-oriented pseudolabel experiments degrade the baseline, do not immediately try a broader adjudication prompt. First test a conservative `Location-only` pilot anchored in metadata that appears literally in the `relato`.
+
+Use:
+
+```bash
+cd src
+python3 tools/build_metadata_location_pseudolabels.py \
+  --input ../artifacts/corpus_sanitization/dd_corpus_large_sanitized.jsonl \
+  --train ../data/dd_corpus_small_train.json \
+  --output-pool-jsonl ../artifacts/benchmarks/metadata_location_literal_top20_v1/candidate_pool.jsonl \
+  --output-review-jsonl ../artifacts/benchmarks/metadata_location_literal_top20_v1/top100_review.jsonl \
+  --summary-json ../artifacts/benchmarks/metadata_location_literal_top20_v1/summary.json \
+  --output-pseudolabel-jsonl ../artifacts/benchmarks/metadata_location_literal_top20_v1/refit_pseudolabels_top100.jsonl \
+  --top-n 100 \
+  --metadata-fields logradouroLocal,bairroLocal
+```
+
+Render the review slice before promoting it to training:
+
+```bash
+cd src
+python3 tools/render_ner_html.py \
+  --input ../artifacts/benchmarks/metadata_location_literal_top20_v1/top100_review.jsonl \
+  --output ../artifacts/benchmarks/metadata_location_literal_top20_v1/top100_review.html \
+  --title "Metadata Location Literal Top100 Review" \
+  --span-field entities
+```
+
+Operational reading:
+
+- the pilot is intentionally `Location-only`
+- start with `logradouroLocal` and `bairroLocal`; do not include `Person` in the first iteration
+- use this workflow when regression audits suggest that prior pseudolabels degraded the model through `Person` instability, label drift, or spurious `Organization`
+- the goal of the first pass is high precision, not broad coverage
+
+Recommended promotion rule:
+
+- inspect `top100_review.html`
+- if the slice looks clean, freeze a smaller `top20` or `top50` training subset from the reviewed file
+- compare that subset against `supervised_only` across multiple seeds before broadening the protocol
+
+Recommended interpretation:
+
+- if `Location` improves while `Person` stays neutral, the metadata-anchored path is promising
+- if the pilot is neutral or slightly positive, try scaling volume before adding new labels
+- only after a stable `Location-only` result should `pontodeReferenciaLocal` or broader `Organization` heuristics be added
+
 ## 13) Controlled Refit Comparison For Dissertation Experiments
 
 Use the same final holdout `../data/dd_corpus_small_test.json` for both runs below.
