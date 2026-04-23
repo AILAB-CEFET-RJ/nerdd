@@ -213,6 +213,24 @@ def parse_args():
         help="Drop bairroLocal values that normalize to the same string as cidadeLocal.",
     )
     parser.add_argument(
+        "--lexicon-min-normalized-length",
+        type=int,
+        default=12,
+        help="Minimum normalized canonical logradouro length to accept a lexicon-guided crop.",
+    )
+    parser.add_argument(
+        "--lexicon-min-name-tokens",
+        type=int,
+        default=2,
+        help="Minimum number of non-road-marker tokens required in the canonical lexicon match.",
+    )
+    parser.add_argument(
+        "--lexicon-min-coverage-ratio",
+        type=float,
+        default=0.6,
+        help="Minimum canonical/raw normalized length ratio required to accept a lexicon-guided crop.",
+    )
+    parser.add_argument(
         "--field-bonus-json",
         default='{"logradouroLocal": 2.0, "bairroLocal": 1.5}',
         help="JSON object mapping metadata field name to ranking bonus.",
@@ -357,6 +375,9 @@ def _resolve_logradouro_match(
     raw_value: str,
     city_value: str,
     lexicon_index: dict[str, list[dict]] | None,
+    lexicon_min_normalized_length: int,
+    lexicon_min_name_tokens: int,
+    lexicon_min_coverage_ratio: float,
 ):
     direct = _find_literal_case_insensitive(text, raw_value)
     normalized_raw = normalize_text(raw_value)
@@ -368,6 +389,14 @@ def _resolve_logradouro_match(
     best_lexicon_row = None
     for canonical_norm, rows in lexicon_index.items():
         if canonical_norm and canonical_norm in normalized_raw:
+            canonical_tokens = [token for token in canonical_norm.split() if token]
+            canonical_name_tokens = [token for token in canonical_tokens if token not in ROAD_MARKERS]
+            if len(canonical_norm) < lexicon_min_normalized_length:
+                continue
+            if len(canonical_name_tokens) < lexicon_min_name_tokens:
+                continue
+            if len(canonical_norm) / max(len(normalized_raw), 1) < lexicon_min_coverage_ratio:
+                continue
             for row in rows:
                 bairro_norm = normalize_text(row.get("bairro", ""))
                 city_norm = normalize_text(city_value)
@@ -451,6 +480,9 @@ def build_candidates(
     require_logradouro_marker: bool,
     drop_bairro_equal_city: bool,
     logradouro_lexicon_index: dict[str, list[dict]] | None,
+    lexicon_min_normalized_length: int,
+    lexicon_min_name_tokens: int,
+    lexicon_min_coverage_ratio: float,
 ) -> tuple[list[dict], dict]:
     stats = Counter()
     candidates = []
@@ -493,6 +525,9 @@ def build_candidates(
                     raw_value=value,
                     city_value=row.get("cidadeLocal", ""),
                     lexicon_index=logradouro_lexicon_index,
+                    lexicon_min_normalized_length=lexicon_min_normalized_length,
+                    lexicon_min_name_tokens=lexicon_min_name_tokens,
+                    lexicon_min_coverage_ratio=lexicon_min_coverage_ratio,
                 )
             else:
                 found = _find_literal_case_insensitive(text, value)
@@ -635,6 +670,9 @@ def main():
         require_logradouro_marker=args.require_logradouro_marker,
         drop_bairro_equal_city=args.drop_bairro_equal_city,
         logradouro_lexicon_index=logradouro_lexicon_index,
+        lexicon_min_normalized_length=args.lexicon_min_normalized_length,
+        lexicon_min_name_tokens=args.lexicon_min_name_tokens,
+        lexicon_min_coverage_ratio=args.lexicon_min_coverage_ratio,
     )
 
     review_rows = candidates[: args.top_n]
