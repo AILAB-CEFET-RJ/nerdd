@@ -136,6 +136,25 @@ STATE_NAMES = {
     "sergipe",
     "tocantins",
 }
+DETAILED_ADDRESS_PATTERNS = (
+    r"\bn\.?\s*\d",
+    r"\bnº\s*\d",
+    r"\bn°\s*\d",
+    r"\bnum(?:ero)?\.?\s*\d",
+    r"\bnúmero\s*\d",
+    r"\blt\.?\s*\d",
+    r"\blote\s*\d",
+    r"\bqd\.?\s*\d",
+    r"\bquadra\s*\d",
+    r"\bcasa\s*\d",
+    r"\bap\.?\s*\d",
+    r"\bapto\.?\s*\d",
+    r"\bapartamento\s*\d",
+    r"\bbl\.?\s*\d",
+    r"\bbloco\s*\d",
+    r"\bcj\.?\s*\d",
+    r"\bconjunto\s*\d",
+)
 
 
 def parse_args():
@@ -262,6 +281,9 @@ def _is_viable_logradouro(value: str, *, require_logradouro_marker: bool) -> boo
     tokens = normalized.split()
     if require_logradouro_marker and not any(token in ROAD_MARKERS for token in tokens):
         return False
+    for pattern in DETAILED_ADDRESS_PATTERNS:
+        if re.search(pattern, normalized, flags=re.IGNORECASE):
+            return False
     return True
 
 
