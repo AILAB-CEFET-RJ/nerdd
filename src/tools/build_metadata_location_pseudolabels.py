@@ -136,6 +136,10 @@ STATE_NAMES = {
     "sergipe",
     "tocantins",
 }
+RIO_CITY_NAMES = {
+    "cidade do rio de janeiro",
+    "rio de janeiro",
+}
 DETAILED_ADDRESS_PATTERNS = (
     r"\bn\.?\s*\d",
     r"\bnº\s*\d",
@@ -381,7 +385,10 @@ def _resolve_logradouro_match(
 ):
     direct = _find_literal_case_insensitive(text, raw_value)
     normalized_raw = normalize_text(raw_value)
+    city_norm = normalize_text(city_value)
     if not normalized_raw:
+        return direct, None
+    if city_norm not in RIO_CITY_NAMES:
         return direct, None
     if not lexicon_index:
         return direct, None
