@@ -173,6 +173,11 @@ def parse_args():
     )
     parser.add_argument("--top-n", type=int, default=100, help="Number of top candidates to export for review.")
     parser.add_argument(
+        "--logradouro-lexicon-jsonl",
+        default="",
+        help="Optional JSONL lexicon produced by extract_rio_logradouro_lexicon.py for validating/cropping logradouroLocal.",
+    )
+    parser.add_argument(
         "--metadata-fields",
         default=",".join(DEFAULT_METADATA_FIELDS),
         help="Comma-separated metadata fields to mine as Location-only seeds.",
@@ -262,6 +267,38 @@ def _find_literal_case_insensitive(text: str, value: str):
     return match.start(), match.end(), text[match.start() : match.end()]
 
 
+def _find_canonical_subspan(text: str, canonical_value: str):
+    canonical_norm = normalize_text(canonical_value)
+    if not canonical_norm:
+        return None
+    text_norm = normalize_text(text)
+    start_norm = text_norm.find(canonical_norm)
+    if start_norm < 0:
+        return None
+
+    # Map normalized character offsets back to original text offsets.
+    normalized_chars = []
+    original_offsets = []
+    for idx, char in enumerate(text):
+        decomposed = unicodedata.normalize("NFKD", char)
+        for piece in decomposed:
+            if unicodedata.combining(piece):
+                continue
+            normalized_piece = piece.lower()
+            normalized_chars.append(normalized_piece)
+            original_offsets.append(idx)
+    normalized_string = "".join(normalized_chars)
+    compact_norm = re.sub(r"\s+", " ", normalized_string).strip()
+    if canonical_norm not in compact_norm:
+        return None
+
+    pattern = re.compile(re.escape(str(canonical_value).strip()), re.IGNORECASE)
+    match = pattern.search(text)
+    if match:
+        return match.start(), match.end(), text[match.start() : match.end()]
+    return None
+
+
 def _is_viable_location_value(value: str, *, min_normalized_length: int, min_single_token_length: int) -> bool:
     normalized = normalize_text(value)
     if not normalized:
@@ -301,6 +338,53 @@ def _is_viable_bairro(value: str, *, city_value: str, drop_bairro_equal_city: bo
     if tokens and tokens[0] in CONNECTOR_TOKENS and not any(token in LOCATIVE_NAME_PREFIXES for token in tokens):
         return False
     return True
+
+
+def _load_logradouro_lexicon(path: str) -> dict[str, list[dict]]:
+    rows = read_json_or_jsonl(path)
+    index: dict[str, list[dict]] = {}
+    for row in rows:
+        canonical_norm = normalize_text(row.get("canonical_name", ""))
+        if not canonical_norm:
+            continue
+        index.setdefault(canonical_norm, []).append(row)
+    return index
+
+
+def _resolve_logradouro_match(
+    *,
+    text: str,
+    raw_value: str,
+    city_value: str,
+    lexicon_index: dict[str, list[dict]] | None,
+):
+    direct = _find_literal_case_insensitive(text, raw_value)
+    normalized_raw = normalize_text(raw_value)
+    if not normalized_raw:
+        return direct, None
+    if not lexicon_index:
+        return direct, None
+
+    best_lexicon_row = None
+    for canonical_norm, rows in lexicon_index.items():
+        if canonical_norm and canonical_norm in normalized_raw:
+            for row in rows:
+                bairro_norm = normalize_text(row.get("bairro", ""))
+                city_norm = normalize_text(city_value)
+                if city_norm and bairro_norm and bairro_norm == city_norm:
+                    continue
+                best_lexicon_row = row
+                break
+        if best_lexicon_row is not None:
+            break
+
+    if best_lexicon_row is None:
+        return direct, None
+
+    cropped = _find_canonical_subspan(text, best_lexicon_row.get("canonical_name", ""))
+    if cropped is not None:
+        return cropped, best_lexicon_row
+    return direct, best_lexicon_row
 
 
 def _rows_have_overlap(spans: list[dict]) -> bool:
@@ -366,6 +450,7 @@ def build_candidates(
     min_single_token_length: int,
     require_logradouro_marker: bool,
     drop_bairro_equal_city: bool,
+    logradouro_lexicon_index: dict[str, list[dict]] | None,
 ) -> tuple[list[dict], dict]:
     stats = Counter()
     candidates = []
@@ -401,23 +486,34 @@ def build_candidates(
             ):
                 stats["dropped_invalid_bairro_value"] += 1
                 continue
-            found = _find_literal_case_insensitive(text, value)
+            lexicon_row = None
+            if field == "logradouroLocal":
+                found, lexicon_row = _resolve_logradouro_match(
+                    text=text,
+                    raw_value=value,
+                    city_value=row.get("cidadeLocal", ""),
+                    lexicon_index=logradouro_lexicon_index,
+                )
+            else:
+                found = _find_literal_case_insensitive(text, value)
             if not found:
                 continue
             start, end, surface = found
             normalized = normalize_text(surface)
-            matched.append(
-                {
-                    "start": start,
-                    "end": end,
-                    "text": surface,
-                    "label": "Location",
-                    "_source_field": field,
-                    "_norm": normalized,
-                    "_train_count": int(train_location_counts.get(normalized, 0)),
-                    "_field_bonus": float(field_bonus.get(field, 1.0)),
-                }
-            )
+            entity = {
+                "start": start,
+                "end": end,
+                "text": surface,
+                "label": "Location",
+                "_source_field": field,
+                "_norm": normalized,
+                "_train_count": int(train_location_counts.get(normalized, 0)),
+                "_field_bonus": float(field_bonus.get(field, 1.0)),
+            }
+            if lexicon_row is not None:
+                entity["_lexicon_canonical_name"] = lexicon_row.get("canonical_name", "")
+                entity["_lexicon_bairro"] = lexicon_row.get("bairro", "")
+            matched.append(entity)
 
         deduped = {}
         for entity in matched:
@@ -462,6 +558,15 @@ def build_candidates(
                     "train_location_counts": {
                         entity["_norm"]: entity["_train_count"] for entity in matched
                     },
+                    "lexicon_matches": [
+                        {
+                            "entity_text": entity.get("text", ""),
+                            "canonical_name": entity.get("_lexicon_canonical_name", ""),
+                            "bairro": entity.get("_lexicon_bairro", ""),
+                        }
+                        for entity in matched
+                        if entity.get("_lexicon_canonical_name")
+                    ],
                 },
             }
         )
@@ -512,6 +617,7 @@ def main():
         raise ValueError("--metadata-fields must contain at least one field.")
     field_bonus = _load_bonus_map(args.field_bonus_json, "--field-bonus-json")
     subject_bonus = _load_bonus_map(args.subject_bonus_json, "--subject-bonus-json")
+    logradouro_lexicon_index = _load_logradouro_lexicon(args.logradouro_lexicon_jsonl) if args.logradouro_lexicon_jsonl else None
 
     rows = read_json_or_jsonl(args.input)
     train_rows = read_json_or_jsonl(args.train)
@@ -528,6 +634,7 @@ def main():
         min_single_token_length=args.min_single_token_length,
         require_logradouro_marker=args.require_logradouro_marker,
         drop_bairro_equal_city=args.drop_bairro_equal_city,
+        logradouro_lexicon_index=logradouro_lexicon_index,
     )
 
     review_rows = candidates[: args.top_n]
