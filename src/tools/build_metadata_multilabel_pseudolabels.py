@@ -46,6 +46,8 @@ PERSON_FORBIDDEN_SUBSTRINGS = (
     "bar",
     "bairro",
     "casa",
+    "chamado",
+    "de nome",
     "estrada",
     "justica",
     "justiça",
@@ -54,9 +56,12 @@ PERSON_FORBIDDEN_SUBSTRINGS = (
     "operação",
     "policia",
     "polícia",
+    "por",
     "praca",
     "praça",
     "rua",
+    "que",
+    "traficante",
 )
 PERSON_FORBIDDEN_START_TOKENS = {
     "a",
@@ -67,9 +72,28 @@ PERSON_FORBIDDEN_START_TOKENS = {
     "nos",
     "o",
     "os",
+    "outro",
+    "outra",
     "um",
     "uma",
 }
+LOCATION_FORBIDDEN_SUBSTRINGS = (
+    " bar ",
+    " com ",
+)
+LOCATION_MARKERS = (
+    "alameda",
+    "av",
+    "avenida",
+    "estrada",
+    "praca",
+    "praça",
+    "rodovia",
+    "rua",
+    "travessa",
+    "trav",
+    "trv",
+)
 
 PERSON_PATTERNS = {
     "person_vulgo_fullname": re.compile(
@@ -78,10 +102,6 @@ PERSON_PATTERNS = {
     ),
     "person_role_name": re.compile(
         rf"\b(?:{'|'.join(PERSON_ROLE_WORDS)})\s+(?P<name>{FULL_NAME})",
-        re.IGNORECASE,
-    ),
-    "person_named_victim": re.compile(
-        rf"(?:vitima\s+(?:e|é|foi)\s*:?\s*|morte\s+d[eo]\s+|vida\s+de\s+)(?P<name>{FULL_NAME})",
         re.IGNORECASE,
     ),
 }
@@ -147,6 +167,8 @@ def is_valid_person_candidate(text: str, *, allow_alias_single_token: bool) -> b
     raw = str(text or "").strip()
     if not raw or "\n" in raw or "\r" in raw:
         return False
+    if raw[:1].islower():
+        return False
 
     normalized = normalize_text(raw)
     if not normalized:
@@ -161,6 +183,19 @@ def is_valid_person_candidate(text: str, *, allow_alias_single_token: bool) -> b
     if allow_alias_single_token:
         return len(tokens) == 1 and len(tokens[0]) >= 3
     return len(tokens) >= 2
+
+
+def is_valid_location_candidate(text: str) -> bool:
+    raw = str(text or "").strip()
+    if not raw or "\n" in raw or "\r" in raw:
+        return False
+    normalized = f" {normalize_text(raw)} "
+    if any(piece in normalized for piece in LOCATION_FORBIDDEN_SUBSTRINGS):
+        return False
+    marker_count = sum(normalized.count(f" {marker} ") for marker in LOCATION_MARKERS)
+    if marker_count > 1:
+        return False
+    return True
 
 
 def deduplicate_matches(matches: list[dict]) -> list[dict]:
@@ -245,10 +280,13 @@ def overlaps(existing: list[dict], candidate: dict) -> bool:
 def merge_entities(text: str, base_entities: list[dict], person_seeds: list[dict], org_seeds: list[dict]) -> list[dict]:
     merged = []
     for entity in sorted(base_entities, key=lambda item: (item["start"], item["end"], item.get("label", ""))):
+        entity_text = text[int(entity["start"]) : int(entity["end"])]
+        if str(entity.get("label")) == "Location" and not is_valid_location_candidate(entity_text):
+            continue
         normalized = {
             "start": int(entity["start"]),
             "end": int(entity["end"]),
-            "text": text[int(entity["start"]) : int(entity["end"])],
+            "text": entity_text,
             "label": str(entity["label"]),
             "seed_origin": entity.get("seed_origin", ""),
         }
