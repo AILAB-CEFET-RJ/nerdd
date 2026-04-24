@@ -16,7 +16,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from tools.inspect_dense_tips import read_json_or_jsonl, write_jsonl
 
 NAME_TOKEN = r"[A-ZÀ-Ú][A-Za-zÀ-ÿ]+"
-FULL_NAME = rf"{NAME_TOKEN}(?:\s+{NAME_TOKEN}){{1,4}}"
+NAME_SEP = r"[ \t]+"
+FULL_NAME = rf"{NAME_TOKEN}(?:{NAME_SEP}{NAME_TOKEN}){{1,4}}"
 PERSON_ROLE_WORDS = (
     "Sargento",
     "Cabo",
@@ -32,24 +33,43 @@ PERSON_ROLE_WORDS = (
     "Inspetor",
     "Detetive",
 )
-PERSON_ACTION_WORDS = (
-    "matou",
-    "assassinou",
-    "executou",
-    "esfaqueou",
-    "atirou",
-    "tramou",
-    "planejou",
-)
 ORG_LITERAL_PATTERNS = (
     r"\b\d{1,3}[ªa°º]?\s*DP\b(?:\s+de\s+[A-ZÀ-Ú][A-Za-zÀ-ÿ]+(?:\s+[A-ZÀ-Ú][A-Za-zÀ-ÿ]+){0,3})?",
     r"\b\d{1,3}[ªa°º]?\s*BPM\b",
     r"\b(?:BOPE|DRACO|GAECO|CEDAE|Light)\b",
     r"\b(?:Comando Vermelho|Terceiro Comando|Liga da Justica|Liga da Justiça)\b",
     r"\b(?:TCP|ADA|CV|PCC)\b",
-    r"\b[Mm]ilic(?:ia|ía)\s+(?:de|da|do)\s+[A-ZÀ-Ú][A-Za-zÀ-ÿ]+(?:\s+[A-ZÀ-Ú][A-Za-zÀ-ÿ]+){0,4}",
     r"\b(?:batalhao|batalhão)\s+de\s+choque\b",
 )
+PERSON_FORBIDDEN_SUBSTRINGS = (
+    "avenida",
+    "bar",
+    "bairro",
+    "casa",
+    "estrada",
+    "justica",
+    "justiça",
+    "local",
+    "operacao",
+    "operação",
+    "policia",
+    "polícia",
+    "praca",
+    "praça",
+    "rua",
+)
+PERSON_FORBIDDEN_START_TOKENS = {
+    "a",
+    "as",
+    "na",
+    "nas",
+    "no",
+    "nos",
+    "o",
+    "os",
+    "um",
+    "uma",
+}
 
 PERSON_PATTERNS = {
     "person_vulgo_fullname": re.compile(
@@ -58,10 +78,6 @@ PERSON_PATTERNS = {
     ),
     "person_role_name": re.compile(
         rf"\b(?:{'|'.join(PERSON_ROLE_WORDS)})\s+(?P<name>{FULL_NAME})",
-        re.IGNORECASE,
-    ),
-    "person_named_perpetrator": re.compile(
-        rf"(?P<name>{FULL_NAME})\s+(?:{'|'.join(PERSON_ACTION_WORDS)})\b",
         re.IGNORECASE,
     ),
     "person_named_victim": re.compile(
@@ -127,6 +143,26 @@ def get_entities(row: dict) -> list[dict]:
     return entities if isinstance(entities, list) else []
 
 
+def is_valid_person_candidate(text: str, *, allow_alias_single_token: bool) -> bool:
+    raw = str(text or "").strip()
+    if not raw or "\n" in raw or "\r" in raw:
+        return False
+
+    normalized = normalize_text(raw)
+    if not normalized:
+        return False
+    tokens = normalized.split()
+    if not tokens:
+        return False
+    if tokens[0] in PERSON_FORBIDDEN_START_TOKENS:
+        return False
+    if any(piece in normalized for piece in PERSON_FORBIDDEN_SUBSTRINGS):
+        return False
+    if allow_alias_single_token:
+        return len(tokens) == 1 and len(tokens[0]) >= 3
+    return len(tokens) >= 2
+
+
 def deduplicate_matches(matches: list[dict]) -> list[dict]:
     deduped = []
     seen = set()
@@ -145,35 +181,41 @@ def find_person_seeds(text: str) -> list[dict]:
         for match in pattern.finditer(text):
             groups = match.groupdict()
             if "fullname" in groups:
-                matches.append(
-                    {
-                        "start": match.start("fullname"),
-                        "end": match.end("fullname"),
-                        "text": groups["fullname"],
-                        "label": "Person",
-                        "seed_origin": rule_name,
-                    }
-                )
+                fullname = groups["fullname"]
+                if is_valid_person_candidate(fullname, allow_alias_single_token=False):
+                    matches.append(
+                        {
+                            "start": match.start("fullname"),
+                            "end": match.end("fullname"),
+                            "text": fullname,
+                            "label": "Person",
+                            "seed_origin": rule_name,
+                        }
+                    )
             if "alias" in groups:
-                matches.append(
-                    {
-                        "start": match.start("alias"),
-                        "end": match.end("alias"),
-                        "text": groups["alias"],
-                        "label": "Person",
-                        "seed_origin": f"{rule_name}_alias",
-                    }
-                )
+                alias = groups["alias"]
+                if is_valid_person_candidate(alias, allow_alias_single_token=True):
+                    matches.append(
+                        {
+                            "start": match.start("alias"),
+                            "end": match.end("alias"),
+                            "text": alias,
+                            "label": "Person",
+                            "seed_origin": f"{rule_name}_alias",
+                        }
+                    )
             if "name" in groups:
-                matches.append(
-                    {
-                        "start": match.start("name"),
-                        "end": match.end("name"),
-                        "text": groups["name"],
-                        "label": "Person",
-                        "seed_origin": rule_name,
-                    }
-                )
+                person_name = groups["name"]
+                if is_valid_person_candidate(person_name, allow_alias_single_token=False):
+                    matches.append(
+                        {
+                            "start": match.start("name"),
+                            "end": match.end("name"),
+                            "text": person_name,
+                            "label": "Person",
+                            "seed_origin": rule_name,
+                        }
+                    )
     return deduplicate_matches(matches)
 
 
