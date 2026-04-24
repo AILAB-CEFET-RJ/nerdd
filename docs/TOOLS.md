@@ -22,6 +22,7 @@ Regra prática:
 | `src/tools/audit_refit_regressions.py` | auditoria | gold + predictions.jsonl | sobrescreve saída | auditar regressões entre baseline e refit, com wins/losses/ties e confusões de label |
 | `src/tools/build_calibration_dataset.py` | calibração | JSON, JSONL | sobrescreve saída | montar dataset de calibração a partir de previsões do modelo |
 | `src/tools/build_metadata_location_pseudolabels.py` | seleção | JSON, JSONL | sobrescreve saída | montar um pool conservador de pseudolabels `Location` por match literal de metadado no relato |
+| `src/tools/build_metadata_multilabel_pseudolabels.py` | seleção | JSON, JSONL | sobrescreve saída | montar um pool conservador `Person+Location+Organization` a partir do candidate pool metadata-based de `Location` |
 | `src/tools/profile_metadata_multilabel_signal.py` | auditoria | JSON, JSONL | sobrescreve saída | medir sinal conservador de `Person` e `Organization` dentro de um pool metadata-based já ancorado em `Location` |
 | `src/tools/build_train_annotation_prompt_probe.py` | auditoria | audits + lote fonte | sobrescreve saída | montar um probe pequeno e diagnóstico para testar prompts de adjudicação voltados a treino |
 | `src/tools/manage_codex_adjudication_benchmark.py` | operação | JSONL de adjudicação | resumível | gerenciar benchmark chunkado de adjudicação assistida por Codex |
