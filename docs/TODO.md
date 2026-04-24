@@ -17,6 +17,7 @@
 - Medir quantos falsos negativos atuais decorrem de erro ortografico do denunciante.
 - Decidir se `review_seed_entities` pode receber spans literais semanticamente corrigiveis quando houver alta confianca geografica.
 - Criar testes com casos reais: `Embarie`/`Imbariê`, `Iraja`/`Irajá`, `Sao Goncalo`/`São Gonçalo`.
+- Procurar léxicos externos de logradouros para municípios além da capital do Rio de Janeiro, de modo que a validação/correção por léxico não fique restrita ao município do Rio.
 
 ## Regras Da Adjudicacao
 
