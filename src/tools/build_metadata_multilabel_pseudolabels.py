@@ -18,6 +18,7 @@ from tools.inspect_dense_tips import read_json_or_jsonl, write_jsonl
 NAME_TOKEN = r"[A-ZÀ-Ú][A-Za-zÀ-ÿ]+"
 NAME_SEP = r"[ \t]+"
 FULL_NAME = rf"{NAME_TOKEN}(?:{NAME_SEP}{NAME_TOKEN}){{1,4}}"
+ROLE_NAME = rf"{NAME_TOKEN}(?:{NAME_SEP}{NAME_TOKEN}){{0,2}}"
 PERSON_ROLE_WORDS = (
     "Sargento",
     "Cabo",
@@ -33,12 +34,31 @@ PERSON_ROLE_WORDS = (
     "Inspetor",
     "Detetive",
 )
+PERSON_ALIAS_MARKERS = (
+    "alcunha",
+    "apelidado",
+    "apelido",
+    "chamado",
+    "conhecido",
+    "vulgo",
+)
+WEAK_PERSON_PATTERNS = {
+    "weak_person_known_as": re.compile(
+        rf"(?i:\b(?:conhecido|conhecida|chamado|chamada|apelidado|apelidada)\s+(?:como|de)\s+)(?P<name>{NAME_TOKEN})"
+    ),
+    "weak_person_vulgo_alias": re.compile(
+        rf"(?i:\bvulgo\s+)(?P<name>{NAME_TOKEN})"
+    ),
+}
 ORG_LITERAL_PATTERNS = (
     r"\b\d{1,3}[ªa°º]?\s*DP\b(?:\s+de\s+[A-ZÀ-Ú][A-Za-zÀ-ÿ]+(?:\s+[A-ZÀ-Ú][A-Za-zÀ-ÿ]+){0,3})?",
     r"\b\d{1,3}[ªa°º]?\s*BPM\b",
     r"\b(?:BOPE|DRACO|GAECO|CEDAE|Light)\b",
     r"\b(?:Comando Vermelho|Terceiro Comando|Liga da Justica|Liga da Justiça)\b",
     r"\b(?:TCP|ADA|CV|PCC)\b",
+    r"\b[Mm]il[ií]c(?:ia|ía)\s+(?:de|da|do)\s+(?-i:[A-ZÀ-Ú][A-Za-zÀ-ÿ]+)(?:\s+(?-i:[A-ZÀ-Ú][A-Za-zÀ-ÿ]+)){0,3}",
+    r"\b\d{1,3}\s*(?:Batalh[aã]o|Batalhao)\b",
+    r"\bDH\b",
     r"\b(?:batalhao|batalhão)\s+de\s+choque\b",
 )
 PERSON_FORBIDDEN_SUBSTRINGS = (
@@ -63,6 +83,18 @@ PERSON_FORBIDDEN_SUBSTRINGS = (
     "que",
     "traficante",
 )
+PERSON_FORBIDDEN_TOKENS = {
+    "area",
+    "familia",
+    "filho",
+    "mando",
+    "mandaram",
+    "morte",
+    "moradores",
+    "pm",
+    "raiva",
+    "realizando",
+}
 PERSON_FORBIDDEN_START_TOKENS = {
     "a",
     "as",
@@ -76,6 +108,35 @@ PERSON_FORBIDDEN_START_TOKENS = {
     "outra",
     "um",
     "uma",
+}
+PERSON_FOLLOWING_VERBS = {
+    "ajuda",
+    "ajudar",
+    "ajudando",
+    "esta",
+    "está",
+    "fazer",
+    "fechar",
+    "fugiu",
+    "mandou",
+    "mantem",
+    "mantém",
+    "manter",
+    "matou",
+    "realiza",
+    "realizar",
+    "realizando",
+}
+PERSON_ALL_CAPS_FORBIDDEN_TOKENS = PERSON_FORBIDDEN_TOKENS | {
+    "bahia",
+    "bope",
+    "de",
+    "do",
+    "da",
+    "dos",
+    "das",
+    "na",
+    "no",
 }
 LOCATION_FORBIDDEN_SUBSTRINGS = (
     " bar ",
@@ -97,12 +158,10 @@ LOCATION_MARKERS = (
 
 PERSON_PATTERNS = {
     "person_vulgo_fullname": re.compile(
-        rf"(?P<fullname>{FULL_NAME})\s*,?\s*vulgo\s+(?P<alias>[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9_-]+)",
-        re.IGNORECASE,
+        rf"(?P<fullname>{FULL_NAME})\s*,?\s+(?i:vulgo)\s+(?P<alias>[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9_-]+)",
     ),
     "person_role_name": re.compile(
-        rf"\b(?:{'|'.join(PERSON_ROLE_WORDS)})\s+(?P<name>{FULL_NAME})",
-        re.IGNORECASE,
+        rf"\b(?i:(?:{'|'.join(PERSON_ROLE_WORDS)}))\s+(?P<name>{ROLE_NAME})",
     ),
 }
 ORG_PATTERNS = {
@@ -139,6 +198,24 @@ def parse_args():
         default=1,
         help="Minimum number of conservative Organization seeds required.",
     )
+    parser.add_argument(
+        "--drop-incomplete-person-signal",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Drop rows with strong weak-Person signal not covered by accepted Person seeds.",
+    )
+    parser.add_argument(
+        "--max-uncovered-person-signals",
+        type=int,
+        default=2,
+        help="Maximum weak Person signals not covered by accepted Person seeds before dropping a row.",
+    )
+    parser.add_argument(
+        "--max-rows-per-cluster",
+        type=int,
+        default=2,
+        help="Maximum accepted rows to keep per normalized near-duplicate cluster. Use 0 to disable.",
+    )
     return parser.parse_args()
 
 
@@ -161,6 +238,99 @@ def get_text(row: dict) -> str:
 def get_entities(row: dict) -> list[dict]:
     entities = row.get("entities")
     return entities if isinstance(entities, list) else []
+
+
+def metadata_cluster_key(row: dict) -> str:
+    parts = [part for part in (
+        normalize_text(row.get("assunto", "")),
+        normalize_text(row.get("cidadeLocal", "")),
+        normalize_text(row.get("bairroLocal", "")),
+        normalize_text(row.get("logradouroLocal", "")),
+    ) if part]
+    if len(parts) < 3:
+        text_signature = " ".join(normalize_text(get_text(row)).split()[:80])
+        parts.append(text_signature)
+    return "|".join(parts)
+
+
+def validate_entity_offset(text: str, entity: dict) -> tuple[bool, str]:
+    try:
+        start = int(entity["start"])
+        end = int(entity["end"])
+    except (KeyError, TypeError, ValueError):
+        return False, "missing_or_non_integer_offset"
+    if start < 0 or end <= start or end > len(text):
+        return False, "out_of_bounds_offset"
+
+    expected_text = entity.get("text")
+    if isinstance(expected_text, str) and expected_text:
+        actual_text = text[start:end]
+        if expected_text != actual_text:
+            return False, "entity_text_mismatch"
+    return True, "ok"
+
+
+def validated_location_entities(text: str, entities: list[dict], counters: Counter) -> list[dict] | None:
+    locations = []
+    for entity in entities:
+        if entity.get("label") != "Location":
+            continue
+        valid, reason = validate_entity_offset(text, entity)
+        if not valid:
+            counters[f"dropped_location_{reason}"] += 1
+            return None
+        locations.append(entity)
+    return locations
+
+
+def _next_token(text: str, end: int) -> str:
+    match = re.match(r"\s*([A-Za-zÀ-ÿ]+)", text[end:])
+    return normalize_text(match.group(1)) if match else ""
+
+
+def validate_person_seed(
+    full_text: str,
+    start: int,
+    end: int,
+    *,
+    allow_single_token: bool,
+) -> tuple[bool, str]:
+    if start < 0 or end <= start or end > len(full_text):
+        return False, "invalid_offset"
+    raw = full_text[start:end]
+    if raw != raw.strip():
+        return False, "edge_whitespace"
+    if "\n" in raw or "\r" in raw:
+        return False, "linebreak"
+    if raw[:1].islower():
+        return False, "starts_lowercase"
+
+    normalized = normalize_text(raw)
+    if not normalized:
+        return False, "empty"
+    tokens = normalized.split()
+    raw_tokens = raw.split()
+    if not tokens or not raw_tokens:
+        return False, "empty"
+    if tokens[0] in PERSON_FORBIDDEN_START_TOKENS:
+        return False, "starts_with_function_word"
+    if any(piece in normalized for piece in PERSON_FORBIDDEN_SUBSTRINGS):
+        return False, "forbidden_substring"
+    if any(token in PERSON_FORBIDDEN_TOKENS for token in tokens):
+        return False, "forbidden_token"
+    if len(tokens) > 4:
+        return False, "too_long"
+    if not allow_single_token and len(tokens) < 2:
+        return False, "too_short"
+    if allow_single_token and len(tokens) == 1 and len(tokens[0]) < 3:
+        return False, "too_short"
+    if any(not token[:1].isupper() for token in raw_tokens):
+        return False, "non_title_token"
+    if any(token.isupper() and normalize_text(token) in PERSON_ALL_CAPS_FORBIDDEN_TOKENS for token in raw_tokens):
+        return False, "all_caps_context_token"
+    if _next_token(full_text, end) in PERSON_FOLLOWING_VERBS:
+        return False, "followed_by_verb"
+    return True, "ok"
 
 
 def is_valid_person_candidate(text: str, *, allow_alias_single_token: bool) -> bool:
@@ -210,47 +380,125 @@ def deduplicate_matches(matches: list[dict]) -> list[dict]:
     return deduped
 
 
-def find_person_seeds(text: str) -> list[dict]:
+def span_is_covered(candidate: dict, accepted: list[dict]) -> bool:
+    for entity in accepted:
+        if candidate["start"] < entity["end"] and entity["start"] < candidate["end"]:
+            return True
+    return False
+
+
+def find_weak_person_signals(text: str) -> list[dict]:
     matches = []
+    for rule_name, pattern in WEAK_PERSON_PATTERNS.items():
+        for match in pattern.finditer(text):
+            name = match.group("name")
+            valid, reason = validate_person_seed(
+                text,
+                match.start("name"),
+                match.end("name"),
+                allow_single_token=True,
+            )
+            if not valid:
+                continue
+            matches.append(
+                {
+                    "start": match.start("name"),
+                    "end": match.end("name"),
+                    "text": name,
+                    "label": "Person",
+                    "seed_origin": rule_name,
+                }
+            )
+    return deduplicate_matches(matches)
+
+
+def has_dense_alias_signal(text: str) -> bool:
+    normalized = normalize_text(text)
+    return sum(normalized.count(marker) for marker in PERSON_ALIAS_MARKERS) >= 3
+
+
+def uncovered_person_signal_count(text: str, accepted_person_seeds: list[dict]) -> int:
+    weak_signals = find_weak_person_signals(text)
+    uncovered = [signal for signal in weak_signals if not span_is_covered(signal, accepted_person_seeds)]
+    if has_dense_alias_signal(text) and uncovered:
+        return max(len(uncovered), 3)
+    return len(uncovered)
+
+
+def add_person_match(
+    matches: list[dict],
+    rejection_counts: Counter,
+    *,
+    text: str,
+    start: int,
+    end: int,
+    label_text: str,
+    seed_origin: str,
+    allow_single_token: bool,
+) -> None:
+    valid, reason = validate_person_seed(
+        text,
+        start,
+        end,
+        allow_single_token=allow_single_token,
+    )
+    if not valid:
+        rejection_counts[f"person_rejected_{reason}"] += 1
+        return
+    matches.append(
+        {
+            "start": start,
+            "end": end,
+            "text": label_text,
+            "label": "Person",
+            "seed_origin": seed_origin,
+        }
+    )
+
+
+def find_person_seeds(text: str, rejection_counts: Counter | None = None) -> list[dict]:
+    matches = []
+    if rejection_counts is None:
+        rejection_counts = Counter()
     for rule_name, pattern in PERSON_PATTERNS.items():
         for match in pattern.finditer(text):
             groups = match.groupdict()
             if "fullname" in groups:
                 fullname = groups["fullname"]
-                if is_valid_person_candidate(fullname, allow_alias_single_token=False):
-                    matches.append(
-                        {
-                            "start": match.start("fullname"),
-                            "end": match.end("fullname"),
-                            "text": fullname,
-                            "label": "Person",
-                            "seed_origin": rule_name,
-                        }
-                    )
+                add_person_match(
+                    matches,
+                    rejection_counts,
+                    text=text,
+                    start=match.start("fullname"),
+                    end=match.end("fullname"),
+                    label_text=fullname,
+                    seed_origin=rule_name,
+                    allow_single_token=False,
+                )
             if "alias" in groups:
                 alias = groups["alias"]
-                if is_valid_person_candidate(alias, allow_alias_single_token=True):
-                    matches.append(
-                        {
-                            "start": match.start("alias"),
-                            "end": match.end("alias"),
-                            "text": alias,
-                            "label": "Person",
-                            "seed_origin": f"{rule_name}_alias",
-                        }
-                    )
+                add_person_match(
+                    matches,
+                    rejection_counts,
+                    text=text,
+                    start=match.start("alias"),
+                    end=match.end("alias"),
+                    label_text=alias,
+                    seed_origin=f"{rule_name}_alias",
+                    allow_single_token=True,
+                )
             if "name" in groups:
                 person_name = groups["name"]
-                if is_valid_person_candidate(person_name, allow_alias_single_token=False):
-                    matches.append(
-                        {
-                            "start": match.start("name"),
-                            "end": match.end("name"),
-                            "text": person_name,
-                            "label": "Person",
-                            "seed_origin": rule_name,
-                        }
-                    )
+                add_person_match(
+                    matches,
+                    rejection_counts,
+                    text=text,
+                    start=match.start("name"),
+                    end=match.end("name"),
+                    label_text=person_name,
+                    seed_origin=rule_name,
+                    allow_single_token=True,
+                )
     return deduplicate_matches(matches)
 
 
@@ -327,11 +575,15 @@ def build_multilabel_pool(
     require_two_location_seeds: bool,
     min_person_seeds: int,
     min_organization_seeds: int,
+    drop_incomplete_person_signal: bool,
+    max_uncovered_person_signals: int,
+    max_rows_per_cluster: int,
 ) -> tuple[list[dict], dict]:
     kept = []
     counters = Counter()
     person_rule_counts = Counter()
     org_rule_counts = Counter()
+    person_rejection_counts = Counter()
 
     for row in rows:
         text = get_text(row)
@@ -340,7 +592,9 @@ def build_multilabel_pool(
             continue
 
         base_entities = get_entities(row)
-        location_entities = [entity for entity in base_entities if entity.get("label") == "Location"]
+        location_entities = validated_location_entities(text, base_entities, counters)
+        if location_entities is None:
+            continue
         if require_two_location_seeds and len(location_entities) != 2:
             counters["dropped_location_seed_count"] += 1
             continue
@@ -348,8 +602,13 @@ def build_multilabel_pool(
             counters["dropped_missing_location"] += 1
             continue
 
-        person_seeds = find_person_seeds(text)
+        person_seeds = find_person_seeds(text, person_rejection_counts)
         org_seeds = find_org_seeds(text)
+        uncovered_person_signals = uncovered_person_signal_count(text, person_seeds)
+        if drop_incomplete_person_signal:
+            if uncovered_person_signals > max_uncovered_person_signals:
+                counters["dropped_incomplete_person_signal"] += 1
+                continue
         if len(person_seeds) < min_person_seeds:
             counters["dropped_missing_person"] += 1
             continue
@@ -358,6 +617,9 @@ def build_multilabel_pool(
             continue
 
         merged_entities = merge_entities(text, location_entities, person_seeds, org_seeds)
+        if not any(entity["label"] == "Location" for entity in merged_entities):
+            counters["dropped_location_filtered"] += 1
+            continue
         if not any(entity["label"] == "Person" for entity in merged_entities):
             counters["dropped_person_overlap"] += 1
             continue
@@ -373,8 +635,10 @@ def build_multilabel_pool(
         enriched = dict(row)
         enriched["entities"] = merged_entities
         enriched["_multilabel_meta"] = {
+            "cluster_key": metadata_cluster_key(row),
             "person_seed_count": len(person_seeds),
             "organization_seed_count": len(org_seeds),
+            "uncovered_person_signal_count": uncovered_person_signals,
             "person_seed_rules": sorted({seed["seed_origin"] for seed in person_seeds}),
             "organization_seed_rules": sorted({seed["seed_origin"] for seed in org_seeds}),
             "selection_score": score_row(row, len(person_seeds), len(org_seeds)),
@@ -390,14 +654,28 @@ def build_multilabel_pool(
         )
     )
 
+    if max_rows_per_cluster > 0:
+        clustered = []
+        cluster_counts = Counter()
+        for row in kept:
+            cluster_key = row["_multilabel_meta"]["cluster_key"]
+            if cluster_counts[cluster_key] >= max_rows_per_cluster:
+                counters["dropped_cluster_limit"] += 1
+                continue
+            cluster_counts[cluster_key] += 1
+            clustered.append(row)
+        kept = clustered
+
     summary = {
         "rows_seen": len(rows),
         "rows_kept": len(kept),
         "dropped_counts": dict(counters),
+        "person_rejection_counts": dict(person_rejection_counts),
         "person_rule_counts": dict(person_rule_counts),
         "organization_rule_counts": dict(org_rule_counts),
         "assunto_counts": dict(Counter(str(row.get("assunto", "")).strip() for row in kept)),
         "cidade_counts": dict(Counter(str(row.get("cidadeLocal", "")).strip() for row in kept).most_common(20)),
+        "cluster_counts": dict(Counter(row["_multilabel_meta"]["cluster_key"] for row in kept).most_common(20)),
         "label_counts_kept": dict(Counter(entity["label"] for row in kept for entity in row["entities"])),
     }
     return kept, summary
@@ -428,6 +706,9 @@ def main():
         require_two_location_seeds=args.require_two_location_seeds,
         min_person_seeds=args.min_person_seeds,
         min_organization_seeds=args.min_organization_seeds,
+        drop_incomplete_person_signal=args.drop_incomplete_person_signal,
+        max_uncovered_person_signals=args.max_uncovered_person_signals,
+        max_rows_per_cluster=args.max_rows_per_cluster,
     )
 
     review_rows = kept[: args.top_n]
@@ -446,6 +727,9 @@ def main():
         "require_two_location_seeds": args.require_two_location_seeds,
         "min_person_seeds": args.min_person_seeds,
         "min_organization_seeds": args.min_organization_seeds,
+        "drop_incomplete_person_signal": args.drop_incomplete_person_signal,
+        "max_uncovered_person_signals": args.max_uncovered_person_signals,
+        "max_rows_per_cluster": args.max_rows_per_cluster,
         **summary,
         "review_rows": len(review_rows),
     }

@@ -1,4 +1,0 @@
-experiment_id,refit_mode,prediction_map_location,prediction_runtime_hms,entities_total,kept_count,kept_score_mean,pseudolabel_train_size,base_micro_f1,refit_micro_f1,micro_f1_delta,base_macro_f1,refit_macro_f1,macro_f1_delta
-multi_with_negatives_sample_10k_t030_cuda_v5,supervised_plus_pseudolabels,cuda,,163583,51,0.365611,,0.746036,0.719234,-0.026802,0.752626,0.717000,-0.035626
-multi_with_negatives_sample_10k_t030_cuda_v6,supervised_plus_pseudolabels,cuda,,163583,47,0.368960,,0.746036,0.745235,-0.000801,0.752626,0.750602,-0.002024
-multi_with_negatives_sample_10k_t035_cuda_v7,supervised_plus_pseudolabels,cuda,,163583,17,0.445115,,0.746036,0.751601,0.005565,0.752626,0.758758,0.006132
