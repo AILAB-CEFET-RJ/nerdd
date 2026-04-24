@@ -49,6 +49,12 @@ WEAK_PERSON_PATTERNS = {
     "weak_person_vulgo_alias": re.compile(
         rf"(?i:\bvulgo\s+)(?P<name>{NAME_TOKEN})"
     ),
+    "weak_person_after_action": re.compile(
+        rf"(?i:\b(?:matou|assassinou|executou|esfaqueou|baleou|atirou\s+em)\s+)(?P<name>{FULL_NAME})"
+    ),
+    "weak_person_victim_context": re.compile(
+        rf"(?i:\b(?:vitima\s+(?:e|é|foi)\s*:?\s*|morte\s+d[eo]\s+|vida\s+de\s+))(?P<name>{FULL_NAME})"
+    ),
 }
 ORG_LITERAL_PATTERNS = (
     r"\b\d{1,3}[ªa°º]?\s*DP\b(?:\s+de\s+[A-ZÀ-Ú][A-Za-zÀ-ÿ]+(?:\s+[A-ZÀ-Ú][A-Za-zÀ-ÿ]+){0,3})?",
@@ -240,13 +246,27 @@ def get_entities(row: dict) -> list[dict]:
     return entities if isinstance(entities, list) else []
 
 
-def metadata_cluster_key(row: dict) -> str:
+def metadata_cluster_key(
+    row: dict,
+    *,
+    person_seeds: list[dict] | None = None,
+    org_seeds: list[dict] | None = None,
+) -> str:
     parts = [part for part in (
         normalize_text(row.get("assunto", "")),
         normalize_text(row.get("cidadeLocal", "")),
         normalize_text(row.get("bairroLocal", "")),
-        normalize_text(row.get("logradouroLocal", "")),
     ) if part]
+    person_parts = sorted({normalize_text(seed["text"]) for seed in person_seeds or []})
+    org_parts = sorted({normalize_text(seed["text"]) for seed in org_seeds or []})
+    if person_parts:
+        parts.append("person=" + ",".join(person_parts))
+    if org_parts:
+        parts.append("org=" + ",".join(org_parts))
+    if not person_parts and not org_parts:
+        logradouro = normalize_text(row.get("logradouroLocal", ""))
+        if logradouro:
+            parts.append(logradouro)
     if len(parts) < 3:
         text_signature = " ".join(normalize_text(get_text(row)).split()[:80])
         parts.append(text_signature)
@@ -420,6 +440,11 @@ def has_dense_alias_signal(text: str) -> bool:
 def uncovered_person_signal_count(text: str, accepted_person_seeds: list[dict]) -> int:
     weak_signals = find_weak_person_signals(text)
     uncovered = [signal for signal in weak_signals if not span_is_covered(signal, accepted_person_seeds)]
+    if any(
+        signal["seed_origin"] in {"weak_person_after_action", "weak_person_victim_context"}
+        for signal in uncovered
+    ):
+        return max(len(uncovered), 3)
     if has_dense_alias_signal(text) and uncovered:
         return max(len(uncovered), 3)
     return len(uncovered)
@@ -617,7 +642,11 @@ def build_multilabel_pool(
             continue
 
         merged_entities = merge_entities(text, location_entities, person_seeds, org_seeds)
-        if not any(entity["label"] == "Location" for entity in merged_entities):
+        merged_location_count = sum(1 for entity in merged_entities if entity["label"] == "Location")
+        if require_two_location_seeds and merged_location_count != 2:
+            counters["dropped_filtered_location_seed_count"] += 1
+            continue
+        if not merged_location_count:
             counters["dropped_location_filtered"] += 1
             continue
         if not any(entity["label"] == "Person" for entity in merged_entities):
@@ -635,7 +664,7 @@ def build_multilabel_pool(
         enriched = dict(row)
         enriched["entities"] = merged_entities
         enriched["_multilabel_meta"] = {
-            "cluster_key": metadata_cluster_key(row),
+            "cluster_key": metadata_cluster_key(row, person_seeds=person_seeds, org_seeds=org_seeds),
             "person_seed_count": len(person_seeds),
             "organization_seed_count": len(org_seeds),
             "uncovered_person_signal_count": uncovered_person_signals,
