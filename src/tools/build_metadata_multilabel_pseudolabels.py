@@ -93,10 +93,12 @@ PERSON_FORBIDDEN_TOKENS = {
     "area",
     "familia",
     "filho",
+    "frio",
     "mando",
     "mandaram",
     "morte",
     "moradores",
+    "nome",
     "pm",
     "raiva",
     "realizando",
@@ -163,6 +165,9 @@ LOCATION_MARKERS = (
 )
 
 PERSON_PATTERNS = {
+    "person_nome_fullname": re.compile(
+        rf"(?i:\bnome\s+)(?P<fullname>{FULL_NAME})\s*,?\s+(?i:vulgo)\s+(?P<alias>[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9_-]+)",
+    ),
     "person_vulgo_fullname": re.compile(
         rf"(?P<fullname>{FULL_NAME})\s*,?\s+(?i:vulgo)\s+(?P<alias>[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9_-]+)",
     ),
