@@ -257,13 +257,13 @@ def metadata_cluster_key(
         normalize_text(row.get("cidadeLocal", "")),
         normalize_text(row.get("bairroLocal", "")),
     ) if part]
-    person_parts = sorted({normalize_text(seed["text"]) for seed in person_seeds or []})
-    org_parts = sorted({normalize_text(seed["text"]) for seed in org_seeds or []})
+    person_parts = sorted({key for seed in person_seeds or [] if (key := cluster_person_key(seed["text"]))})
+    org_parts = sorted({key for seed in org_seeds or [] if (key := cluster_org_key(seed["text"]))})
     if person_parts:
         parts.append("person=" + ",".join(person_parts))
-    if org_parts:
+    elif org_parts:
         parts.append("org=" + ",".join(org_parts))
-    if not person_parts and not org_parts:
+    else:
         logradouro = normalize_text(row.get("logradouroLocal", ""))
         if logradouro:
             parts.append(logradouro)
@@ -271,6 +271,21 @@ def metadata_cluster_key(
         text_signature = " ".join(normalize_text(get_text(row)).split()[:80])
         parts.append(text_signature)
     return "|".join(parts)
+
+
+def cluster_person_key(text: str) -> str:
+    tokens = normalize_text(text).split()
+    if not tokens:
+        return ""
+    return tokens[0]
+
+
+def cluster_org_key(text: str) -> str:
+    normalized = normalize_text(text)
+    normalized = re.sub(r"\b(\d{1,3})\s+(dp|bpm)\b", r"\1\2", normalized)
+    if normalized in {"cv", "tcp", "ada", "pcc"}:
+        return ""
+    return normalized
 
 
 def validate_entity_offset(text: str, entity: dict) -> tuple[bool, str]:
