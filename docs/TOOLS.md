@@ -24,6 +24,8 @@ Regra prática:
 | `src/tools/build_metadata_location_pseudolabels.py` | seleção | JSON, JSONL | sobrescreve saída | montar um pool conservador de pseudolabels `Location` por match literal de metadado no relato |
 | `src/tools/build_metadata_multilabel_pseudolabels.py` | seleção | JSON, JSONL | sobrescreve saída | montar um pool conservador `Person+Location+Organization` a partir do candidate pool metadata-based de `Location` |
 | `src/tools/profile_metadata_multilabel_signal.py` | auditoria | JSON, JSONL | sobrescreve saída | medir sinal conservador de `Person` e `Organization` dentro de um pool metadata-based já ancorado em `Location` |
+| `src/tools/build_political_lexicon.py` | léxico | TSE Dados Abertos | cache + sobrescreve saída | baixar dados de candidaturas do TSE e gerar CSV de nomes/nomes de urna de políticos do RJ |
+| `src/tools/political_lexicon_builder.py` | léxico | TSE Dados Abertos | biblioteca | lógica reutilizável para montar léxico político a partir de `consulta_cand` |
 | `src/tools/build_train_annotation_prompt_probe.py` | auditoria | audits + lote fonte | sobrescreve saída | montar um probe pequeno e diagnóstico para testar prompts de adjudicação voltados a treino |
 | `src/tools/manage_codex_adjudication_benchmark.py` | operação | JSONL de adjudicação | resumível | gerenciar benchmark chunkado de adjudicação assistida por Codex |
 | `src/tools/run_llm_adjudication.py` | operação | JSONL de adjudicação | resumível | chamar a Responses API para adjudicação literal ou `train_annotation`, inclusive em chunks |
@@ -174,6 +176,111 @@ Saída:
 - JSONL com os candidatos selecionados
 - CSV opcional com metadados compactos
 - HTML opcional usando o viewer multicamada de adjudicação
+
+## Léxicos
+
+### `src/tools/build_political_lexicon.py`
+
+Driver de linha de comando para construir um léxico CSV de pessoas políticas a partir dos dados abertos de candidaturas do TSE.
+
+Use quando:
+
+- você precisa gerar nomes completos e nomes de urna de vereadores, deputados estaduais ou deputados federais do RJ
+- quer alimentar regras ou filtros léxicos de `Person` com nomes públicos de políticos locais
+- precisa reconstruir o léxico de forma reprodutível, mantendo cache local dos ZIPs do TSE
+
+Fonte de dados:
+
+- TSE Dados Abertos, arquivos `consulta_cand_{ano}.zip`
+- URL base: `https://cdn.tse.jus.br/estatistica/sead/odsele/consulta_cand/consulta_cand_{ano}.zip`
+
+Pontos relevantes:
+
+- baixa os ZIPs do TSE sob `--cache-dir` quando ainda não existem
+- filtra por UF, cargo, ano eleitoral e município
+- por padrão filtra vereadores de municípios recorrentes da região metropolitana do RJ
+- com `--no-municipio-filter`, permite cargos estaduais como `DEPUTADO FEDERAL` e `DEPUTADO ESTADUAL`
+- gera aliases a partir de `NM_CANDIDATO`, `NM_URNA_CANDIDATO` e, opcionalmente, primeiro token derivado do nome de urna
+- grava no CSV a procedência do alias (`campo_fonte`) e uma confiança simples (`confianca`)
+
+Entradas principais:
+
+- `--municipios`
+- `--municipios-file`
+- `--no-municipio-filter`
+- `--anos`
+- `--uf`
+- `--cargo`
+- `--cache-dir`
+- `--elected-only`
+- `--no-derived-aliases`
+
+Saída:
+
+- CSV UTF-8 em `--output`
+- padrão: `data/processed/lexico_politicos_locais.csv`
+
+Exemplos:
+
+```bash
+python3 src/tools/build_political_lexicon.py \
+  --anos 2024,2020 \
+  --cargo VEREADOR \
+  --output data/processed/lexico_politicos_locais.csv
+```
+
+```bash
+python3 src/tools/build_political_lexicon.py \
+  --anos 2022,2018 \
+  --cargo "DEPUTADO FEDERAL,DEPUTADO ESTADUAL" \
+  --no-municipio-filter \
+  --output data/processed/lexico_deputados_rj.csv
+```
+
+### `src/tools/political_lexicon_builder.py`
+
+Módulo reutilizável usado por `src/tools/build_political_lexicon.py`.
+
+Use quando:
+
+- você quer incorporar a construção do léxico em outro script sem passar pela CLI
+- precisa testar ou reaproveitar funções de normalização, download, leitura de ZIP e geração de aliases
+- quer customizar filtros ou pós-processamento mantendo a mesma estrutura de saída
+
+Funções principais:
+
+- `build_political_person_lexicon(...)`
+- `write_lexicon_csv(...)`
+- `read_municipalities_file(...)`
+- `download_tse_zip(...)`
+- `iter_tse_candidate_rows(...)`
+- `generate_aliases(...)`
+
+Estrutura da saída:
+
+- cada linha é uma `LexiconRow`
+- campos principais:
+  - `municipio`
+  - `uf`
+  - `ano_eleicao`
+  - `cargo`
+  - `nome_completo`
+  - `nome_urna`
+  - `alias`
+  - `partido`
+  - `numero_candidato`
+  - `sq_candidato`
+  - `situacao_candidatura`
+  - `situacao_totalizacao`
+  - `fonte`
+  - `campo_fonte`
+  - `confianca`
+
+Observações metodológicas:
+
+- o módulo registra proveniência dos aliases, mas não faz inferência sobre fatos narrados no corpus
+- aliases derivados têm confiança mais fraca que nome completo e nome de urna multi-token
+- `--elected-only` deve ser usado só quando o objetivo for restringir o léxico a candidatos eleitos; para recall de NER, manter todos os candidatos costuma ser mais útil
 
 ## Calibração
 
