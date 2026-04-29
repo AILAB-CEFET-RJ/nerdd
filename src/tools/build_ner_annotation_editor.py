@@ -1,6 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Build an interactive HTML editor for manual review and correction of NER spans."""
+"""
+  Build an interactive HTML editor for manual review and correction of NER spans.
+
+  Usage example:
+    python src/tools/build_ner_annotation_editor.py \
+      --input data/dd_corpus_small_train.json \
+      --output artifacts/annotation_review/dd_corpus_small_train_editor.html \
+      --title "Review - dd_corpus_small_train" \
+      --labels Person,Location,Organization \
+      --banlist-output annotation_banlist_train.json  
+      
+"""
 
 import argparse
 import json

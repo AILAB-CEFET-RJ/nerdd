@@ -1,22 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""Render NER spans as standalone HTML snippets and reports.
+
+Enhancements over the original viewer:
+- Shows each entity's seed_origin in the tooltip and entity list.
+- Optionally highlights entities whose seed_origin matches a chosen value,
+  e.g. train_lexicon_projection.
+- Adds origin-level summary counts.
 """
-  Render NER spans as standalone HTML snippets and reports.
 
-How to use:
-python src/tools/render_ner_html_with_origin.py \
-  --input artifacts/benchmarks/metadata_multilabel_conservative_v5g_propagated/refit_pseudolabels_top20_manual_corrected_trainlex.jsonl \
-  --output artifacts/benchmarks/metadata_multilabel_conservative_v5g_propagated/refit_pseudolabels_top20_manual_corrected_trainlex.html \
-  --title "Pseudolabels top20 + train lexicon projection"
-
-Para mostrar também um rótulo compacto dentro do próprio span destacado:
-python src/tools/render_ner_html_with_origin.py \
-  --input artifacts/benchmarks/metadata_multilabel_conservative_v5g_propagated/refit_pseudolabels_top20_manual_corrected_trainlex.jsonl \
-  --output artifacts/benchmarks/metadata_multilabel_conservative_v5g_propagated/refit_pseudolabels_top20_manual_corrected_trainlex.html \
-  --title "Pseudolabels top20 + train lexicon projection" \
-  --show-origin-in-text
-
-"""
+from __future__ import annotations
 
 import argparse
 import json
@@ -49,6 +42,8 @@ DEFAULT_RECORD_SCORE_FIELDS = [
     "record_score",
     "score",
 ]
+DEFAULT_ORIGIN_FIELDS = ["seed_origin", "origin", "source", "rule", "matched_by"]
+DEFAULT_HIGHLIGHT_ORIGIN = "train_lexicon_projection"
 
 
 def parse_args():
@@ -92,6 +87,27 @@ def parse_args():
             "Comma-separated score fields to display per entity. "
             "Defaults to ner_score,score_context_boosted,score_calibrated,score,confidence,probability."
         ),
+    )
+    parser.add_argument(
+        "--origin-fields",
+        default=",".join(DEFAULT_ORIGIN_FIELDS),
+        help=(
+            "Comma-separated fields to treat as entity origin/rule metadata. "
+            "Defaults to seed_origin,origin,source,rule,matched_by."
+        ),
+    )
+    parser.add_argument(
+        "--highlight-origin",
+        default=DEFAULT_HIGHLIGHT_ORIGIN,
+        help=(
+            "Origin value to visually highlight, e.g. train_lexicon_projection. "
+            "Use an empty string to disable."
+        ),
+    )
+    parser.add_argument(
+        "--show-origin-in-text",
+        action="store_true",
+        help="Show a compact origin code inside the highlighted span tag. Tooltips/lists always include origin.",
     )
     return parser.parse_args()
 
@@ -235,10 +251,38 @@ def _pick_record_score(record, score_fields=None):
     return None, ""
 
 
-def render_text_with_spans(text, spans, label_colors, score_fields=None):
+def _pick_span_origin(span, origin_fields):
+    for key in origin_fields:
+        value = span.get(key)
+        if value is not None and str(value).strip():
+            return str(value).strip(), key
+    return "", ""
+
+
+def _origin_short(origin):
+    if not origin:
+        return ""
+    if origin == "train_lexicon_projection":
+        return "proj"
+    parts = origin.split("_")
+    if len(parts) >= 2:
+        return "_".join(parts[:2])
+    return origin[:12]
+
+
+def render_text_with_spans(
+    text,
+    spans,
+    label_colors,
+    score_fields=None,
+    origin_fields=None,
+    highlight_origin=DEFAULT_HIGHLIGHT_ORIGIN,
+    show_origin_in_text=False,
+):
     if not spans:
         return escape(text)
     score_fields = score_fields or []
+    origin_fields = origin_fields or []
 
     parts = []
     cursor = 0
@@ -254,13 +298,34 @@ def render_text_with_spans(text, spans, label_colors, score_fields=None):
         color = label_colors.get(label, "#444444")
         mention = escape(text[start:end])
         label_html = escape(label)
+        origin, origin_key = _pick_span_origin(span, origin_fields)
         score, score_key = _pick_span_score(span, score_fields)
+
         score_html = ""
         if score is not None:
             score_html = f"<span class='score' title='{escape(score_key)}'>{score:.3f}</span>"
+
+        origin_badge = ""
+        if show_origin_in_text and origin:
+            origin_badge = f"<span class='origin-mini'>{escape(_origin_short(origin))}</span>"
+
+        classes = ["entity"]
+        if highlight_origin and origin == highlight_origin:
+            classes.append("projected")
+        elif origin:
+            classes.append("has-origin")
+        class_attr = " ".join(classes)
+
+        title_bits = [f"label={label}", f"span={start}-{end}"]
+        if origin:
+            title_bits.append(f"{origin_key}={origin}")
+        if score is not None:
+            title_bits.append(f"{score_key}={score:.6f}")
+        title_html = escape(" | ".join(title_bits))
+
         parts.append(
-            f"<span class='entity' style='background:{color};' "
-            f"title='{label_html}'>{mention}<span class='tag'>{label_html}{score_html}</span></span>"
+            f"<span class='{class_attr}' style='background:{color};' title='{title_html}'>"
+            f"{mention}<span class='tag'>{label_html}{score_html}{origin_badge}</span></span>"
         )
         cursor = end
 
@@ -269,22 +334,34 @@ def render_text_with_spans(text, spans, label_colors, score_fields=None):
     return "".join(parts)
 
 
-def render_entity_list(text, spans, score_fields=None):
+def render_entity_list(text, spans, score_fields=None, origin_fields=None, highlight_origin=DEFAULT_HIGHLIGHT_ORIGIN):
     if not spans:
         return "<div class='entity-list muted'>No valid entities.</div>"
     score_fields = score_fields or []
+    origin_fields = origin_fields or []
 
     items = []
     for span in spans:
         mention = escape(text[span["start"]:span["end"]])
         label = escape(span["label"])
+        origin, origin_key = _pick_span_origin(span, origin_fields)
+        origin_suffix = ""
+        li_class = ""
+        if origin:
+            origin_label = escape(origin)
+            origin_suffix = f" <span class='entity-origin' title='{escape(origin_key)}'>origin={origin_label}</span>"
+            if highlight_origin and origin == highlight_origin:
+                li_class = " class='projected-item'"
         score, score_key = _pick_span_score(span, score_fields)
         score_suffix = f" <span class='entity-score' title='{escape(score_key)}'>[{score:.3f}]</span>" if score is not None else ""
-        items.append(f"<li><code>{mention}</code> <span class='entity-kind'>({label})</span>{score_suffix}</li>")
+        items.append(
+            f"<li{li_class}><code>{mention}</code> "
+            f"<span class='entity-kind'>({label})</span>{score_suffix}{origin_suffix}</li>"
+        )
     return f"<div class='entity-list'><b>Entities</b><ul>{''.join(items)}</ul></div>"
 
 
-def build_html(title, rows_html, legend_html, summary_html):
+def build_html(title, rows_html, legend_html, summary_html, origin_summary_html):
     tpl = Template(
         """<!doctype html>
 <html lang="en">
@@ -295,10 +372,11 @@ def build_html(title, rows_html, legend_html, summary_html):
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 24px; color: #1f2937; }
     h1 { margin-bottom: 8px; }
+    h2 { margin-top: 22px; font-size: 18px; }
     .muted { color: #6b7280; margin-bottom: 18px; }
-    .summary, .legend { border-collapse: collapse; margin-bottom: 18px; }
-    .summary td, .legend td, .legend th { border: 1px solid #d1d5db; padding: 6px 10px; }
-    .legend th { background: #f3f4f6; text-align: left; }
+    .summary, .legend, .origin-summary { border-collapse: collapse; margin-bottom: 18px; }
+    .summary td, .legend td, .legend th, .origin-summary td, .origin-summary th { border: 1px solid #d1d5db; padding: 6px 10px; }
+    .legend th, .origin-summary th { background: #f3f4f6; text-align: left; }
     .report { border: 1px solid #d1d5db; border-radius: 8px; margin: 0 0 12px 0; padding: 10px 12px; }
     .report h3 { margin: 0 0 8px 0; font-size: 14px; color: #111827; }
     .report .meta { font-size: 12px; color: #6b7280; margin-bottom: 8px; }
@@ -308,17 +386,22 @@ def build_html(title, rows_html, legend_html, summary_html):
     .entity-list li { margin: 2px 0; }
     .entity-kind { color: #6b7280; }
     .entity-score { color: #6b7280; font-size: 12px; }
+    .entity-origin { color: #374151; background: #f3f4f6; border-radius: 4px; padding: 1px 4px; font-size: 11px; }
     .entity { color: #fff; border-radius: 4px; padding: 0 4px; margin: 0 1px; display: inline-block; }
-    .entity .tag { font-size: 10px; margin-left: 6px; opacity: 0.9; }
+    .entity .tag { font-size: 10px; margin-left: 6px; opacity: 0.95; }
     .entity .score { font-size: 9px; vertical-align: super; margin-left: 4px; opacity: 0.95; }
+    .entity .origin-mini { background: rgba(255,255,255,.25); border: 1px solid rgba(255,255,255,.35); border-radius: 3px; padding: 0 3px; margin-left: 4px; }
+    .entity.projected { outline: 3px solid #facc15; box-shadow: 0 0 0 1px rgba(0,0,0,.15) inset; }
+    .projected-item { background: #fef9c3; }
     .swatch { width: 28px; height: 14px; border-radius: 3px; display: inline-block; border: 1px solid #11111133; }
   </style>
 </head>
 <body>
   <h1>$title</h1>
-  <div class="muted">NER annotation viewer (HTML export)</div>
+  <div class="muted">NER annotation viewer (HTML export). Entity tooltips and lists include origin metadata when available.</div>
   $summary_html
   $legend_html
+  $origin_summary_html
   $rows_html
 </body>
 </html>"""
@@ -327,30 +410,55 @@ def build_html(title, rows_html, legend_html, summary_html):
         title=escape(title),
         summary_html=summary_html,
         legend_html=legend_html,
+        origin_summary_html=origin_summary_html,
         rows_html=rows_html,
     )
 
 
-def render_html(rows, output_path, title, max_reports, span_field="auto", score_fields=None):
+def render_html(
+    rows,
+    output_path,
+    title,
+    max_reports,
+    span_field="auto",
+    score_fields=None,
+    origin_fields=None,
+    highlight_origin=DEFAULT_HIGHLIGHT_ORIGIN,
+    show_origin_in_text=False,
+):
     if max_reports > 0:
         rows = rows[:max_reports]
     score_fields = score_fields or []
+    origin_fields = origin_fields or []
 
     label_colors = build_label_colors(rows, span_field=span_field)
     label_counts = Counter()
+    origin_counts = Counter()
+    label_origin_counts = Counter()
+
     for row in rows:
+        text = get_text(row)
         for raw_span in get_spans(row, span_field=span_field):
             span = normalize_span(raw_span)
-            if span:
-                label_counts[span["label"]] += 1
+            if not span:
+                continue
+            if span["start"] < 0 or span["end"] > len(text):
+                continue
+            label = span["label"]
+            origin, _ = _pick_span_origin(span, origin_fields)
+            origin = origin or "(missing)"
+            label_counts[label] += 1
+            origin_counts[origin] += 1
+            label_origin_counts[(label, origin)] += 1
 
     summary_html = (
         "<table class='summary'>"
         "<tr><td><b>Records</b></td><td>{}</td></tr>"
         "<tr><td><b>Total spans</b></td><td>{}</td></tr>"
         "<tr><td><b>Distinct labels</b></td><td>{}</td></tr>"
+        "<tr><td><b>Distinct origins</b></td><td>{}</td></tr>"
         "</table>"
-    ).format(len(rows), sum(label_counts.values()), len(label_counts))
+    ).format(len(rows), sum(label_counts.values()), len(label_counts), len(origin_counts))
 
     legend_rows = []
     for label in sorted(label_colors):
@@ -370,12 +478,57 @@ def render_html(rows, output_path, title, max_reports, span_field="auto", score_
         else ""
     )
 
+    origin_rows = []
+    for origin, count in origin_counts.most_common():
+        label_bits = []
+        for label in sorted(label_counts):
+            n = label_origin_counts.get((label, origin), 0)
+            if n:
+                label_bits.append(f"{escape(label)}={n}")
+        highlight_note = " <b>highlighted</b>" if highlight_origin and origin == highlight_origin else ""
+        origin_rows.append(
+            "<tr>"
+            f"<td>{escape(origin)}{highlight_note}</td>"
+            f"<td>{count}</td>"
+            f"<td>{', '.join(label_bits)}</td>"
+            "</tr>"
+        )
+    origin_summary_html = (
+        "<h2>Origin summary</h2>"
+        "<table class='origin-summary'><tr><th>Origin</th><th>Count</th><th>By label</th></tr>{}</table>".format(
+            "".join(origin_rows)
+        )
+        if origin_rows
+        else ""
+    )
+
     rendered_rows = []
     for idx, row in enumerate(rows, start=1):
         text = get_text(row)
         spans = sanitize_spans(text, get_spans(row, span_field=span_field))
-        rendered_text = render_text_with_spans(text, spans, label_colors, score_fields=score_fields)
-        entity_list_html = render_entity_list(text, spans, score_fields=score_fields)
+        projected_count = 0
+        if highlight_origin:
+            for span in spans:
+                origin, _ = _pick_span_origin(span, origin_fields)
+                if origin == highlight_origin:
+                    projected_count += 1
+
+        rendered_text = render_text_with_spans(
+            text,
+            spans,
+            label_colors,
+            score_fields=score_fields,
+            origin_fields=origin_fields,
+            highlight_origin=highlight_origin,
+            show_origin_in_text=show_origin_in_text,
+        )
+        entity_list_html = render_entity_list(
+            text,
+            spans,
+            score_fields=score_fields,
+            origin_fields=origin_fields,
+            highlight_origin=highlight_origin,
+        )
         source_id = escape(str(row.get("source_id", ""))).strip()
         decision = escape(str(row.get("decision", ""))).strip()
         record_score, record_score_key = _pick_record_score(row)
@@ -385,6 +538,8 @@ def render_html(rows, output_path, title, max_reports, span_field="auto", score_
         if decision:
             header_bits.append(f"decision={decision}")
         meta_bits = [f"entities={len(spans)}"]
+        if highlight_origin:
+            meta_bits.append(f"{escape(highlight_origin)}={projected_count}")
         if record_score is not None:
             meta_bits.append(f"{escape(record_score_key)}={record_score:.6f}")
         rendered_rows.append(
@@ -398,7 +553,10 @@ def render_html(rows, output_path, title, max_reports, span_field="auto", score_
 
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(build_html(title, "".join(rendered_rows), legend_html, summary_html), encoding="utf-8")
+    output.write_text(
+        build_html(title, "".join(rendered_rows), legend_html, summary_html, origin_summary_html),
+        encoding="utf-8",
+    )
 
 
 def main():
@@ -411,6 +569,9 @@ def main():
         args.max_reports,
         span_field=args.span_field,
         score_fields=_parse_csv(args.score_fields),
+        origin_fields=_parse_csv(args.origin_fields),
+        highlight_origin=args.highlight_origin.strip(),
+        show_origin_in_text=args.show_origin_in_text,
     )
     print(f"[ok] HTML saved to: {args.output}")
 
