@@ -8,6 +8,7 @@ from tools.build_annotation_agreement_sample import (
     build_editor_records,
     filter_candidates,
     sample_candidates,
+    sample_candidates_stratified,
 )
 from tools.build_ner_annotation_editor_global import normalize_records
 
@@ -49,6 +50,51 @@ class BuildAnnotationAgreementSampleTests(unittest.TestCase):
 
         self.assertEqual(records[0]["spans"], [{"start": 0, "end": 9, "label": "Location"}])
         self.assertEqual(records[0]["_agreement_sample"]["source_ref"], "a")
+
+    def test_balanced_stratified_sampling_allocates_across_assuntos(self):
+        rows = [
+            {"relato": "a1", "assunto": "Tráfico"},
+            {"relato": "a2", "assunto": "Tráfico"},
+            {"relato": "a3", "assunto": "Tráfico"},
+            {"relato": "b1", "assunto": "Roubos"},
+            {"relato": "b2", "assunto": "Roubos"},
+            {"relato": "c1", "assunto": "Armas"},
+        ]
+        candidates = filter_candidates(rows, text_field="auto", min_chars=1, max_chars=0)
+
+        sampled, allocations, counts = sample_candidates_stratified(
+            candidates,
+            sample_size=5,
+            seed=9,
+            preserve_input_order=True,
+            stratify_field="assunto",
+            strategy="balanced",
+        )
+
+        self.assertEqual(len(sampled), 5)
+        self.assertEqual(counts, {"Armas": 1, "Roubos": 2, "Tráfico": 3})
+        self.assertEqual(allocations, {"Armas": 1, "Roubos": 2, "Tráfico": 2})
+
+    def test_proportional_stratified_sampling_preserves_dominant_stratum(self):
+        rows = [
+            {"relato": "a1", "assunto": "Tráfico"},
+            {"relato": "a2", "assunto": "Tráfico"},
+            {"relato": "a3", "assunto": "Tráfico"},
+            {"relato": "a4", "assunto": "Tráfico"},
+            {"relato": "b1", "assunto": "Roubos"},
+        ]
+        candidates = filter_candidates(rows, text_field="auto", min_chars=1, max_chars=0)
+
+        _, allocations, _ = sample_candidates_stratified(
+            candidates,
+            sample_size=5,
+            seed=9,
+            preserve_input_order=True,
+            stratify_field="assunto",
+            strategy="proportional",
+        )
+
+        self.assertEqual(allocations, {"Roubos": 1, "Tráfico": 4})
 
 
 if __name__ == "__main__":

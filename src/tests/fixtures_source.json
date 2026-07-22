@@ -1,0 +1,28 @@
+[
+  {
+    "assunto": "Roubos em Geral",
+    "relato": "Denúncia na Rua São João, próximo ao mercado.",
+    "logradouroLocal": "Rua São João",
+    "bairroLocal": "Centro",
+    "cidadeLocal": "Niterói",
+    "pontodeReferenciaLocal": "mercado",
+    "_sanitization": {
+      "status": "kept",
+      "reasons": [],
+      "row_index_1based": 10
+    }
+  },
+  {
+    "assunto": "Roubos em Geral",
+    "relato": "Denúncia na Rua São João, próximo ao mercado.",
+    "logradouroLocal": "Rua São João",
+    "bairroLocal": "Centro",
+    "cidadeLocal": "Niterói",
+    "pontodeReferenciaLocal": "mercado",
+    "_sanitization": {
+      "status": "kept",
+      "reasons": [],
+      "row_index_1based": 11
+    }
+  }
+]

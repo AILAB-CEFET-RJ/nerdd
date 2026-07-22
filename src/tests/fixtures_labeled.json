@@ -1,0 +1,12 @@
+[
+  {
+    "text": "Denuncia na Rua Sao Joao , proximo ao mercado .",
+    "spans": [
+      {
+        "start": 12,
+        "end": 25,
+        "label": "Location"
+      }
+    ]
+  }
+]

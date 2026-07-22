@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+from collections import defaultdict
 from pathlib import Path
 from random import Random
 from typing import Any
@@ -139,6 +140,121 @@ def sample_candidates(
     return sampled
 
 
+def get_stratum_value(row: dict[str, Any], stratify_field: str) -> str:
+    value = row.get(stratify_field)
+    if value in (None, ""):
+        return "<missing>"
+    text = str(value).strip()
+    return text if text else "<missing>"
+
+
+def allocate_proportional(
+    strata: dict[str, list[tuple[int, dict[str, Any], str]]],
+    *,
+    sample_size: int,
+) -> dict[str, int]:
+    total = sum(len(items) for items in strata.values())
+    if sample_size > total:
+        raise ValueError(f"--sample-size ({sample_size}) is larger than the candidate pool ({total}).")
+
+    raw_allocations = {
+        key: (sample_size * len(items) / total)
+        for key, items in strata.items()
+    }
+    allocations = {
+        key: min(len(strata[key]), int(value))
+        for key, value in raw_allocations.items()
+    }
+    remaining = sample_size - sum(allocations.values())
+
+    remainders = sorted(
+        raw_allocations,
+        key=lambda key: (raw_allocations[key] - int(raw_allocations[key]), len(strata[key]), key),
+        reverse=True,
+    )
+    while remaining > 0:
+        changed = False
+        for key in remainders:
+            if allocations[key] >= len(strata[key]):
+                continue
+            allocations[key] += 1
+            remaining -= 1
+            changed = True
+            if remaining == 0:
+                break
+        if not changed:
+            raise ValueError("Could not allocate all requested samples across strata.")
+    return allocations
+
+
+def allocate_balanced(
+    strata: dict[str, list[tuple[int, dict[str, Any], str]]],
+    *,
+    sample_size: int,
+) -> dict[str, int]:
+    total = sum(len(items) for items in strata.values())
+    if sample_size > total:
+        raise ValueError(f"--sample-size ({sample_size}) is larger than the candidate pool ({total}).")
+
+    keys = sorted(strata)
+    allocations = {key: 0 for key in keys}
+    remaining = sample_size
+
+    while remaining > 0:
+        changed = False
+        for key in keys:
+            if allocations[key] >= len(strata[key]):
+                continue
+            allocations[key] += 1
+            remaining -= 1
+            changed = True
+            if remaining == 0:
+                break
+        if not changed:
+            raise ValueError("Could not allocate all requested samples across strata.")
+    return allocations
+
+
+def sample_candidates_stratified(
+    candidates: list[tuple[int, dict[str, Any], str]],
+    *,
+    sample_size: int,
+    seed: int,
+    preserve_input_order: bool,
+    stratify_field: str,
+    strategy: str,
+) -> tuple[list[tuple[int, dict[str, Any], str]], dict[str, int], dict[str, int]]:
+    if sample_size < 1:
+        raise ValueError("--sample-size must be >= 1")
+
+    strata: dict[str, list[tuple[int, dict[str, Any], str]]] = defaultdict(list)
+    for candidate in candidates:
+        _, row, _ = candidate
+        strata[get_stratum_value(row, stratify_field)].append(candidate)
+
+    if not strata:
+        raise ValueError("No candidates available for stratified sampling.")
+
+    if strategy == "proportional":
+        allocations = allocate_proportional(strata, sample_size=sample_size)
+    elif strategy == "balanced":
+        allocations = allocate_balanced(strata, sample_size=sample_size)
+    else:
+        raise ValueError(f"Unsupported stratified sampling strategy: {strategy}")
+
+    rng = Random(seed)
+    sampled: list[tuple[int, dict[str, Any], str]] = []
+    for key in sorted(strata):
+        count = allocations[key]
+        if count <= 0:
+            continue
+        sampled.extend(rng.sample(strata[key], count))
+
+    if preserve_input_order:
+        sampled = sorted(sampled, key=lambda item: item[0])
+    return sampled, dict(allocations), {key: len(items) for key, items in strata.items()}
+
+
 def build_editor_records(
     sampled: list[tuple[int, dict[str, Any], str]],
     *,
@@ -198,6 +314,20 @@ def parse_args() -> argparse.Namespace:
         help="Write records in sampled order instead of preserving input order.",
     )
     parser.add_argument(
+        "--stratify-field",
+        default="",
+        help="Optional field used for stratified sampling, for example: assunto.",
+    )
+    parser.add_argument(
+        "--stratify-strategy",
+        choices=["proportional", "balanced"],
+        default="balanced",
+        help=(
+            "Stratified allocation strategy. 'balanced' gives similar counts per stratum; "
+            "'proportional' preserves the corpus distribution."
+        ),
+    )
+    parser.add_argument(
         "--keep-existing-spans",
         action="store_true",
         help="Copy existing spans/entities/ner from input instead of starting with empty spans.",
@@ -215,12 +345,24 @@ def main() -> None:
         min_chars=args.min_chars,
         max_chars=args.max_chars,
     )
-    sampled = sample_candidates(
-        candidates,
-        sample_size=args.sample_size,
-        seed=args.seed,
-        preserve_input_order=not args.shuffle_output,
-    )
+    strata_counts = {}
+    strata_allocations = {}
+    if args.stratify_field:
+        sampled, strata_allocations, strata_counts = sample_candidates_stratified(
+            candidates,
+            sample_size=args.sample_size,
+            seed=args.seed,
+            preserve_input_order=not args.shuffle_output,
+            stratify_field=args.stratify_field,
+            strategy=args.stratify_strategy,
+        )
+    else:
+        sampled = sample_candidates(
+            candidates,
+            sample_size=args.sample_size,
+            seed=args.seed,
+            preserve_input_order=not args.shuffle_output,
+        )
     records = build_editor_records(
         sampled,
         input_path=args.input,
@@ -241,6 +383,10 @@ def main() -> None:
         "max_chars": args.max_chars,
         "preserve_input_order": not args.shuffle_output,
         "keep_existing_spans": args.keep_existing_spans,
+        "stratify_field": args.stratify_field,
+        "stratify_strategy": args.stratify_strategy if args.stratify_field else "",
+        "strata_candidate_counts": dict(sorted(strata_counts.items())),
+        "strata_sample_allocations": dict(sorted(strata_allocations.items())),
         "sampled_source_indices_0based": [source_index for source_index, _, _ in sampled],
     }
     if args.summary_json:
@@ -250,6 +396,9 @@ def main() -> None:
     print(f"Candidate rows: {len(candidates)}")
     print(f"Sampled rows: {len(records)}")
     print(f"Output JSON: {args.output}")
+    if args.stratify_field:
+        print(f"Stratified by: {args.stratify_field} ({args.stratify_strategy})")
+        print(f"Strata allocations: {dict(sorted(strata_allocations.items()))}")
     if args.summary_json:
         print(f"Summary JSON: {args.summary_json}")
 
