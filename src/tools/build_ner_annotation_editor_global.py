@@ -226,6 +226,8 @@ def build_html(
     initial_banlist: dict[str, list[str]],
     banlist_output_name: str,
     rules_output_name: str,
+    save_enabled: bool = False,
+    source_display_name: str = "",
 ) -> str:
     template = r"""<!doctype html>
 <html lang="en">
@@ -307,7 +309,9 @@ def build_html(
     <input id="gotoInput" type="number" min="1" step="1" style="width:88px;" />
     <button id="gotoBtn" type="button">Go</button>
     <button id="exportBtn" type="button">Export corrected JSON</button>
+    __SAVE_BUTTON_HTML__
   </div>
+  __SAVE_NOTICE_HTML__
 
   <div class="layout">
     <section class="card">
@@ -369,6 +373,7 @@ def build_html(
   const initialBanlist = __INITIAL_BANLIST_JSON__;
   const banlistDownloadName = __BANLIST_DOWNLOAD_NAME__;
   const rulesDownloadName = __RULES_DOWNLOAD_NAME__;
+  const saveEnabled = __SAVE_ENABLED_JSON__;
 
   const state = {
     records: initialRecords,
@@ -616,7 +621,11 @@ def build_html(
     if (state.selectedSpanIndex !== null && state.selectedSpanIndex >= record.spans.length) state.selectedSpanIndex = null;
     $recordTitle.textContent = `Record #${state.current + 1}`;
     const source = record.source_id || record.sample_id || record._editor_row_index;
-    $recordMeta.textContent = `entities=${record.spans.length}` + (source !== undefined && source !== "" ? ` | id=${source}` : "");
+    const metaParts = [];
+    if (record.assunto !== undefined && String(record.assunto).trim() !== "") metaParts.push(`assunto=${record.assunto}`);
+    metaParts.push(`entities=${record.spans.length}`);
+    if (source !== undefined && source !== "") metaParts.push(`id=${source}`);
+    $recordMeta.textContent = metaParts.join(" | ");
     $counter.textContent = `${state.current + 1} / ${total}`;
     $gotoInput.value = String(state.current + 1);
     renderText(); renderSelected(); renderBanlist(); renderChangeRules();
@@ -748,6 +757,26 @@ def build_html(
   }
 
   function exportJson() { downloadJson("annotations_corrected.json", state.records); }
+  async function saveToDataset() {
+    if (!saveEnabled) return;
+    const ok = window.confirm("Save current annotations to the dataset file on disk?");
+    if (!ok) return;
+    setStatus("Saving dataset...", "");
+    try {
+      const response = await fetch("/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ records: state.records }),
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || `HTTP ${response.status}`);
+      }
+      setStatus(`Saved ${payload.records_saved} records. Backup: ${payload.backup_path}`, "ok");
+    } catch (err) {
+      setStatus(`Save failed: ${err.message}`, "error");
+    }
+  }
   function exportBanlist() {
     const obj = {};
     const labels = Object.keys(state.banlist || {}).sort();
@@ -770,6 +799,7 @@ def build_html(
   document.getElementById("nextBtn").addEventListener("click", nextRecord);
   document.getElementById("gotoBtn").addEventListener("click", goToRecord);
   document.getElementById("exportBtn").addEventListener("click", exportJson);
+  if (saveEnabled) document.getElementById("saveBtn").addEventListener("click", saveToDataset);
   document.getElementById("exportBanlistBtn").addEventListener("click", exportBanlist);
   document.getElementById("exportRulesBtn").addEventListener("click", exportRules);
   $gotoInput.addEventListener("keydown", (evt) => { if (evt.key === "Enter") goToRecord(); });
@@ -800,12 +830,26 @@ def build_html(
 </html>"""
     return (
         template.replace("__TITLE__", escape(title))
+        .replace(
+            "__SAVE_BUTTON_HTML__",
+            '<button id="saveBtn" type="button" class="info">Save to dataset</button>' if save_enabled else "",
+        )
+        .replace(
+            "__SAVE_NOTICE_HTML__",
+            (
+                f'<p class="muted">Direct save enabled for <code>{escape(source_display_name)}</code>. '
+                "Each save creates a timestamped backup before replacing the dataset.</p>"
+            )
+            if save_enabled
+            else "",
+        )
         .replace("__RECORDS_JSON__", json.dumps(records, ensure_ascii=False))
         .replace("__LABELS_JSON__", json.dumps(labels, ensure_ascii=False))
         .replace("__LABEL_COLORS_JSON__", json.dumps(label_colors, ensure_ascii=False))
         .replace("__INITIAL_BANLIST_JSON__", json.dumps(initial_banlist, ensure_ascii=False))
         .replace("__BANLIST_DOWNLOAD_NAME__", json.dumps(Path(banlist_output_name).name, ensure_ascii=False))
         .replace("__RULES_DOWNLOAD_NAME__", json.dumps(Path(rules_output_name).name, ensure_ascii=False))
+        .replace("__SAVE_ENABLED_JSON__", json.dumps(save_enabled))
     )
 
 
