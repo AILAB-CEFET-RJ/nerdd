@@ -41,8 +41,6 @@ Exemplos:
 * `Petrópolis` em “sentido Petrópolis” → `Location`;
 * `Petrópolis` em “a linha Petrópolis estava atrasada” → não anotar.
 
-Isso tornaria mais concreta a afirmação já existente de que “a classificação depende do referente contextual”.
-
 Assim, uma mesma forma textual pode receber classes diferentes em contextos distintos.
 
 ---
@@ -87,7 +85,10 @@ Designadores típicos:
 * praça;
 * ponte;
 * estação;
-* condomínio.
+* condomínio;
+* cidade;
+* município;
+* estado.
 
 Exemplos:
 
@@ -125,6 +126,28 @@ Expressões meramente introdutórias podem ficar fora do span quando não integr
 * “a organização chamada `Liga da Justiça`”
 
 A decisão deve considerar se o designador compõe a menção nominal ou apenas introduz o nome.
+
+> Quando palavras como `cidade`, `município` e `estado` integrarem a expressão nominal que identifica o lugar, elas devem fazer parte do span, juntamente com as preposições internas:
+>
+> * `cidade de São Gonçalo` → `Location`
+> * `cidade São Gonçalo` → `Location`
+> * `município de Queimados` → `Location`
+> * `município Queimados` → `Location`
+> * `estado do Rio de Janeiro` → `Location`
+>
+> Não incluir o designador quando ele funcionar apenas como rótulo externo, título de campo ou indicação metalinguística:
+>
+> * “Cidade: `PARATY`” → anotar apenas `PARATY`
+> * “Município: `Queimados`” → anotar apenas `Queimados`
+
+Essa distinção é importante porque resolve uma aparente tensão com o exemplo da Regra 8:
+
+> Cidade: PARATY RJ
+
+Nesse caso, `Cidade:` é um **rótulo de campo**, e não parte da denominação. Portanto, continuam corretos os spans separados:
+
+* `PARATY` → `Location`
+* `RJ` → `Location`
 
 ---
 
@@ -905,3 +928,46 @@ Para cada candidato a entidade, o anotador deve responder, nesta ordem:
 
 8. **A decisão depende de inferência externa?**
    Não acrescentar informação ausente; encaminhar casos realmente ambíguos para revisão.
+
+
+
+
+
+Atualmente, a lista da Regra 4 não menciona `cidade`, `município` e `estado`. Acrescentaria esses três designadores e, após os exemplos existentes, incluiria:
+
+> Quando palavras como `cidade`, `município` e `estado` integrarem a expressão nominal que identifica o lugar, elas devem fazer parte do span, juntamente com as preposições internas:
+>
+> * `cidade de São Gonçalo` → `Location`
+> * `cidade São Gonçalo` → `Location`
+> * `município de Queimados` → `Location`
+> * `município Queimados` → `Location`
+> * `estado do Rio de Janeiro` → `Location`
+>
+> Não incluir o designador quando ele funcionar apenas como rótulo externo, título de campo ou indicação metalinguística:
+>
+> * “Cidade: `PARATY`” → anotar apenas `PARATY`
+> * “Município: `Queimados`” → anotar apenas `Queimados`
+
+Essa distinção é importante porque resolve uma aparente tensão com o exemplo da Regra 8:
+
+> Cidade: PARATY RJ
+
+Nesse caso, `Cidade:` é um **rótulo de campo**, e não parte da denominação. Portanto, continuam corretos os spans separados:
+
+* `PARATY` → `Location`
+* `RJ` → `Location`
+
+Também acrescentaria ao final da Regra 8:
+
+> A inclusão de um designador geográfico não autoriza reunir unidades geográficas distintas. Em “município de Queimados/RJ”, anotar:
+>
+> * `município de Queimados` → `Location`
+> * `RJ` → `Location`
+
+Assim, a regra operacional fica:
+
+* designador integrado à expressão → incluir: `município de Queimados`;
+* designador usado como rótulo → excluir: `Município: Queimados`;
+* unidade hierárquica adicional → span separado: `município de Queimados` + `RJ`.
+
+Eu faria ainda uma pequena limpeza editorial na Regra 2: removeria a frase **“Isso tornaria mais concreta a afirmação já existente...”**, pois ela parece um comentário de revisão incorporado acidentalmente ao guia.

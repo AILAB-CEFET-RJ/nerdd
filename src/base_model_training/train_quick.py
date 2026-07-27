@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import subprocess
 from random import Random
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -37,6 +38,7 @@ from pseudolabelling.evaluate_refit_pipeline import (
     load_gt_jsonl_strict,
 )
 from tools.inspect_dense_tips import read_json_or_jsonl
+from experiment_configs import load_dataclass_config
 
 LOGGER = logging.getLogger(__name__)
 
@@ -74,6 +76,8 @@ class QuickTrainConfig:
 def parse_args():
     defaults = QuickTrainConfig(thresholds=[0.6])
     parser = argparse.ArgumentParser(description="Quick single-split GLiNER training")
+    parser.add_argument("--config-json", default="", help="Optional JSON experiment config file.")
+    parser.add_argument("--experiment-id", default="", help="Experiment id to select from --config-json.")
     parser.add_argument("--train-path", default=defaults.train_path)
     parser.add_argument("--test-path", default=defaults.test_path)
     parser.add_argument("--pseudolabel-path", default=defaults.pseudolabel_path)
@@ -112,6 +116,20 @@ def parse_args():
 
 
 def build_config(args):
+    config, _metadata = build_config_with_metadata(args)
+    return config
+
+
+def build_config_with_metadata(args):
+    if args.config_json:
+        config, _metadata = load_dataclass_config(
+            args.config_json,
+            config_class=QuickTrainConfig,
+            experiment_id=args.experiment_id,
+            required_entrypoint="base_model_training.train_quick",
+            defaults=QuickTrainConfig(thresholds=[0.6]),
+        )
+        return config, _metadata
     return QuickTrainConfig(
         train_path=args.train_path,
         test_path=args.test_path,
@@ -139,7 +157,20 @@ def build_config(args):
         early_stopping_threshold=args.early_stopping_threshold,
         thresholds=parse_thresholds(args.thresholds),
         log_level=args.log_level,
-    )
+    ), {}
+
+
+def _git_commit() -> str:
+    try:
+        completed = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except Exception:
+        return ""
+    return completed.stdout.strip()
 
 
 def _normalize_spans_row(row):
@@ -265,7 +296,13 @@ def _write_report(report_dir: Path, metrics, predictions, threshold):
     save_jsonl(str(report_dir / "predictions.jsonl"), predictions)
 
 
-def run_quick_experiment(config: QuickTrainConfig, script_path: str):
+def run_quick_experiment(
+    config: QuickTrainConfig,
+    script_path: str,
+    *,
+    experiment_metadata: dict | None = None,
+    config_json: str = "",
+):
     set_seed(config.seed)
     started_at = datetime.now(timezone.utc)
     timer = perf_counter()
@@ -273,6 +310,18 @@ def run_quick_experiment(config: QuickTrainConfig, script_path: str):
     script_dir = Path(script_path).resolve().parent
     output_dir = resolve_path(script_dir, config.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    effective_config = {
+        "entrypoint": "base_model_training.train_quick",
+        "experiment_metadata": experiment_metadata or {},
+        "config_json": config_json,
+        "config": asdict(config),
+        "git_commit": _git_commit(),
+        "created_at_utc": started_at.isoformat(),
+    }
+    (output_dir / "effective_config.json").write_text(
+        json.dumps(effective_config, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
 
     train_path = resolve_path(script_dir, config.train_path)
     test_path = resolve_path(script_dir, config.test_path)
@@ -405,7 +454,7 @@ def run_quick_experiment(config: QuickTrainConfig, script_path: str):
         seen_entity_keys=_build_seen_entity_keys(train_subset),
     )
 
-    model_dir = output_dir / "best_quick_gliner_model"
+    model_dir = output_dir / "best_model"
     model.save_pretrained(model_dir)
     _write_report(output_dir / "eval_test", test_metrics, test_predictions, best_threshold)
 
@@ -451,9 +500,14 @@ def run_quick_experiment(config: QuickTrainConfig, script_path: str):
 
 def main():
     args = parse_args()
-    logging.basicConfig(level=getattr(logging, args.log_level), format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
-    config = build_config(args)
-    run_quick_experiment(config, script_path=__file__)
+    config, metadata = build_config_with_metadata(args)
+    logging.basicConfig(level=getattr(logging, config.log_level), format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
+    run_quick_experiment(
+        config,
+        script_path=__file__,
+        experiment_metadata=metadata,
+        config_json=args.config_json,
+    )
 
 
 if __name__ == "__main__":

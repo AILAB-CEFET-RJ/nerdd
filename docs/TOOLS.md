@@ -811,6 +811,54 @@ Observações metodológicas:
 - o split de validação permanece supervisionado-only
 - a deduplicação por `text`, quando habilitada, preserva a linha supervisionada
 - o default de `--batch-size` em `train_quick.py` é `16`
+- aceita configuração por JSON com `--config-json` e `--experiment-id`
+- salva o modelo treinado em `best_model/` dentro do diretório de saída
+
+Exemplo:
+
+```bash
+cd src
+python3 -m base_model_training.train_quick \
+  --config-json ../configs/experiments/base_model_quick.json \
+  --experiment-id quick_supervised_only_regex_seed42
+```
+
+### `src/tools/run_experiment_config.py`
+
+Executa experimentos declarados em arquivos JSON.
+
+Use quando:
+
+- quer versionar configurações de experimento fora da linha de comando
+- quer rodar um experimento específico de uma lista
+- quer rodar todos os experimentos declarados em um arquivo
+- quer expandir um experimento em múltiplas seeds usando `n_repeats` e `seed_start`
+
+Exemplos:
+
+```bash
+cd src
+python3 tools/run_experiment_config.py \
+  --config-json ../configs/experiments/base_model_quick.json \
+  --experiment-id quick_supervised_only_regex_seed42
+```
+
+```bash
+cd src
+python3 tools/run_experiment_config.py \
+  --config-json ../configs/experiments/base_model_quick.json \
+  --all
+```
+
+Quando `n_repeats > 1`, o runner cria subdiretórios por repetição, por exemplo:
+
+```text
+artifacts/base_model_training/quick_supervised_only_regex/
+  repeat_01_seed53/
+    best_model/
+  repeat_02_seed54/
+    best_model/
+```
 
 ### `src/tools/reshuffle_train_test_split.py`
 

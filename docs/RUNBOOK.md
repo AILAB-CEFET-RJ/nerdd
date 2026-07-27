@@ -604,6 +604,34 @@ python3 -m base_model_training.train_quick \
   --log-level INFO
 ```
 
+The same quick-training run can be configured from JSON:
+
+```bash
+cd src
+python3 -m base_model_training.train_quick \
+  --config-json ../configs/experiments/base_model_quick.json \
+  --experiment-id quick_supervised_only_regex_seed42
+```
+
+To run one or more JSON-declared experiments through the generic runner:
+
+```bash
+cd src
+python3 tools/run_experiment_config.py \
+  --config-json ../configs/experiments/base_model_quick.json \
+  --experiment-id quick_supervised_only_regex_seed42
+```
+
+```bash
+cd src
+python3 tools/run_experiment_config.py \
+  --config-json ../configs/experiments/base_model_quick.json \
+  --all
+```
+
+Each quick-training output directory includes `effective_config.json` with the applied config, experiment metadata, timestamp, and current git commit when available.
+If an experiment config declares `n_repeats` and `seed_start`, the runner expands it into repeat-specific output directories such as `repeat_01_seed53`, `repeat_02_seed54`, and so on. The trained model for each quick run is saved under `best_model/`.
+
 `gliner2_training.train_quick`
 
 ```bash

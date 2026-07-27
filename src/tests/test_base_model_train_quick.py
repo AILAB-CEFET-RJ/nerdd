@@ -39,7 +39,11 @@ sys.modules.setdefault(
 )
 sys.modules.setdefault("tools.inspect_dense_tips", types.SimpleNamespace(read_json_or_jsonl=None))
 
-from base_model_training.train_quick import _convert_entity_rows_to_spans, _merge_training_rows
+from base_model_training.train_quick import (
+    _convert_entity_rows_to_spans,
+    _merge_training_rows,
+    build_config_with_metadata,
+)
 
 
 class BaseModelTrainQuickTests(unittest.TestCase):
@@ -82,6 +86,38 @@ class BaseModelTrainQuickTests(unittest.TestCase):
         self.assertEqual(len(merged), 2)
         self.assertEqual(merged[0]["spans"][0]["label"], "Person")
         self.assertEqual(merged[1]["text"], "B")
+
+    def test_build_config_with_metadata_loads_json_config(self):
+        import json
+        import tempfile
+        from argparse import Namespace
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "quick.json"
+            path.write_text(
+                json.dumps(
+                    [
+                        {
+                            "experiment_id": "quick_regex",
+                            "entrypoint": "base_model_training.train_quick",
+                            "train_path": "../data/train.json",
+                            "test_path": "../data/test.json",
+                            "tokenization_strategy": "regex",
+                            "thresholds": [0.5, 0.6],
+                        }
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            args = Namespace(config_json=str(path), experiment_id="quick_regex")
+
+            config, metadata = build_config_with_metadata(args)
+
+        self.assertEqual(metadata["experiment_id"], "quick_regex")
+        self.assertEqual(config.train_path, "../data/train.json")
+        self.assertEqual(config.test_path, "../data/test.json")
+        self.assertEqual(config.tokenization_strategy, "regex")
+        self.assertEqual(config.thresholds, [0.5, 0.6])
 
 
 if __name__ == "__main__":
