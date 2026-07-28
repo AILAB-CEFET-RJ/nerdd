@@ -1,5 +1,24 @@
 [
   {
+    "experiment_id": "quick_supervised_only_regex_threshold_sweep",
+    "entrypoint": "base_model_training.train_quick",
+
+    "train_path": "../data/dd_corpus_small_train.json",
+    "test_path": "../data/dd_corpus_small_test.json",
+    "train_mode": "supervised_only",
+
+    "model_base": "urchade/gliner_multi-v2.1",
+    "output_dir": "../artifacts/base_model_training/quick_supervised_only_regex_threshold_sweep",
+
+    "seed": 42,
+    "tokenization_strategy": "regex",
+    "batch_size": 16,
+    "num_epochs": 20,
+
+    "thresholds": [0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
+    "log_level": "INFO"
+  },  
+  {
     "experiment_id": "quick_supervised_only_regex_seed42",
     "experiment_obs": "GLiNER quick supervised-only baseline with regex tokenization.",
     "entrypoint": "base_model_training.train_quick",
