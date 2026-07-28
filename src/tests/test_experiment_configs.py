@@ -35,6 +35,8 @@ class ExperimentConfigTests(unittest.TestCase):
             {
                 "experiment_id": "exp1",
                 "entrypoint": "base_model_training.train_quick",
+                "n_repeats": 3,
+                "seed_start": 53,
                 "thresholds": [0.5, "0.6"],
                 "tokenization_strategy": "regex",
             },
@@ -44,6 +46,8 @@ class ExperimentConfigTests(unittest.TestCase):
         )
 
         self.assertEqual(metadata["experiment_id"], "exp1")
+        self.assertEqual(metadata["n_repeats"], 3)
+        self.assertEqual(metadata["seed_start"], 53)
         self.assertEqual(config.train_path, "train.json")
         self.assertEqual(config.thresholds, [0.5, 0.6])
         self.assertEqual(config.tokenization_strategy, "regex")

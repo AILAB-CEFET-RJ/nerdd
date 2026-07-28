@@ -83,7 +83,7 @@ def parse_args():
     parser.add_argument("--pseudolabel-path", default=defaults.pseudolabel_path)
     parser.add_argument(
         "--train-mode",
-        choices=["supervised_only", "supervised_plus_pseudolabels", "pseudolabel_only"],
+        choices=["supervised_only", "supervised_plus_pseudolabels", "pseudolabel_only", "backbone_only"],
         default=defaults.train_mode,
     )
     parser.add_argument("--model-base", default=defaults.model_base)
@@ -296,6 +296,100 @@ def _write_report(report_dir: Path, metrics, predictions, threshold):
     save_jsonl(str(report_dir / "predictions.jsonl"), predictions)
 
 
+def _entity_labels_from_rows(rows):
+    return sorted(
+        {
+            str(span["label"])
+            for row in rows
+            for span in row.get("spans", []) or []
+            if isinstance(span, dict) and span.get("label")
+        }
+    )
+
+
+def _run_backbone_only(
+    *,
+    model,
+    output_dir: Path,
+    config: QuickTrainConfig,
+    train_path: Path,
+    test_path: Path,
+    started_at: datetime,
+    timer: float,
+) -> None:
+    supervised_rows_all = [_normalize_spans_row(row) for row in load_gt_jsonl_strict(str(train_path))]
+    supervised_rows_all = [row for row in supervised_rows_all if row is not None]
+    entity_labels = _entity_labels_from_rows(supervised_rows_all)
+    if not entity_labels:
+        raise ValueError("No entity labels found in supervised train data.")
+
+    threshold = config.thresholds[0] if config.thresholds else 0.6
+    test_rows = _load_gt_rows(test_path)
+    test_predictions = _predict_rows(model, test_rows, entity_labels, threshold=threshold)
+    test_metrics = compute_span_metrics(
+        gold_spans_by_row=[row["spans"] for row in test_rows],
+        pred_spans_by_row=[row["entities"] for row in test_predictions],
+        labels=entity_labels,
+    )
+    seen_unseen = _compute_seen_unseen_breakdown(
+        model=model,
+        dataset=[(row["text"], row["spans"]) for row in test_rows],
+        threshold=threshold,
+        entity_labels=entity_labels,
+        seen_entity_keys={
+            (row["text"][span["start"] : span["end"]], span["label"])
+            for row in supervised_rows_all
+            for span in row.get("spans", []) or []
+        },
+    )
+
+    model_dir = output_dir / "best_model"
+    model.save_pretrained(model_dir)
+    _write_report(output_dir / "eval_test", test_metrics, test_predictions, threshold)
+
+    raw_data = load_dataset(str(train_path), tokenization_strategy=config.tokenization_strategy)
+    filtered_data = list(raw_data) if config.keep_empty_samples else [sample for sample in raw_data if sample["ner"]]
+    finished_at = datetime.now(timezone.utc)
+    runtime_seconds = perf_counter() - timer
+    summary = {
+        "started_at_utc": started_at.isoformat(),
+        "finished_at_utc": finished_at.isoformat(),
+        "runtime_seconds": runtime_seconds,
+        "config": asdict(config),
+        "dataset": {
+            "raw_supervised_rows": len(supervised_rows_all),
+            "raw_pseudolabel_rows": 0,
+            "train_mode": config.train_mode,
+            "raw_train_rows": len(raw_data),
+            "filtered_train_rows": len(filtered_data),
+            "processed_rows": 0,
+            "pseudolabel_processed_rows": 0,
+            "train_rows": 0,
+            "val_rows": 0,
+            "entity_labels": entity_labels,
+        },
+        "training": {
+            "best_validation_metric": None,
+            "mean_train_loss": None,
+            "mean_val_loss": None,
+        },
+        "threshold_selection": {
+            "scores": {},
+            "best_threshold": threshold,
+            "selection_source": "first_configured_threshold",
+        },
+        "test_metrics": test_metrics,
+        "seen_unseen": seen_unseen,
+        "artifacts": {
+            "model_dir": str(model_dir),
+            "eval_dir": str(output_dir / "eval_test"),
+        },
+    }
+    (output_dir / "quick_summary.json").write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
+    clear_cuda_cache()
+    LOGGER.info("Backbone-only evaluation completed. Summary: %s", output_dir / "quick_summary.json")
+
+
 def run_quick_experiment(
     config: QuickTrainConfig,
     script_path: str,
@@ -330,7 +424,7 @@ def run_quick_experiment(
         raise FileNotFoundError(f"Dataset not found: {train_path}")
     if not test_path.exists():
         raise FileNotFoundError(f"Test dataset not found: {test_path}")
-    if config.train_mode != "supervised_only":
+    if config.train_mode not in ("supervised_only", "backbone_only"):
         if pseudolabel_path is None or not pseudolabel_path.exists():
             raise FileNotFoundError("Pseudolabel dataset is required for train_mode != supervised_only.")
 
@@ -340,6 +434,19 @@ def run_quick_experiment(
 
     base_model = _load_model(model_base=model_base, local_only=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    if config.train_mode == "backbone_only":
+        base_model.to(device)
+        _run_backbone_only(
+            model=base_model,
+            output_dir=output_dir,
+            config=config,
+            train_path=train_path,
+            test_path=test_path,
+            started_at=started_at,
+            timer=timer,
+        )
+        return
 
     supervised_rows_all = [_normalize_spans_row(row) for row in load_gt_jsonl_strict(str(train_path))]
     supervised_rows_all = [row for row in supervised_rows_all if row is not None]

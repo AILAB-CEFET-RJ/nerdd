@@ -1,0 +1,50 @@
+[
+  {
+    "experiment_id": "backbone_only_regex_seed42",
+    "experiment_obs": "Evaluate and dump the unfine-tuned GLiNER backbone with regex tokenization metadata.",
+    "entrypoint": "base_model_training.train_quick",
+    "n_repeats": 1,
+    "seed_start": 42,
+
+    "train_path": "../data/dd_corpus_small_train.json",
+    "test_path": "../data/dd_corpus_small_test.json",
+    "train_mode": "backbone_only",
+
+    "model_base": "urchade/gliner_multi-v2.1",
+    "output_dir": "../artifacts/base_model_training/backbone_only_regex",
+
+    "seed": 42,
+    "tokenization_strategy": "regex",
+    "batch_size": 16,
+    "num_epochs": 0,
+    "max_length": 384,
+    "overlap": 100,
+
+    "thresholds": [0.6],
+    "log_level": "INFO"
+  },
+  {
+    "experiment_id": "backbone_only_whitespace_seed42",
+    "experiment_obs": "Evaluate and dump the unfine-tuned GLiNER backbone with whitespace tokenization metadata.",
+    "entrypoint": "base_model_training.train_quick",
+    "n_repeats": 1,
+    "seed_start": 42,
+
+    "train_path": "../data/dd_corpus_small_train.json",
+    "test_path": "../data/dd_corpus_small_test.json",
+    "train_mode": "backbone_only",
+
+    "model_base": "urchade/gliner_multi-v2.1",
+    "output_dir": "../artifacts/base_model_training/backbone_only_whitespace",
+
+    "seed": 42,
+    "tokenization_strategy": "whitespace",
+    "batch_size": 16,
+    "num_epochs": 0,
+    "max_length": 384,
+    "overlap": 100,
+
+    "thresholds": [0.6],
+    "log_level": "INFO"
+  }
+]

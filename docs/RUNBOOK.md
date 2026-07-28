@@ -632,6 +632,17 @@ python3 tools/run_experiment_config.py \
 Each quick-training output directory includes `effective_config.json` with the applied config, experiment metadata, timestamp, and current git commit when available.
 If an experiment config declares `n_repeats` and `seed_start`, the runner expands it into repeat-specific output directories such as `repeat_01_seed53`, `repeat_02_seed54`, and so on. The trained model for each quick run is saved under `best_model/`.
 
+To evaluate and dump the unfine-tuned backbone, use `train_mode=backbone_only`:
+
+```bash
+cd src
+python3 tools/run_experiment_config.py \
+  --config-json ../configs/experiments/base_model_backbone_only.json \
+  --experiment-id backbone_only_regex_seed42
+```
+
+This mode skips fine-tuning, saves the loaded base model under `best_model/`, and writes `eval_test/` plus `quick_summary.json`.
+
 `gliner2_training.train_quick`
 
 ```bash

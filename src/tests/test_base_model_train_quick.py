@@ -119,6 +119,32 @@ class BaseModelTrainQuickTests(unittest.TestCase):
         self.assertEqual(config.tokenization_strategy, "regex")
         self.assertEqual(config.thresholds, [0.5, 0.6])
 
+    def test_build_config_with_metadata_accepts_backbone_only(self):
+        import json
+        import tempfile
+        from argparse import Namespace
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "backbone.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "experiment_id": "backbone",
+                        "entrypoint": "base_model_training.train_quick",
+                        "train_mode": "backbone_only",
+                        "num_epochs": 0,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            args = Namespace(config_json=str(path), experiment_id="")
+
+            config, metadata = build_config_with_metadata(args)
+
+        self.assertEqual(metadata["experiment_id"], "backbone")
+        self.assertEqual(config.train_mode, "backbone_only")
+        self.assertEqual(config.num_epochs, 0)
+
 
 if __name__ == "__main__":
     unittest.main()
