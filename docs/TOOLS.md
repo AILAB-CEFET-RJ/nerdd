@@ -849,9 +849,9 @@ Observações metodológicas:
 Exemplo:
 
 ```bash
-cd src
-python3 -m base_model_training.train_quick \
-  --config-json ../configs/experiments/base_model_quick.json \
+cd ~/ailab/nerdd
+python3 src/base_model_training/train_quick.py \
+  --config-json configs/experiments/base_model_finetuned.json \
   --experiment-id quick_supervised_only_regex_seed42
 ```
 
@@ -869,16 +869,16 @@ Use quando:
 Exemplos:
 
 ```bash
-cd src
-python3 tools/run_experiment_config.py \
-  --config-json ../configs/experiments/base_model_quick.json \
+cd ~/ailab/nerdd
+python3 src/tools/run_experiment_config.py \
+  --config-json configs/experiments/base_model_finetuned.json \
   --experiment-id quick_supervised_only_regex_seed42
 ```
 
 ```bash
-cd src
-python3 tools/run_experiment_config.py \
-  --config-json ../configs/experiments/base_model_quick.json \
+cd ~/ailab/nerdd
+python3 src/tools/run_experiment_config.py \
+  --config-json configs/experiments/base_model_finetuned.json \
   --all
 ```
 

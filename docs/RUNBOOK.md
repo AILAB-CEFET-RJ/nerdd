@@ -604,28 +604,28 @@ python3 -m base_model_training.train_quick \
   --log-level INFO
 ```
 
-The same quick-training run can be configured from JSON:
+The same quick-training run can be configured from JSON. Run JSON configs from the repository root:
 
 ```bash
-cd src
-python3 -m base_model_training.train_quick \
-  --config-json ../configs/experiments/base_model_quick.json \
+cd ~/ailab/nerdd
+python3 src/base_model_training/train_quick.py \
+  --config-json configs/experiments/base_model_finetuned.json \
   --experiment-id quick_supervised_only_regex_seed42
 ```
 
 To run one or more JSON-declared experiments through the generic runner:
 
 ```bash
-cd src
-python3 tools/run_experiment_config.py \
-  --config-json ../configs/experiments/base_model_quick.json \
+cd ~/ailab/nerdd
+python3 src/tools/run_experiment_config.py \
+  --config-json configs/experiments/base_model_finetuned.json \
   --experiment-id quick_supervised_only_regex_seed42
 ```
 
 ```bash
-cd src
-python3 tools/run_experiment_config.py \
-  --config-json ../configs/experiments/base_model_quick.json \
+cd ~/ailab/nerdd
+python3 src/tools/run_experiment_config.py \
+  --config-json configs/experiments/base_model_finetuned.json \
   --all
 ```
 
@@ -635,9 +635,9 @@ If an experiment config declares `n_repeats` and `seed_start`, the runner expand
 To evaluate and dump the unfine-tuned backbone, use `train_mode=backbone_only`:
 
 ```bash
-cd src
-python3 tools/run_experiment_config.py \
-  --config-json ../configs/experiments/base_model_backbone_only.json \
+cd ~/ailab/nerdd
+python3 src/tools/run_experiment_config.py \
+  --config-json configs/experiments/base_model_backbone_only.json \
   --experiment-id backbone_only_regex_seed42
 ```
 

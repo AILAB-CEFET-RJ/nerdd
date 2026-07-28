@@ -3,12 +3,12 @@
     "experiment_id": "quick_supervised_only_regex_threshold_sweep",
     "entrypoint": "base_model_training.train_quick",
 
-    "train_path": "../data/dd_corpus_small_train.json",
-    "test_path": "../data/dd_corpus_small_test.json",
+    "train_path": "data/dd_corpus_small_train.json",
+    "test_path": "data/dd_corpus_small_test.json",
     "train_mode": "supervised_only",
 
     "model_base": "urchade/gliner_multi-v2.1",
-    "output_dir": "../artifacts/base_model_training/quick_supervised_only_regex_threshold_sweep",
+    "output_dir": "artifacts/base_model_training/quick_supervised_only_regex_threshold_sweep",
 
     "seed": 42,
     "tokenization_strategy": "regex",
@@ -25,12 +25,12 @@
     "n_repeats": 1,
     "seed_start": 42,
 
-    "train_path": "../data/dd_corpus_small_train.json",
-    "test_path": "../data/dd_corpus_small_test.json",
+    "train_path": "data/dd_corpus_small_train.json",
+    "test_path": "data/dd_corpus_small_test.json",
     "train_mode": "supervised_only",
 
     "model_base": "urchade/gliner_multi-v2.1",
-    "output_dir": "../artifacts/base_model_training/quick_supervised_only_regex",
+    "output_dir": "artifacts/base_model_training/quick_supervised_only_regex",
 
     "seed": 42,
     "tokenization_strategy": "regex",
@@ -58,12 +58,12 @@
     "n_repeats": 1,
     "seed_start": 42,
 
-    "train_path": "../data/dd_corpus_small_train.json",
-    "test_path": "../data/dd_corpus_small_test.json",
+    "train_path": "data/dd_corpus_small_train.json",
+    "test_path": "data/dd_corpus_small_test.json",
     "train_mode": "supervised_only",
 
     "model_base": "urchade/gliner_multi-v2.1",
-    "output_dir": "../artifacts/base_model_training/quick_supervised_only_whitespace",
+    "output_dir": "artifacts/base_model_training/quick_supervised_only_whitespace",
 
     "seed": 42,
     "tokenization_strategy": "whitespace",
