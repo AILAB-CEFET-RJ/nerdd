@@ -14,6 +14,7 @@ sys.modules.setdefault(
         _build_seen_entity_keys=None,
         _compute_seen_unseen_breakdown=None,
         _evaluate_thresholds=None,
+        _format_threshold_scores=lambda scores: ", ".join(f"{k}={v}" for k, v in scores.items()),
         _load_model=None,
         _prepare_char_offsets=None,
         _run_single_training=None,

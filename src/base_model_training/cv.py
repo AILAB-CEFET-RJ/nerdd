@@ -305,10 +305,27 @@ def _evaluate_thresholds(model, val_processed, thresholds, entity_labels):
     }
 
 
+def _format_threshold_scores(threshold_metrics):
+    return ", ".join(
+        f"{threshold:g}={score:.4f}"
+        for threshold, score in sorted(threshold_metrics.items())
+    )
+
+
 def _best_validation_f1(model, val_processed, thresholds, entity_labels):
     """Return the best validation F1 across the configured thresholds."""
     threshold_metrics = _evaluate_thresholds(model, val_processed, thresholds, entity_labels)
-    return max(threshold_metrics.values()) if threshold_metrics else float("-inf")
+    if not threshold_metrics:
+        return float("-inf")
+    best_threshold = max(threshold_metrics, key=threshold_metrics.get)
+    best_score = threshold_metrics[best_threshold]
+    LOGGER.info(
+        "Validation threshold sweep: scores=[%s] | best_threshold=%s | best_f1=%.4f",
+        _format_threshold_scores(threshold_metrics),
+        best_threshold,
+        best_score,
+    )
+    return best_score
 
 
 def _normalize_entity_surface(value):

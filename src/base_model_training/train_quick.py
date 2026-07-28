@@ -21,6 +21,7 @@ from base_model_training.cv import (
     _build_seen_entity_keys,
     _compute_seen_unseen_breakdown,
     _evaluate_thresholds,
+    _format_threshold_scores,
     _load_model,
     _prepare_char_offsets,
     _run_single_training,
@@ -544,8 +545,15 @@ def run_quick_experiment(
     val_processed = _prepare_char_offsets(val_subset)
     threshold_scores = _evaluate_thresholds(model, val_processed, config.thresholds, entity_labels)
     best_threshold = max(threshold_scores, key=threshold_scores.get)
+    LOGGER.info(
+        "Final validation threshold selection: scores=[%s] | selected_threshold=%s | selected_f1=%.4f",
+        _format_threshold_scores(threshold_scores),
+        best_threshold,
+        threshold_scores[best_threshold],
+    )
 
     test_rows = _load_gt_rows(test_path)
+    LOGGER.info("Evaluating test set with selected_threshold=%s", best_threshold)
     test_predictions = _predict_rows(model, test_rows, entity_labels, threshold=best_threshold)
     test_metrics = compute_span_metrics(
         gold_spans_by_row=[row["spans"] for row in test_rows],

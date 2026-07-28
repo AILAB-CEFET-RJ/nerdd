@@ -765,6 +765,38 @@ Saídas:
 - `summary.json`
 - `review.html`
 
+### `src/tools/audit_ner_errors_by_label.py`
+
+Gera uma análise de erros focada em uma classe NER a partir de um dataset gold e de um `predictions.jsonl`.
+
+Use quando:
+
+- você quer revisar uma classe problemática, como `Organization`, sem reler todos os erros do modelo
+- precisa separar falsos positivos, falsos negativos, confusões de label e erros de fronteira
+- quer priorizar revisão manual por menções repetidas e relatos com mais erros
+
+Exemplo:
+
+```bash
+python3 src/tools/audit_ner_errors_by_label.py \
+  --gold-json data/dd_corpus_small_test.json \
+  --pred-jsonl artifacts/base_model_training/quick_supervised_only_regex/eval_test/predictions.jsonl \
+  --output-dir artifacts/error_analysis/test_organization_regex_t06 \
+  --label Organization \
+  --labels Person,Location,Organization \
+  --title "Organization error analysis - regex t=0.6"
+```
+
+Saídas:
+
+- `organization_errors.jsonl`
+- `organization_errors.csv`
+- `organization_false_positives.csv`
+- `organization_false_negatives.csv`
+- `organization_review_rows.jsonl`
+- `organization_error_summary.json`
+- `organization_error_review.html`
+
 ### `src/tools/review_gliner2_predictions.py`
 
 Executa um modelo GLiNER2 base ou GLiNER2 + LoRA em um dataset anotado e gera revisão lado a lado.
