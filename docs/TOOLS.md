@@ -797,6 +797,47 @@ Saídas:
 - `organization_error_summary.json`
 - `organization_error_review.html`
 
+### `src/tools/calibrate_ner_scores.py`
+
+Avalia empiricamente se os scores das predições NER são úteis como confiança.
+
+Use quando:
+
+- você quer escolher thresholds por label para pseudorotulação
+- precisa medir precisão real por faixa de score
+- quer identificar erros de alta confiança antes de confiar em pseudo-labels automáticos
+
+Exemplo com predições OOF:
+
+```bash
+cd ~/ailab/nerdd
+python3 src/tools/calibrate_ner_scores.py \
+  --pred-jsonl artifacts/error_analysis/train_oof_organization_regex_after_corpus_fixes/oof_predictions.jsonl \
+  --output-dir artifacts/calibration/ner_scores_oof_after_corpus_fixes \
+  --labels Person,Location,Organization \
+  --bins 10 \
+  --thresholds 0.5,0.6,0.7,0.8,0.85,0.9,0.95
+```
+
+Exemplo com predições do teste:
+
+```bash
+cd ~/ailab/nerdd
+python3 src/tools/calibrate_ner_scores.py \
+  --gold-json data/dd_corpus_small_test.json \
+  --pred-jsonl artifacts/base_model_training/quick_supervised_only_regex/eval_test/predictions.jsonl \
+  --output-dir artifacts/calibration/ner_scores_test_after_corpus_fixes \
+  --labels Person,Location,Organization
+```
+
+Saídas:
+
+- `prediction_score_rows.csv`: uma linha por entidade prevista, com `score`, `target` e `outcome`
+- `precision_by_label_and_score_bin.csv`: precisão por label e faixa de score
+- `precision_at_threshold_by_label.csv`: precision/recall/F1 por label em cada threshold
+- `outcome_counts_by_label.csv`: contagem de `exact`, `boundary_mismatch`, `label_confusion` e `spurious`
+- `calibration_summary.json`: resumo e erros de alta confiança
+
 ### `src/tools/review_gliner2_predictions.py`
 
 Executa um modelo GLiNER2 base ou GLiNER2 + LoRA em um dataset anotado e gera revisão lado a lado.

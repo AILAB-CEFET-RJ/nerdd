@@ -22,6 +22,8 @@ Exemplos não anotáveis:
 * `uma igreja`
 * `a polícia`, quando usada genericamente
 
+Numeral ou ordinal isolado deve ser `Organization` quando, pelo contexto, substituir inequivocamente o nome de uma unidade policial, como em `policiais do 14`, `PMs do 15` e `policial do 41`.
+
 ---
 
 ## 2. A classificação depende do referente contextual
