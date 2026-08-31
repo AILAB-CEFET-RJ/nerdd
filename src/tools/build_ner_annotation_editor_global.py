@@ -308,6 +308,9 @@ def build_html(
     <label for="gotoInput" class="muted" style="margin:0;">Go to:</label>
     <input id="gotoInput" type="number" min="1" step="1" style="width:88px;" />
     <button id="gotoBtn" type="button">Go</button>
+    <label for="filterInput" class="muted" style="margin:0;">Contains:</label>
+    <input id="filterInput" type="search" placeholder="Filter records..." style="width:220px;" />
+    <button id="clearFilterBtn" type="button">Clear filter</button>
     <button id="exportBtn" type="button">Export corrected JSON</button>
     __SAVE_BUTTON_HTML__
   </div>
@@ -379,6 +382,9 @@ def build_html(
     records: initialRecords,
     labels: initialLabels,
     current: 0,
+    currentFiltered: 0,
+    filteredIndices: initialRecords.map((_, i) => i),
+    filterQuery: "",
     selectedSpanIndex: null,
     pendingSelection: null,
     banlist: {},
@@ -395,6 +401,7 @@ def build_html(
   const $legend = document.getElementById("legend");
   const $statusBox = document.getElementById("statusBox");
   const $gotoInput = document.getElementById("gotoInput");
+  const $filterInput = document.getElementById("filterInput");
   const $banlistBox = document.getElementById("banlistBox");
   const $changeRulesBox = document.getElementById("changeRulesBox");
   const $globalPreview = document.getElementById("globalPreview");
@@ -442,7 +449,53 @@ def build_html(
     labelColors[label] = palette[keys.length % palette.length];
   }
 
-  function getCurrentRecord() { return state.records[state.current]; }
+  function clearSelectionState() {
+    state.selectedSpanIndex = null;
+    state.pendingSelection = null;
+  }
+
+  function getCurrentRecordIndex() {
+    const idx = state.filteredIndices[state.currentFiltered];
+    return Number.isInteger(idx) ? idx : null;
+  }
+
+  function getCurrentRecord() {
+    const idx = getCurrentRecordIndex();
+    return idx === null ? null : state.records[idx];
+  }
+
+  function filterRecords(query, preserveCurrent = true) {
+    const previousAbsolute = getCurrentRecordIndex();
+    const normalizedQuery = String(query || "").toLocaleLowerCase();
+    state.filterQuery = String(query || "");
+    state.filteredIndices = state.records
+      .map((_, idx) => idx)
+      .filter((idx) => {
+        if (!normalizedQuery) return true;
+        return String(state.records[idx].text || "").toLocaleLowerCase().includes(normalizedQuery);
+      });
+
+    if (state.filteredIndices.length === 0) {
+      state.currentFiltered = 0;
+      state.current = 0;
+      clearSelectionState();
+      render();
+      return;
+    }
+
+    const preservedPosition = preserveCurrent && previousAbsolute !== null
+      ? state.filteredIndices.indexOf(previousAbsolute)
+      : -1;
+    state.currentFiltered = preservedPosition >= 0 ? preservedPosition : 0;
+    state.current = state.filteredIndices[state.currentFiltered];
+    clearSelectionState();
+    render();
+  }
+
+  function clearFilter(preserveCurrent = true) {
+    $filterInput.value = "";
+    filterRecords("", preserveCurrent);
+  }
 
   function getMentionFromSpan(record, span) {
     if (!record || !span) return "";
@@ -616,18 +669,40 @@ def build_html(
       $recordTitle.textContent = "No records"; $recordMeta.textContent = ""; $recordText.textContent = ""; $counter.textContent = "0 / 0";
       state.selectedSpanIndex = null; renderSelected(); return;
     }
+    const filteredTotal = state.filteredIndices.length;
+    if (filteredTotal === 0) {
+      $recordTitle.textContent = "No matching records";
+      $recordMeta.textContent = state.filterQuery ? `filter="${state.filterQuery}"` : "";
+      $recordText.textContent = "";
+      $counter.textContent = `0 / 0 matches | ${total} total`;
+      $gotoInput.value = "";
+      clearSelectionState();
+      renderSelected(); renderBanlist(); renderChangeRules();
+      document.getElementById("prevBtn").disabled = true;
+      document.getElementById("nextBtn").disabled = true;
+      return;
+    }
+    if (state.currentFiltered < 0) state.currentFiltered = 0;
+    if (state.currentFiltered >= filteredTotal) state.currentFiltered = filteredTotal - 1;
+    const absoluteIndex = state.filteredIndices[state.currentFiltered];
+    state.current = absoluteIndex;
     const record = getCurrentRecord();
     normalizeSpans(record);
     if (state.selectedSpanIndex !== null && state.selectedSpanIndex >= record.spans.length) state.selectedSpanIndex = null;
-    $recordTitle.textContent = `Record #${state.current + 1}`;
+    $recordTitle.textContent = `Record #${absoluteIndex + 1}`;
     const source = record.source_id || record.sample_id || record._editor_row_index;
     const metaParts = [];
     if (record.assunto !== undefined && String(record.assunto).trim() !== "") metaParts.push(`assunto=${record.assunto}`);
     metaParts.push(`entities=${record.spans.length}`);
     if (source !== undefined && source !== "") metaParts.push(`id=${source}`);
+    if (state.filterQuery) metaParts.push(`filter="${state.filterQuery}"`);
     $recordMeta.textContent = metaParts.join(" | ");
-    $counter.textContent = `${state.current + 1} / ${total}`;
-    $gotoInput.value = String(state.current + 1);
+    $counter.textContent = state.filterQuery
+      ? `match ${state.currentFiltered + 1} / ${filteredTotal} | record ${absoluteIndex + 1} / ${total}`
+      : `${absoluteIndex + 1} / ${total}`;
+    $gotoInput.value = String(absoluteIndex + 1);
+    document.getElementById("prevBtn").disabled = state.currentFiltered <= 0;
+    document.getElementById("nextBtn").disabled = state.currentFiltered >= filteredTotal - 1;
     renderText(); renderSelected(); renderBanlist(); renderChangeRules();
   }
 
@@ -646,7 +721,7 @@ def build_html(
     const idx = state.selectedSpanIndex;
     if (idx === null || !record || !record.spans[idx]) return;
     record.spans.splice(idx, 1);
-    state.selectedSpanIndex = null;
+    clearSelectionState();
     setStatus("Entity removed.", "ok"); render();
   }
 
@@ -661,7 +736,7 @@ def build_html(
     if (hasOverlap(selection.start, selection.end, record.spans)) { setStatus("Selected text overlaps an existing entity. Remove or adjust first.", "error"); return; }
     record.spans.push({ start: selection.start, end: selection.end, label, seed_origin: "manual_editor_added" });
     normalizeSpans(record);
-    state.pendingSelection = null; state.selectedSpanIndex = null;
+    clearSelectionState();
     if (!state.labels.includes(label)) { state.labels.push(label); ensureLabelColor(label); renderLegend(); renderLabelSelect(); }
     setStatus("Entity added.", "ok"); render(); window.getSelection()?.removeAllRanges();
   }
@@ -698,7 +773,7 @@ def build_html(
     if (!ok) return;
     const removed = applyRemoveRule(label, termNorm);
     state.actionLog.push({ action: "remove_same_text_label_everywhere", label, term: termNorm, display_text: mention, affected_spans: removed });
-    state.selectedSpanIndex = null; state.pendingSelection = null;
+    clearSelectionState();
     setStatus(`Global remove applied (${label}::${termNorm}). Removed ${removed} spans.`, "ok"); render();
   }
 
@@ -735,17 +810,26 @@ def build_html(
     const rule = { action: "change_same_text_label_everywhere", term: termNorm, display_text: mention, from_label: oldLabel, to_label: newLabel, affected_spans: changed };
     state.changeRules.push(rule);
     state.actionLog.push(rule);
-    state.selectedSpanIndex = null; state.pendingSelection = null;
+    clearSelectionState();
     setStatus(`Global label change applied. Changed ${changed} spans.`, "ok"); render();
   }
 
-  function previousRecord() { if (state.current <= 0) return; state.current -= 1; state.selectedSpanIndex = null; state.pendingSelection = null; setStatus(""); render(); }
-  function nextRecord() { if (state.current >= state.records.length - 1) return; state.current += 1; state.selectedSpanIndex = null; state.pendingSelection = null; setStatus(""); render(); }
+  function previousRecord() { if (state.currentFiltered <= 0) return; state.currentFiltered -= 1; clearSelectionState(); setStatus(""); render(); }
+  function nextRecord() { if (state.currentFiltered >= state.filteredIndices.length - 1) return; state.currentFiltered += 1; clearSelectionState(); setStatus(""); render(); }
   function goToRecord() {
     const total = state.records.length; if (total === 0) return;
     const raw = Number($gotoInput.value); if (!Number.isFinite(raw)) { setStatus("Enter a valid record number.", "error"); return; }
     const wanted = Math.floor(raw); if (wanted < 1 || wanted > total) { setStatus(`Record number must be between 1 and ${total}.`, "error"); return; }
-    state.current = wanted - 1; state.selectedSpanIndex = null; state.pendingSelection = null; setStatus(""); render();
+    if (state.filterQuery) {
+      $filterInput.value = "";
+      state.filterQuery = "";
+      state.filteredIndices = state.records.map((_, i) => i);
+    }
+    state.current = wanted - 1;
+    state.currentFiltered = wanted - 1;
+    clearSelectionState();
+    setStatus("");
+    render();
   }
 
   function downloadJson(filename, data) {
@@ -798,13 +882,23 @@ def build_html(
   document.getElementById("prevBtn").addEventListener("click", previousRecord);
   document.getElementById("nextBtn").addEventListener("click", nextRecord);
   document.getElementById("gotoBtn").addEventListener("click", goToRecord);
+  document.getElementById("clearFilterBtn").addEventListener("click", () => clearFilter(true));
   document.getElementById("exportBtn").addEventListener("click", exportJson);
   if (saveEnabled) document.getElementById("saveBtn").addEventListener("click", saveToDataset);
   document.getElementById("exportBanlistBtn").addEventListener("click", exportBanlist);
   document.getElementById("exportRulesBtn").addEventListener("click", exportRules);
   $gotoInput.addEventListener("keydown", (evt) => { if (evt.key === "Enter") goToRecord(); });
+  $filterInput.addEventListener("input", () => { setStatus(""); filterRecords($filterInput.value, true); });
+  $filterInput.addEventListener("keydown", (evt) => {
+    if (evt.key === "Escape") {
+      evt.preventDefault();
+      clearFilter(true);
+    }
+  });
 
   document.addEventListener("keydown", (evt) => {
+    const tagName = evt.target && evt.target.tagName ? evt.target.tagName.toUpperCase() : "";
+    if (["INPUT", "TEXTAREA", "SELECT"].includes(tagName)) return;
     if (evt.key === "[") previousRecord();
     if (evt.key === "]") nextRecord();
     if (evt.key === "Delete" || evt.key === "Backspace") removeSelected();
