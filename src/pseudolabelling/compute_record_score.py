@@ -32,6 +32,21 @@ def _get_entities(record, entity_key):
     return []
 
 
+def _normalize_label_filter(include_labels):
+    if not include_labels:
+        return None
+    labels = {str(label).strip() for label in include_labels if str(label).strip()}
+    return labels or None
+
+
+def _filter_entities_by_label(entities, include_labels):
+    label_filter = _normalize_label_filter(include_labels)
+    if label_filter is None:
+        return entities, 0
+    filtered = [entity for entity in entities if str(entity.get("label", "")).strip() in label_filter]
+    return filtered, len(entities) - len(filtered)
+
+
 def _strip_accents(text):
     normalized = unicodedata.normalize("NFKD", str(text))
     return "".join(char for char in normalized if not unicodedata.combining(char))
@@ -92,8 +107,19 @@ def _aggregate(values, aggregation):
     raise ValueError(f"Unsupported aggregation: {aggregation}")
 
 
-def compute_record_score(record, *, score_field, entity_key, aggregation, empty_entities_policy, dedupe_mode="off"):
+def compute_record_score(
+    record,
+    *,
+    score_field,
+    entity_key,
+    aggregation,
+    empty_entities_policy,
+    dedupe_mode="off",
+    include_labels=None,
+    return_label_filtered_count=False,
+):
     entities = _get_entities(record, entity_key)
+    entities, label_filtered_entities = _filter_entities_by_label(entities, include_labels)
     entities, deduped_entities = _dedupe_entities(entities, score_field=score_field, dedupe_mode=dedupe_mode)
     valid_scores = []
     invalid_scores = 0
@@ -105,13 +131,25 @@ def compute_record_score(record, *, score_field, entity_key, aggregation, empty_
             continue
         valid_scores.append(parsed)
 
+    def _result(score, n_valid, n_invalid, was_empty, n_deduped):
+        result = (score, n_valid, n_invalid, was_empty, n_deduped)
+        if return_label_filtered_count:
+            return result + (label_filtered_entities,)
+        return result
+
     if valid_scores:
-        return _aggregate(valid_scores, aggregation), len(valid_scores), invalid_scores, False, deduped_entities
+        return _result(
+            _aggregate(valid_scores, aggregation),
+            len(valid_scores),
+            invalid_scores,
+            False,
+            deduped_entities,
+        )
 
     if empty_entities_policy == "zero":
-        return 0.0, 0, invalid_scores, True, deduped_entities
+        return _result(0.0, 0, invalid_scores, True, deduped_entities)
     if empty_entities_policy == "null":
-        return None, 0, invalid_scores, True, deduped_entities
+        return _result(None, 0, invalid_scores, True, deduped_entities)
     raise ValueError(
         f"No valid entity scores found for record and empty-entities-policy=error "
         f"(score_field={score_field}, entity_key={entity_key})"
@@ -137,6 +175,7 @@ def run_compute_record_score(
     aggregation="median",
     empty_entities_policy="zero",
     dedupe_mode="off",
+    include_labels=None,
     trace_key="_record_score_meta",
     write_trace=True,
     script_path,
@@ -162,13 +201,15 @@ def run_compute_record_score(
 
     for row in rows:
         updated = deepcopy(row)
-        score, n_valid, n_invalid, was_empty, deduped_entities = compute_record_score(
+        score, n_valid, n_invalid, was_empty, deduped_entities, label_filtered_entities = compute_record_score(
             updated,
             score_field=score_field,
             entity_key=entity_key,
             aggregation=aggregation,
             empty_entities_policy=empty_entities_policy,
             dedupe_mode=dedupe_mode,
+            include_labels=include_labels,
+            return_label_filtered_count=True,
         )
 
         updated[output_field] = score
@@ -178,11 +219,13 @@ def run_compute_record_score(
             updated[trace_key] = {
                 "score_field": score_field,
                 "entity_key": entity_key,
+                "include_labels": list(include_labels) if include_labels else None,
                 "aggregation": aggregation,
                 "dedupe_mode": dedupe_mode,
                 "valid_entity_scores": n_valid,
                 "invalid_entity_scores": n_invalid,
                 "deduped_entities": deduped_entities,
+                "label_filtered_entities": label_filtered_entities,
                 "empty_entities_fallback": bool(was_empty),
             }
 
@@ -191,6 +234,7 @@ def run_compute_record_score(
         counters["valid_entity_scores_total"] += n_valid
         counters["invalid_entity_scores_total"] += n_invalid
         counters["deduped_entities_total"] += deduped_entities
+        counters["label_filtered_entities_total"] += label_filtered_entities
         if score is not None:
             record_scores.append(float(score))
         output_rows.append(updated)
@@ -211,6 +255,7 @@ def run_compute_record_score(
             "output_field": output_field,
             "legacy_field_alias": legacy_field_alias or None,
             "entity_key": entity_key,
+            "include_labels": list(include_labels) if include_labels else None,
             "aggregation": aggregation,
             "dedupe_mode": dedupe_mode,
             "empty_entities_policy": empty_entities_policy,
@@ -222,6 +267,7 @@ def run_compute_record_score(
             "valid_entity_scores_total": int(counters["valid_entity_scores_total"]),
             "invalid_entity_scores_total": int(counters["invalid_entity_scores_total"]),
             "deduped_entities_total": int(counters["deduped_entities_total"]),
+            "label_filtered_entities_total": int(counters["label_filtered_entities_total"]),
             "record_score_mean": (sum(record_scores) / len(record_scores)) if record_scores else None,
             "record_score_min": min(record_scores) if record_scores else None,
             "record_score_max": max(record_scores) if record_scores else None,

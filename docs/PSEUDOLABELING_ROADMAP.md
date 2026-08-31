@@ -109,6 +109,39 @@ For each strategy, measure:
 9. Decide which pseudolabels are eligible for retraining.
 10. Run retraining only after the first-stage comparison is complete.
 
+## Location-First Pilot
+
+The first pseudolabeling pilot will focus on validating whether the approach can improve `Location`.
+
+This is a deliberately scoped experiment:
+
+- The contextual metadata available in the large corpus mostly supports geographic entities.
+- The current context boost implementation is primarily designed for `Location`.
+- `Location` has the largest support and the strongest baseline performance.
+- `Organization` and `Person` will still be monitored, but they are not the primary success criterion for this pilot.
+
+The training unit remains the full report. If a boosted report is accepted, the refit stage may consume all pseudolabeled entities in that report, not only `Location` entities. This is acceptable for the pilot because the purpose is to test whether contextual pseudolabeling can improve `Location` under the current pipeline design.
+
+Primary metric:
+
+- `Location` F1 on the fixed labeled test set.
+
+Secondary metrics:
+
+- micro F1;
+- macro F1;
+- `Person` F1;
+- `Organization` F1;
+- number of accepted pseudolabeled reports;
+- entity-label distribution in the accepted pseudolabel set.
+
+Interpretation rule:
+
+- A gain in `Location` is the main positive signal.
+- Small regressions in `Person` or `Organization` do not automatically invalidate the pilot.
+- Large regressions in micro F1, macro F1, or non-Location labels should be treated as evidence that the accepted full-report pseudolabels are too noisy.
+- If the full-report approach improves `Location` but harms other labels, a follow-up variant should test a `Location`-only pseudolabel artifact.
+
 ## Open Questions
 
 - Which unlabeled corpus file is the canonical source for pseudolabeling?
@@ -124,3 +157,5 @@ For each strategy, measure:
 
 - Created this roadmap.
 - Current next step: locate or generate the frozen baseline predictions over the unlabeled corpus.
+- Selected a `Location`-first pilot as the first pseudolabeling validation experiment.
+- The pilot will use full-report pseudolabels and evaluate success primarily through `Location` F1.

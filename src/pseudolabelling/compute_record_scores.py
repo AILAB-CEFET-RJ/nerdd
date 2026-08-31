@@ -18,6 +18,7 @@ def main():
         output_field=args.output_field,
         legacy_field_alias=args.legacy_field_alias,
         entity_key=args.entity_key,
+        include_labels=args.include_labels,
         aggregation=args.aggregation,
         empty_entities_policy=args.empty_entities_policy,
         dedupe_mode=args.dedupe_mode,

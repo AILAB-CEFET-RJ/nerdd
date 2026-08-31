@@ -126,6 +126,48 @@ class ComputeRecordScoreTests(unittest.TestCase):
         self.assertFalse(empty)
         self.assertEqual(deduped, 1)
 
+    def test_include_labels_scores_only_matching_labels(self):
+        record = {
+            "entities": [
+                {"text": "Nilópolis", "label": "Location", "score": 0.9},
+                {"text": "CV", "label": "Organization", "score": 0.1},
+                {"text": "João", "label": "Person", "score": 0.2},
+            ]
+        }
+        score, valid, invalid, empty, deduped, filtered = compute_record_score(
+            record,
+            score_field="score",
+            entity_key="entities",
+            aggregation="mean",
+            empty_entities_policy="zero",
+            include_labels=["Location"],
+            return_label_filtered_count=True,
+        )
+        self.assertAlmostEqual(score, 0.9, places=6)
+        self.assertEqual(valid, 1)
+        self.assertEqual(invalid, 0)
+        self.assertFalse(empty)
+        self.assertEqual(deduped, 0)
+        self.assertEqual(filtered, 2)
+
+    def test_include_labels_empty_after_filter_uses_empty_policy(self):
+        record = {"entities": [{"text": "CV", "label": "Organization", "score": 0.9}]}
+        score, valid, invalid, empty, deduped, filtered = compute_record_score(
+            record,
+            score_field="score",
+            entity_key="entities",
+            aggregation="mean",
+            empty_entities_policy="zero",
+            include_labels=["Location"],
+            return_label_filtered_count=True,
+        )
+        self.assertAlmostEqual(score, 0.0, places=6)
+        self.assertEqual(valid, 0)
+        self.assertEqual(invalid, 0)
+        self.assertTrue(empty)
+        self.assertEqual(deduped, 0)
+        self.assertEqual(filtered, 1)
+
 
 if __name__ == "__main__":
     unittest.main()
