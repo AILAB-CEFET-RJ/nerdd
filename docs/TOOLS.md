@@ -42,7 +42,7 @@ Regra prática:
 | `src/tools/export_thesis_tables.py` | exportação | artefatos locais | sobrescreve saída | consolidar artefatos em CSV/Markdown para escrita |
 | `src/tools/inspect_dense_tips.py` | auditoria | JSON, JSONL | sobrescreve saída | filtrar e visualizar tips com muitas entidades |
 | `src/tools/prune_pseudolabel_tips.py` | limpeza | JSON, JSONL | sobrescreve saída | podar entidades de pseudolabel por score e densidade por tip |
-| `src/tools/rank_pseudolabel_candidates.py` | auditoria | JSON, JSONL | sobrescreve saída | ranquear candidatos de pseudolabel para revisão manual |
+| `src/tools/rank_pseudolabel_candidates.py` | seleção | JSON, JSONL scoreado | sobrescreve saída | selecionar top-k candidatos de pseudolabel por score de registro |
 | `src/tools/review_model_predictions.py` | auditoria | conjunto anotado | sobrescreve saída | gerar revisão HTML lado a lado de gold vs predição do modelo |
 | `src/tools/review_adjudication_cases.py` | auditoria | JSON, JSONL | sobrescreve saída | gerar revisão HTML multicamada de baseline, GLiNER2, seeds e entidades finais adjudicadas |
 | `src/tools/reshuffle_train_test_split.py` | split | JSON, JSONL | sobrescreve saída | recombinar train/test, opcionalmente remover duplicatas exatas entre inputs, e reemitir novos splits |
@@ -953,29 +953,46 @@ Saídas:
 
 ### `src/tools/rank_pseudolabel_candidates.py`
 
-Ranqeia candidatos de pseudolabel para revisão manual a partir de scores de registro e entidade.
+Seleciona candidatos de pseudolabel para revisão manual a partir de um ou mais campos de score de registro.
 
 Use quando:
 
 - quer revisar os top candidatos antes de escalar pseudolabelling
-- precisa misturar score de registro com penalizações por densidade, spans curtos e dominância de `Organization`
+- já computou um score por relato com `pseudolabelling.compute_record_scores`
+- precisa fixar um orçamento top-k, por exemplo `1000`, `3000` ou `5000`
 - quer exportar CSV/JSONL/HTML dos candidatos priorizados
 
 Use este script como etapa padrão de `04_ranked_candidates`.
 
-Observações metodológicas:
+Controles principais:
 
-- o script penaliza densidade excessiva, cauda de scores baixos e sobrecarga de `Organization`
-- `Location` dominante não deve ser tratada como suspeita por default neste domínio; por isso `--max-location-ratio` fica desabilitado e não é a recomendação operacional
-- spans curtos agora usam exceções sensíveis ao corpus: abreviações locativas válidas como `RJ`, `SG`, `SJM` e `rio` não contam automaticamente como spans curtos suspeitos, enquanto marcadores isolados como `tr` e `av` continuam suspeitos
-- o `candidate_quality_score` agora combina `record_score`, média de entidades e `min_entity_score` para evitar que duas entidades muito boas lavem uma entidade muito ruim
+- `--score-fields`: campos candidatos de score, em ordem de preferência
+- `--required-labels`: exige pelo menos uma entidade com os labels listados
+- `--min-score`: descarta registros abaixo do score mínimo
+- `--top-n`: limita o volume final
 
 Saídas:
 
-- CSV com features e ranking
-- JSONL opcional com `_candidate_rank`
+- JSONL com os registros selecionados e metadados em `_pseudolabel_selection`
+- CSV com ranking e contagens por label
 - HTML opcional para revisão visual
-- summary JSON opcional com filtros e estatísticas dos selecionados
+- summary JSON opcional com filtros, score field usado e estatísticas dos selecionados
+
+Exemplo para o piloto `Location`:
+
+```bash
+PYTHONPATH=src python3 src/tools/rank_pseudolabel_candidates.py \
+  --input artifacts/pseudolabelling/frozen_baseline_regex_seed42/05d_scored_context_boost_location_p75.jsonl \
+  --output-jsonl artifacts/pseudolabelling/frozen_baseline_regex_seed42/07_location_p75_top1000.jsonl \
+  --output-csv artifacts/pseudolabelling/frozen_baseline_regex_seed42/07_location_p75_top1000.csv \
+  --output-html artifacts/pseudolabelling/frozen_baseline_regex_seed42/07_location_p75_top1000.html \
+  --summary-json artifacts/pseudolabelling/frozen_baseline_regex_seed42/07_location_p75_top1000_summary.json \
+  --score-fields record_score_location \
+  --required-labels Location \
+  --min-score 0.80 \
+  --top-n 1000 \
+  --title "Location p75 top 1000 pseudolabel candidates"
+```
 
 ### `src/tools/compare_spacy_predictions.py`
 

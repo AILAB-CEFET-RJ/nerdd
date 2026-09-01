@@ -2,11 +2,11 @@
 
 Inference-only pipeline to label a large unlabeled corpus using a trained model.
 
-For this project, large-corpus pseudolabelling should run over the sanitized artifact:
+For the current frozen-baseline pilot, large-corpus pseudolabelling should run over:
 
-- `../artifacts/corpus_sanitization/dd_corpus_large_sanitized.jsonl`
+- `data/large/large_sanitized_no_labeled_overlap.jsonl`
 
-The raw corpus `../data/dd_corpus_large.json` remains a source artifact, not the official pseudolabelling input.
+The raw corpus `data/dd_corpus_large.json` remains a source artifact, not the official pseudolabelling input. Older experiments may still reference `artifacts/corpus_sanitization/dd_corpus_large_sanitized.jsonl`; keep those paths only when reproducing those older runs.
 
 ## Entrypoint
 
@@ -21,7 +21,7 @@ The raw corpus `../data/dd_corpus_large.json` remains a source artifact, not the
 
 ## Typical Flow
 
-1. Train model with nested CV in the training subpipeline.
+1. Train or select a fixed supervised baseline model.
 2. Optionally fit a reusable score calibrator on a labeled holdout subset.
 3. Use best model snapshot for large-corpus prediction, optionally applying the calibrator artifact.
 4. Optionally apply metadata-aware confidence boost before threshold filtering.
@@ -43,22 +43,21 @@ Two semisupervised regimes are now possible:
   - an accumulated pseudolabel artifact that grows across iterations
   - one refit per accumulated state
 
-## Command Example
+## Frozen Baseline Prediction Example
 
 ```bash
-cd src
-python3 -m pseudolabelling.generate_corpus_predictions \
-  --model-path ../artifacts/base_model_training/smoke/run_nested_tiny/best_overall_gliner_model \
+PYTHONPATH=src python3 -m pseudolabelling.generate_corpus_predictions \
+  --model-path artifacts/base_model_training/quick_supervised_only_regex/best_model \
   --model-max-length 384 \
-  --calibrator-path ../artifacts/calibration/base_model/calibrator.json \
-  --input-jsonl ../artifacts/corpus_sanitization/dd_corpus_large_sanitized.jsonl \
-  --output-jsonl ../artifacts/pseudolabelling/iter01/01_predictions.jsonl \
-  --stats-json ../artifacts/pseudolabelling/iter01/01_predictions_stats.json \
+  --input-jsonl data/large/large_sanitized_no_labeled_overlap.jsonl \
+  --output-jsonl artifacts/pseudolabelling/frozen_baseline_regex_seed42/01_predictions.jsonl \
+  --stats-json artifacts/pseudolabelling/frozen_baseline_regex_seed42/01_predictions_stats.json \
   --labels Person,Location,Organization \
   --text-fields relato \
   --max-tokens 384 \
-  --batch-size 4 \
+  --batch-size 16 \
   --score-threshold 0.0 \
+  --keep-inference-text \
   --log-level INFO
 ```
 
@@ -67,12 +66,11 @@ python3 -m pseudolabelling.generate_corpus_predictions \
 Run the full iterative cycle (prediction -> optional legacy calibration step -> context boost -> scoring -> split -> refit -> paired base/refit evaluation -> optional next-iteration prep):
 
 ```bash
-cd src
-python3 -m pseudolabelling.run_iterative_cycle \
-  --run-dir ../artifacts/pseudolabelling/iter_cycle_01 \
-  --model-path ../artifacts/base_model_training/experiments/run_batch16/best_overall_gliner_model \
-  --prediction-calibrator-path ../artifacts/calibration/base_model/calibrator.json \
-  --input-jsonl ../artifacts/corpus_sanitization/dd_corpus_large_sanitized.jsonl \
+PYTHONPATH=src python3 -m pseudolabelling.run_iterative_cycle \
+  --run-dir artifacts/pseudolabelling/iter_cycle_01 \
+  --model-path artifacts/base_model_training/quick_supervised_only_regex/best_model \
+  --prediction-calibrator-path artifacts/calibration/base_model/calibrator.json \
+  --input-jsonl data/large/large_sanitized_no_labeled_overlap.jsonl \
   --labels Person,Location,Organization \
   --text-fields relato \
   --prediction-batch-size 4 \
@@ -81,12 +79,12 @@ python3 -m pseudolabelling.run_iterative_cycle \
   --prediction-threshold 0.0 \
   --record-score-field score_context_boosted \
   --split-threshold 0.80 \
-  --refit-base-model ../artifacts/base_model_training/experiments/run_batch16/best_overall_gliner_model \
-  --refit-supervised-train-path ../data/dd_corpus_small_train.json \
+  --refit-base-model artifacts/base_model_training/quick_supervised_only_regex/best_model \
+  --refit-supervised-train-path data/dd_corpus_small_train.json \
   --refit-epochs 10 \
   --refit-batch-size 8 \
   --evaluate-refit \
-  --eval-gt-jsonl ../data/dd_corpus_small_test.json \
+  --eval-gt-jsonl data/dd_corpus_small_test.json \
   --eval-model-max-length 384 \
   --prepare-next-iteration \
   --log-level INFO
@@ -132,11 +130,10 @@ python3 ../src/tools/summarize_context_boost_audit.py \
 ## Record Score Example
 
 ```bash
-cd src
-python3 -m pseudolabelling.compute_record_scores \
-  --input-jsonl ../artifacts/pseudolabelling/iter01/02_context_boosted.jsonl \
-  --output-jsonl ../artifacts/pseudolabelling/iter01/03_scored.jsonl \
-  --stats-json ../artifacts/pseudolabelling/iter01/03_score_stats.json \
+PYTHONPATH=src python3 -m pseudolabelling.compute_record_scores \
+  --input-jsonl artifacts/pseudolabelling/frozen_baseline_regex_seed42/04_context_boosted.jsonl \
+  --output-jsonl artifacts/pseudolabelling/frozen_baseline_regex_seed42/05_scored_context_boost.jsonl \
+  --stats-json artifacts/pseudolabelling/frozen_baseline_regex_seed42/05_scored_context_boost_stats.json \
   --score-field score_context_boosted \
   --output-field record_score \
   --legacy-field-alias score_relato \
@@ -151,6 +148,43 @@ python3 -m pseudolabelling.compute_record_scores \
 `mean_times_min` remains available when you explicitly want a much more conservative ranking that strongly penalizes a single low-confidence entity.
 
 `label_text` deduplication is useful when repeated occurrences of the same location string inside one relato would otherwise inflate the record-level score.
+
+For the active `Location` pilot, compute a label-filtered score:
+
+```bash
+PYTHONPATH=src python3 -m pseudolabelling.compute_record_scores \
+  --input-jsonl artifacts/pseudolabelling/frozen_baseline_regex_seed42/04_context_boosted.jsonl \
+  --output-jsonl artifacts/pseudolabelling/frozen_baseline_regex_seed42/05d_scored_context_boost_location_p75.jsonl \
+  --stats-json artifacts/pseudolabelling/frozen_baseline_regex_seed42/05d_scored_context_boost_location_p75_stats.json \
+  --score-field score_context_boosted \
+  --output-field record_score_location \
+  --legacy-field-alias score_relato_location \
+  --include-labels Location \
+  --aggregation p75 \
+  --dedupe-mode label_text \
+  --empty-entities-policy zero \
+  --log-level INFO
+```
+
+Use `record_score_location` for `Location` candidate selection. Initial probes showed that `max` over `Location` is too permissive, while all-label median is too conservative for this pilot.
+
+## Top-K Candidate Selection Example
+
+`src/tools/rank_pseudolabel_candidates.py` now performs simple top-k selection over configured record-level score fields.
+
+```bash
+PYTHONPATH=src python3 src/tools/rank_pseudolabel_candidates.py \
+  --input artifacts/pseudolabelling/frozen_baseline_regex_seed42/05d_scored_context_boost_location_p75.jsonl \
+  --output-jsonl artifacts/pseudolabelling/frozen_baseline_regex_seed42/07_location_p75_top1000.jsonl \
+  --output-csv artifacts/pseudolabelling/frozen_baseline_regex_seed42/07_location_p75_top1000.csv \
+  --output-html artifacts/pseudolabelling/frozen_baseline_regex_seed42/07_location_p75_top1000.html \
+  --summary-json artifacts/pseudolabelling/frozen_baseline_regex_seed42/07_location_p75_top1000_summary.json \
+  --score-fields record_score_location \
+  --required-labels Location \
+  --min-score 0.80 \
+  --top-n 1000 \
+  --title "Location p75 top 1000 pseudolabel candidates"
+```
 
 ## Split Example
 
@@ -175,13 +209,12 @@ python3 -m pseudolabelling.split_pseudolabels \
 ## Refit Example
 
 ```bash
-cd src
-python3 -m pseudolabelling.refit_model \
-  --input-path ../artifacts/pseudolabelling/iter01/04_split \
-  --pseudolabel-path ../artifacts/pseudolabelling/iter01/04_split/kept.jsonl \
-  --output-model-dir ../artifacts/pseudolabelling/iter01/05_refit_model \
-  --base-model ../artifacts/base_model_training/experiments/run_batch16/best_overall_gliner_model \
-  --supervised-train-path ../data/dd_corpus_small_train.json \
+PYTHONPATH=src python3 -m pseudolabelling.refit_model \
+  --input-path artifacts/pseudolabelling/iter01/04_split \
+  --pseudolabel-path artifacts/pseudolabelling/iter01/04_split/kept.jsonl \
+  --output-model-dir artifacts/pseudolabelling/iter01/05_refit_model \
+  --base-model artifacts/base_model_training/quick_supervised_only_regex/best_model \
+  --supervised-train-path data/dd_corpus_small_train.json \
   --epochs 10 \
   --patience 3 \
   --batch-size 8 \
@@ -316,7 +349,8 @@ Output fields:
 
 - per-record: `record_score` (default, configurable)
 - optional legacy alias: `score_relato`
-- run stats JSON includes invalid-score counts and score distribution
+- optional label-filtered score when `--include-labels` is used, for example `record_score_location`
+- run stats JSON includes invalid-score counts, label-filtered entity counts, and score distribution
 
 ## Split Outputs
 

@@ -23,6 +23,7 @@ Operational rules for dataset and artifact ownership:
 Canonical datasets currently expected in `data/`:
 
 - `data/dd_corpus_large.json`
+- `data/large/large_sanitized_no_labeled_overlap.jsonl`
 - `data/dd_corpus_small_train.json`
 - `data/dd_corpus_small_calibration.json`
 - `data/dd_corpus_small_test.json`
@@ -61,7 +62,7 @@ Operational note:
 - use `src/tools/inspect_dense_tips.py` only for dense-outlier auditing, not as the primary ranking step before `05_llm_input`
 - use `src/tools/generate_gliner2_predictions.py` as the default implementation of `04b_gliner2_predictions`
 - `05_llm_input` must consume rows already enriched with `gliner2_entities`; inline GLiNER2 inference is not allowed in this stage
-- for current DD corpus conventions, do not use `--max-location-ratio` as an operational filter; `Location`-heavy relatos are common and often valid
+- for the current `Location` pilot, rank candidates with a label-filtered record score instead of penalizing `Location`-heavy reports
 
 ## 1) First Run
 
@@ -130,6 +131,34 @@ python3 base_model_training/evaluate_gliner.py \
 ```
 
 ## 5) Large Corpus Prediction (inference-only)
+
+Current frozen-baseline command for the `Location` pseudolabeling pilot on `workstation02`:
+
+```bash
+PYTHONPATH=src python3 -m pseudolabelling.generate_corpus_predictions \
+  --model-path artifacts/base_model_training/quick_supervised_only_regex/best_model \
+  --model-max-length 384 \
+  --input-jsonl data/large/large_sanitized_no_labeled_overlap.jsonl \
+  --output-jsonl artifacts/pseudolabelling/frozen_baseline_regex_seed42/01_predictions.jsonl \
+  --stats-json artifacts/pseudolabelling/frozen_baseline_regex_seed42/01_predictions_stats.json \
+  --labels Person,Location,Organization \
+  --text-fields relato \
+  --max-tokens 384 \
+  --batch-size 16 \
+  --score-threshold 0.0 \
+  --keep-inference-text \
+  --log-level INFO
+```
+
+Observed frozen-baseline run:
+
+- input rows: `182008`
+- processed rows: `182008`
+- failed rows: `0`
+- predicted entities: `2087284`
+
+Legacy example using the old nested-CV output path:
+
 ```bash
 cd src
 python3 -m pseudolabelling.generate_corpus_predictions \
@@ -151,7 +180,7 @@ python3 -m pseudolabelling.generate_corpus_predictions \
 Use `pseudolabelling.compute_record_scores` to convert entity-level confidence into a
 single `record_score` per relato before ranking or thresholding candidates.
 
-Recommended aggregation for current pseudolabelling runs:
+Recommended aggregation for broad all-label pseudolabelling runs:
 
 - `median`
 
@@ -176,6 +205,62 @@ python3 -m pseudolabelling.compute_record_scores \
   --empty-entities-policy zero \
   --log-level INFO
 ```
+
+For the active `Location` pilot, compute the record score only from `Location`
+entities:
+
+```bash
+PYTHONPATH=src python3 -m pseudolabelling.compute_record_scores \
+  --input-jsonl artifacts/pseudolabelling/frozen_baseline_regex_seed42/04_context_boosted.jsonl \
+  --output-jsonl artifacts/pseudolabelling/frozen_baseline_regex_seed42/05d_scored_context_boost_location_p75.jsonl \
+  --stats-json artifacts/pseudolabelling/frozen_baseline_regex_seed42/05d_scored_context_boost_location_p75_stats.json \
+  --score-field score_context_boosted \
+  --output-field record_score_location \
+  --legacy-field-alias score_relato_location \
+  --include-labels Location \
+  --aggregation p75 \
+  --dedupe-mode label_text \
+  --empty-entities-policy zero \
+  --log-level INFO
+```
+
+Operational reading from the current frozen baseline:
+
+- all-label median at threshold `0.80` is too conservative for this pilot (`274` kept after context boost)
+- `Location` max at threshold `0.80` is too permissive (`37698` kept)
+- `Location` p75 is the current score field for top-k candidate ranking
+
+## 5c) Select Top-K Pseudolabel Candidates
+
+Use `src/tools/rank_pseudolabel_candidates.py` after record scoring. The current
+script is intentionally simple: it sorts by a configured record-level score,
+filters by optional required labels and minimum score, and writes the top-k
+records for review or downstream refit preparation.
+
+Current `Location` pilot command:
+
+```bash
+PYTHONPATH=src python3 src/tools/rank_pseudolabel_candidates.py \
+  --input artifacts/pseudolabelling/frozen_baseline_regex_seed42/05d_scored_context_boost_location_p75.jsonl \
+  --output-jsonl artifacts/pseudolabelling/frozen_baseline_regex_seed42/07_location_p75_top1000.jsonl \
+  --output-csv artifacts/pseudolabelling/frozen_baseline_regex_seed42/07_location_p75_top1000.csv \
+  --output-html artifacts/pseudolabelling/frozen_baseline_regex_seed42/07_location_p75_top1000.html \
+  --summary-json artifacts/pseudolabelling/frozen_baseline_regex_seed42/07_location_p75_top1000_summary.json \
+  --score-fields record_score_location \
+  --required-labels Location \
+  --min-score 0.80 \
+  --top-n 1000 \
+  --title "Location p75 top 1000 pseudolabel candidates"
+```
+
+Recommended first volumes:
+
+- `1000`
+- `3000`
+- `5000`
+
+Do not interpret a large threshold-selected kept set as immediately trainable.
+Inspect the HTML review first and compare controlled refit runs by fixed volume.
 
 ## 6) Split Holdout For Calibration
 
@@ -260,7 +345,8 @@ python3 src/tools/sanitize_dd_corpus.py \
 Operational convention:
 
 - `data/dd_corpus_large.json` remains the raw corpus.
-- `artifacts/corpus_sanitization/dd_corpus_large_sanitized.jsonl` is the official pseudolabelling input.
+- `data/large/large_sanitized_no_labeled_overlap.jsonl` is the current frozen-baseline pseudolabelling input.
+- `artifacts/corpus_sanitization/dd_corpus_large_sanitized.jsonl` is a legacy sanitized artifact used by older experiments.
 - `artifacts/corpus_sanitization/dd_corpus_large_flagged_review.jsonl` is held out for later inspection.
 
 Sanitization intent:
@@ -913,6 +999,12 @@ Interpretation:
 - normalize the corpus first, then re-evaluate pseudolabel experiments on top of the corrected baseline
 
 ## 12g) Conservative Metadata-Anchored `Location` Pilot
+
+This section documents an earlier metadata-only pilot. The current
+pseudolabeling direction uses the frozen baseline predictions in
+`artifacts/pseudolabelling/frozen_baseline_regex_seed42/`, applies context
+boost to those predictions, computes `record_score_location`, and then selects
+fixed top-k candidate volumes with `src/tools/rank_pseudolabel_candidates.py`.
 
 If recent train-oriented pseudolabel experiments degrade the baseline, do not immediately try a broader adjudication prompt. First test a conservative `Location-only` pilot anchored in metadata that appears literally in the `relato`.
 

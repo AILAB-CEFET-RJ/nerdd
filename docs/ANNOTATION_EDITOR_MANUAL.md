@@ -194,3 +194,9 @@ python3 src/tools/serve_ner_annotation_editor.py \
 - Use o filtro `Contains:` para revisar strings suspeitas, como nomes de marcas, siglas policiais, abreviações de locais ou falsos positivos recorrentes.
 - Antes de aplicar correções globais, confira a prévia de spans e relatos afetados.
 - Para decisões de fronteira e classe, consulte sempre `docs/LABELLING_GUIDE.md`.
+
+## Documentos relacionados
+
+- `docs/LABELLING_GUIDE.md`: regras de decisão para classe e fronteira de spans.
+- `docs/PIPELINE_OVERVIEW.md`: visão atual do pipeline de treino, auditoria e pseudorrotulagem.
+- `docs/PSEUDOLABELING_ROADMAP.md`: plano e log de progresso dos experimentos de pseudorrotulagem.

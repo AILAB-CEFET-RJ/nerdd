@@ -4,7 +4,9 @@ This document tracks the planned work, decisions, and progress for using unlabel
 
 ## Goal
 
-Compare data-driven boosting strategies for selecting unlabeled reports that are likely to improve NER training coverage, especially for the weakest class, `Organization`.
+Compare data-driven boosting strategies for selecting unlabeled reports that are likely to improve NER training coverage.
+
+The active pilot is scoped to `Location` first. `Organization` remains the weakest class and should keep receiving focused audits, but the first pseudolabeling validation experiment should not depend on improving `Organization`.
 
 ## Current Status
 
@@ -16,6 +18,10 @@ Compare data-driven boosting strategies for selecting unlabeled reports that are
 - OOF error auditing is available for label-focused review.
 - OOF score calibration is available for analyzing how reliable model scores are by label and threshold.
 - `Organization` remains the most problematic class and should receive focused review.
+- A frozen fine-tuned baseline has been generated over the unlabeled corpus.
+- Context boost has been applied to the frozen predictions.
+- Record-level scoring now supports label filtering through `--include-labels`.
+- Candidate ranking now uses a simple top-k selector over a configured record-level score.
 
 ## Main Hypothesis
 
@@ -32,15 +38,15 @@ The first comparison should start from one fixed baseline:
 3. Freeze those predictions as the shared baseline.
 4. Apply each boosting strategy to the same frozen predictions.
 
-Expected baseline artifacts:
+Frozen baseline artifacts:
 
-- Fine-tuned model directory.
-- Experiment config used to train the model.
-- Train/test corpus versions used.
-- Predictions over the unlabeled corpus.
-- Span-level labels, offsets, text, and scores.
-- Report-level aggregate scores.
-- Acceptance threshold or thresholds.
+- Fine-tuned model directory: `artifacts/base_model_training/quick_supervised_only_regex/best_model`
+- Experiment summary: `artifacts/base_model_training/quick_supervised_only_regex/quick_summary.json`
+- Train/test corpus versions used: `data/dd_corpus_small_train.json` and `data/dd_corpus_small_test.json`
+- Unlabeled input: `data/large/large_sanitized_no_labeled_overlap.jsonl`
+- Predictions over the unlabeled corpus: `artifacts/pseudolabelling/frozen_baseline_regex_seed42/01_predictions.jsonl`
+- Prediction stats: `artifacts/pseudolabelling/frozen_baseline_regex_seed42/01_predictions_stats.json`
+- Context-boosted predictions: `artifacts/pseudolabelling/frozen_baseline_regex_seed42/04_context_boosted.jsonl`
 
 ## Strategies to Compare
 
@@ -64,13 +70,19 @@ This strategy should be compared against semantic matching before any retraining
 
 ## Initial Acceptance Criterion
 
-The initial candidate rule is:
+The initial candidate rule was:
 
 ```text
 mean report score > 0.8
 ```
 
-This criterion may be revised after score calibration, especially if different labels require different thresholds.
+This criterion has been revised for the `Location` pilot. The current preferred selection rule is fixed top-k by `record_score_location`, using `p75` over `Location` entity scores after context boost.
+
+Rationale:
+
+- all-label median at threshold `0.80` selected only `274` boosted reports;
+- `Location` max at threshold `0.80` selected `37698` reports and was too permissive;
+- `Location` p75 gives a more useful ranking signal, but still needs a fixed top-k budget.
 
 ## Comparison Metrics
 
@@ -98,16 +110,13 @@ For each strategy, measure:
 
 ## Near-Term Plan
 
-1. Identify or generate predictions from the first fine-tuned model over the unlabeled corpus.
-2. Define the exact prediction file schema for downstream boosting.
-3. Compute report-level aggregate scores.
-4. Produce the no-boost accepted set.
-5. Apply semantic match boosting.
-6. Apply generative AI boosting.
-7. Compare accepted sets.
-8. Sample accepted reports for manual audit.
-9. Decide which pseudolabels are eligible for retraining.
-10. Run retraining only after the first-stage comparison is complete.
+1. Generate the top-k `Location` candidate files from `05d_scored_context_boost_location_p75.jsonl`.
+2. Manually inspect the top-1000 HTML review artifact.
+3. Freeze one or more candidate volumes, starting with `1000`.
+4. Build refit-compatible pseudolabel inputs from the selected candidates.
+5. Run a controlled `supervised_only` vs `supervised_plus_pseudolabels` refit comparison.
+6. Use `Location` F1 as the primary success metric and monitor micro/macro F1 plus `Person`/`Organization` regressions.
+7. Only after the `Location` pilot is stable, compare semantic/context boost against a generative AI boost over the same frozen predictions.
 
 ## Location-First Pilot
 
@@ -152,6 +161,24 @@ Interpretation rule:
 - How large should the manual audit sample be for each strategy?
 
 ## Progress Log
+
+### 2026-09-01
+
+- Updated the pipeline documentation to match the current JSON-configured quick-training and pseudolabeling workflow.
+- Standardized the active large-corpus input as `data/large/large_sanitized_no_labeled_overlap.jsonl`.
+- Documented the frozen baseline at `artifacts/base_model_training/quick_supervised_only_regex/best_model`.
+- Documented the first frozen prediction run:
+  - input rows: `182008`
+  - processed rows: `182008`
+  - failed rows: `0`
+  - predicted entities: `2087284`
+- Documented no-boost vs context-boost split behavior:
+  - no boost, all-label median, threshold `0.80`: `273` kept
+  - context boost, all-label median, threshold `0.80`: `274` kept
+  - context boost, `Location` max, threshold `0.80`: `37698` kept
+  - context boost, `Location` p75, threshold `0.80`: `14255` kept
+- Decided that the next selection step should use fixed top-k volumes over `Location` p75 scores instead of a raw threshold-only rule.
+- Simplified `src/tools/rank_pseudolabel_candidates.py` into a top-k selector over record-level scores.
 
 ### 2026-08-31
 
