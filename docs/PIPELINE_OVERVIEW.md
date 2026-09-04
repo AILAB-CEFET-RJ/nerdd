@@ -125,6 +125,7 @@ Important entrypoints:
 - `src/pseudolabelling/compute_record_scores.py`
 - `src/pseudolabelling/split_pseudolabels.py`
 - `src/tools/rank_pseudolabel_candidates.py`
+- `src/tools/optimize_context_boost_factor.py`
 
 Current frozen-baseline artifact root:
 
@@ -198,6 +199,10 @@ future generative-boost comparisons.
 `pseudolabelling.apply_context_boost` raises entity scores when model-predicted
 locations are supported by location metadata that appears literally in the
 report text.
+
+The boost factor should be selected from OOF predictions on the labeled training
+corpus with `src/tools/optimize_context_boost_factor.py`, not tuned on the final
+test set.
 
 Current pilot configuration:
 

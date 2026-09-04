@@ -29,6 +29,7 @@ Regra prática:
 | `src/tools/build_train_annotation_prompt_probe.py` | auditoria | audits + lote fonte | sobrescreve saída | montar um probe pequeno e diagnóstico para testar prompts de adjudicação voltados a treino |
 | `src/tools/manage_codex_adjudication_benchmark.py` | operação | JSONL de adjudicação | resumível | gerenciar benchmark chunkado de adjudicação assistida por Codex |
 | `src/tools/run_llm_adjudication.py` | operação | JSONL de adjudicação | resumível | chamar a Responses API para adjudicação literal ou `train_annotation`, inclusive em chunks |
+| `src/tools/optimize_context_boost_factor.py` | seleção | OOF predictions JSONL | sobrescreve saída | simular fatores de context boost sobre predições OOF e recomendar um fator |
 | `src/tools/expand_location_spans_with_markers.py` | limpeza | JSON, JSONL | sobrescreve saída | expandir spans de `Location` para incluir marcadores locativos como `rua`, `trav`, `trv`, `av` quando estiverem imediatamente antes |
 | `src/tools/clean_generic_spans.py` | limpeza | JSON, JSONL | cuidado com `--inplace` | remover spans genéricos por banlist |
 | `src/tools/build_refit_pseudolabel_dataset.py` | conversão | JSONL de adjudicação | sobrescreve saída | projetar `06_llm_adjudicated` para um `pseudolabel_path` compatível com refit |
@@ -992,6 +993,42 @@ PYTHONPATH=src python3 src/tools/rank_pseudolabel_candidates.py \
   --min-score 0.80 \
   --top-n 1000 \
   --title "Location p75 top 1000 pseudolabel candidates"
+```
+
+### `src/tools/optimize_context_boost_factor.py`
+
+Simula fatores de context boost sobre predições OOF já geradas, sem retreinar modelo.
+
+Use quando:
+
+- quer substituir um `boost_factor` arbitrário por um valor estimado no treino em regime OOF;
+- tem um `oof_predictions.jsonl` com `pred_spans`, `gold_spans`, scores e metadados;
+- precisa escolher o fator antes de aplicar boost ao corpus não anotado.
+
+Saídas:
+
+- `boost_factor_metrics.csv`
+- `boost_factor_summary.json`
+- `boost_factor_recommendation.json`
+- `promoted_entities.jsonl`
+- `promoted_records.jsonl`
+- `boost_factor_review.html`
+
+Exemplo:
+
+```bash
+PYTHONPATH=src python3 src/tools/optimize_context_boost_factor.py \
+  --oof-predictions artifacts/error_analysis/train_oof_regex_for_boost_factor/oof_predictions.jsonl \
+  --output-dir artifacts/boost_factor_optimization/context_location_oof \
+  --boost-factors 1.00,1.05,1.10,1.15,1.20,1.30,1.50 \
+  --target-label Location \
+  --score-thresholds 0.6,0.7,0.8,0.9,0.95 \
+  --record-score-aggregation p75 \
+  --record-thresholds 0.8,0.9,0.95 \
+  --precision-floor 0.90 \
+  --boost-scope location-matched-only \
+  --match-policy any-metadata-in-text \
+  --log-level INFO
 ```
 
 ### `src/tools/compare_spacy_predictions.py`

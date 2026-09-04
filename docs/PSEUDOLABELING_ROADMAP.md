@@ -111,12 +111,15 @@ For each strategy, measure:
 ## Near-Term Plan
 
 1. Generate the top-k `Location` candidate files from `05d_scored_context_boost_location_p75.jsonl`.
-2. Manually inspect the top-1000 HTML review artifact.
-3. Freeze one or more candidate volumes, starting with `1000`.
-4. Build refit-compatible pseudolabel inputs from the selected candidates.
-5. Run a controlled `supervised_only` vs `supervised_plus_pseudolabels` refit comparison.
-6. Use `Location` F1 as the primary success metric and monitor micro/macro F1 plus `Person`/`Organization` regressions.
-7. Only after the `Location` pilot is stable, compare semantic/context boost against a generative AI boost over the same frozen predictions.
+2. Generate OOF predictions on the training corpus with low prediction threshold and metadata enrichment.
+3. Use `src/tools/optimize_context_boost_factor.py` to choose a data-driven context boost factor from those OOF predictions.
+4. Re-apply context boost to the frozen unlabeled predictions with the selected factor.
+5. Manually inspect the top-1000 HTML review artifact.
+6. Freeze one or more candidate volumes, starting with `1000`.
+7. Build refit-compatible pseudolabel inputs from the selected candidates.
+8. Run a controlled `supervised_only` vs `supervised_plus_pseudolabels` refit comparison.
+9. Use `Location` F1 as the primary success metric and monitor micro/macro F1 plus `Person`/`Organization` regressions.
+10. Only after the `Location` pilot is stable, compare semantic/context boost against a generative AI boost over the same frozen predictions.
 
 ## Location-First Pilot
 
@@ -161,6 +164,11 @@ Interpretation rule:
 - How large should the manual audit sample be for each strategy?
 
 ## Progress Log
+
+### 2026-09-04
+
+- Refactored `src/tools/mine_train_oof_errors.py` so OOF outputs preserve row identity, low-threshold predictions, eval-threshold predictions, and optional metadata enrichment.
+- Added `src/tools/optimize_context_boost_factor.py` to simulate context boost factors over OOF predictions without retraining.
 
 ### 2026-09-01
 
