@@ -204,6 +204,31 @@ The boost factor should be selected from OOF predictions on the labeled training
 corpus with `src/tools/optimize_context_boost_factor.py`, not tuned on the final
 test set.
 
+If the OOF artifact lacks location metadata, recover it inside the optimizer
+with `--metadata-sources`. Do not use
+`data/large/large_sanitized_no_labeled_overlap.jsonl` for this recovery step:
+that file intentionally removes overlap with labeled corpora, so train rows will
+not match and boost simulation becomes a no-op.
+
+Current factor-optimization command:
+
+```bash
+PYTHONPATH=src python3 src/tools/optimize_context_boost_factor.py \
+  --oof-predictions artifacts/error_analysis/train_oof_regex_for_boost_factor/oof_predictions.jsonl \
+  --output-dir artifacts/boost_factor_optimization/context_location_oof_with_metadata_sources \
+  --metadata-sources data/large_sanitized/large_sanitized.jsonl,data/large_sanitized/large_dropped.jsonl,data/large_sanitized/large_flagged.jsonl \
+  --metadata-source-text-fields relato,text \
+  --boost-factors 1.00,1.05,1.10,1.15,1.20,1.30,1.50 \
+  --target-label Location \
+  --score-thresholds 0.6,0.7,0.8,0.9,0.95 \
+  --record-score-aggregation p75 \
+  --record-thresholds 0.8,0.9,0.95 \
+  --precision-floor 0.90 \
+  --boost-scope location-matched-only \
+  --match-policy any-metadata-in-text \
+  --log-level INFO
+```
+
 Current pilot configuration:
 
 ```bash

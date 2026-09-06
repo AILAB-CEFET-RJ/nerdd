@@ -1,5 +1,6 @@
 import argparse
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -9,6 +10,7 @@ from tools.optimize_context_boost_factor import (
     _build_boost_record,
     _default_recommendation_entity_threshold,
     choose_recommendation,
+    enrich_rows_from_metadata_sources,
     evaluate_boost_factors,
 )
 
@@ -104,6 +106,25 @@ class OptimizeContextBoostFactorTests(unittest.TestCase):
 
     def test_default_recommendation_threshold_uses_highest_at_most_point_eight(self):
         self.assertEqual(_default_recommendation_entity_threshold([0.6, 0.8, 0.9]), 0.8)
+
+    def test_enrich_rows_from_metadata_sources_matches_normalized_text(self):
+        rows = [{"text": "Tráfico na Rua Alfa", "pred_spans": [], "gold_spans": []}]
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source.jsonl"
+            source.write_text(
+                '{"relato":"trafico na rua alfa","logradouroLocal":"Rua Alfa"}\n',
+                encoding="utf-8",
+            )
+            enriched, stats = enrich_rows_from_metadata_sources(
+                rows,
+                source_paths=[source],
+                source_text_fields=["relato", "text"],
+                metadata_fields=["logradouroLocal"],
+            )
+        self.assertEqual(stats["oof_rows_metadata_matched"], 1)
+        self.assertEqual(enriched[0]["logradouroLocal"], "Rua Alfa")
+        self.assertEqual(enriched[0]["source_fields"]["logradouroLocal"], "Rua Alfa")
+        self.assertEqual(enriched[0]["metadata_match"]["status"], "matched_unique_optimizer")
 
 
 if __name__ == "__main__":

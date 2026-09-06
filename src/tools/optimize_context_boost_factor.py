@@ -9,6 +9,7 @@ import json
 import logging
 import math
 import sys
+from collections import Counter
 from copy import deepcopy
 from html import escape
 from pathlib import Path
@@ -21,7 +22,7 @@ from base_model_training.io_utils import load_jsonl, save_jsonl
 from base_model_training.paths import resolve_path
 from pseudolabelling.compute_record_score import compute_record_score
 from pseudolabelling.config import ContextBoostConfig
-from pseudolabelling.context_boost import apply_context_boost_to_record
+from pseudolabelling.context_boost import apply_context_boost_to_record, normalize_text
 from pseudolabelling.evaluate_refit_pipeline import compute_span_metrics
 
 LOGGER = logging.getLogger(__name__)
@@ -54,6 +55,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--text-field-priority", default="text,relato")
     parser.add_argument("--metadata-fields", default="logradouroLocal,bairroLocal,cidadeLocal,pontodeReferenciaLocal")
     parser.add_argument(
+        "--metadata-sources",
+        default="",
+        help=(
+            "Optional comma-separated JSON/JSONL files used to recover metadata for OOF rows "
+            "by exact normalized text match."
+        ),
+    )
+    parser.add_argument(
+        "--metadata-source-text-fields",
+        default="relato,text",
+        help="Comma-separated text fields to try inside --metadata-sources.",
+    )
+    parser.add_argument(
         "--boost-scope",
         choices=["all-entities", "location-only", "matched-only", "location-matched-only"],
         default="location-matched-only",
@@ -79,6 +93,14 @@ def _parse_floats(value: str) -> list[float]:
     if not values:
         raise ValueError("At least one numeric value is required.")
     return values
+
+
+def _pick_text(row: dict[str, Any], text_fields: list[str]) -> str:
+    for field in text_fields:
+        value = row.get(field)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
 
 
 def _span_key(span: dict[str, Any]) -> tuple[int, int, str]:
@@ -123,6 +145,122 @@ def _build_boost_record(row: dict[str, Any], *, base_score_field: str) -> dict[s
         if base_score_field != "score" and base_score_field in entity and "score" not in entity:
             entity["score"] = entity[base_score_field]
     return record
+
+
+def _metadata_payload(row: dict[str, Any], metadata_fields: list[str]) -> dict[str, str]:
+    return {
+        field: str(row[field]).strip()
+        for field in metadata_fields
+        if isinstance(row.get(field), str) and str(row[field]).strip()
+    }
+
+
+def _metadata_signature(payload: dict[str, str]) -> tuple[tuple[str, str], ...]:
+    return tuple(sorted(payload.items()))
+
+
+def _build_metadata_lookup(
+    source_paths: list[Path],
+    *,
+    text_fields: list[str],
+    metadata_fields: list[str],
+) -> tuple[dict[str, dict[str, Any]], dict[str, int]]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    stats = Counter()
+    for source_path in source_paths:
+        rows = load_jsonl(str(source_path))
+        stats["source_files"] += 1
+        stats["source_rows"] += len(rows)
+        for row_index, row in enumerate(rows):
+            text = _pick_text(row, text_fields)
+            if not text:
+                stats["source_rows_without_text"] += 1
+                continue
+            payload = _metadata_payload(row, metadata_fields)
+            if not payload:
+                stats["source_rows_without_metadata"] += 1
+                continue
+            key = normalize_text(text)
+            if not key:
+                stats["source_rows_without_text"] += 1
+                continue
+            grouped.setdefault(key, []).append(
+                {
+                    "source_path": str(source_path),
+                    "source_row_index_0based": row_index,
+                    "source_row_index_1based": row_index + 1,
+                    "metadata": payload,
+                }
+            )
+
+    lookup = {}
+    for key, matches in grouped.items():
+        signatures = {_metadata_signature(match["metadata"]) for match in matches}
+        if len(signatures) == 1:
+            lookup[key] = matches[0]
+            stats["unique_text_keys"] += 1
+        else:
+            stats["ambiguous_text_keys"] += 1
+    return lookup, dict(stats)
+
+
+def _row_has_metadata(row: dict[str, Any], metadata_fields: list[str]) -> bool:
+    source_fields = row.get("source_fields")
+    for field in metadata_fields:
+        if isinstance(row.get(field), str) and row[field].strip():
+            return True
+        if isinstance(source_fields, dict) and isinstance(source_fields.get(field), str) and source_fields[field].strip():
+            return True
+    return False
+
+
+def enrich_rows_from_metadata_sources(
+    rows: list[dict[str, Any]],
+    *,
+    source_paths: list[Path],
+    source_text_fields: list[str],
+    metadata_fields: list[str],
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    if not source_paths:
+        return rows, {"enabled": 0}
+
+    lookup, lookup_stats = _build_metadata_lookup(
+        source_paths,
+        text_fields=source_text_fields,
+        metadata_fields=metadata_fields,
+    )
+    enriched_rows = []
+    stats = Counter(lookup_stats)
+    stats["enabled"] = 1
+    stats["oof_rows"] = len(rows)
+    for row in rows:
+        enriched = deepcopy(row)
+        if _row_has_metadata(enriched, metadata_fields):
+            stats["oof_rows_with_existing_metadata"] += 1
+            enriched_rows.append(enriched)
+            continue
+
+        key = normalize_text(str(enriched.get("text", "")))
+        match = lookup.get(key)
+        if not match:
+            stats["oof_rows_metadata_unmatched"] += 1
+            enriched_rows.append(enriched)
+            continue
+
+        source_fields = dict(enriched.get("source_fields") or {})
+        source_fields.update(match["metadata"])
+        enriched["source_fields"] = source_fields
+        for field, value in match["metadata"].items():
+            enriched[field] = value
+        enriched["metadata_match"] = {
+            "status": "matched_unique_optimizer",
+            "source_path": match["source_path"],
+            "source_row_index_0based": match["source_row_index_0based"],
+            "source_row_index_1based": match["source_row_index_1based"],
+        }
+        stats["oof_rows_metadata_matched"] += 1
+        enriched_rows.append(enriched)
+    return enriched_rows, dict(stats)
 
 
 def _context_config(
@@ -515,6 +653,20 @@ def main() -> None:
     boost_factors = _parse_floats(args.boost_factors)
     entity_thresholds = _parse_floats(args.score_thresholds)
     record_thresholds = _parse_floats(args.record_thresholds)
+    metadata_fields = _parse_csv(args.metadata_fields)
+    metadata_source_paths = [
+        resolve_path(script_dir, source)
+        for source in _parse_csv(args.metadata_sources)
+    ]
+    missing_metadata_sources = [str(path) for path in metadata_source_paths if not path.exists()]
+    if missing_metadata_sources:
+        raise FileNotFoundError(f"Metadata source file(s) not found: {missing_metadata_sources}")
+    rows, metadata_enrichment_stats = enrich_rows_from_metadata_sources(
+        rows,
+        source_paths=metadata_source_paths,
+        source_text_fields=_parse_csv(args.metadata_source_text_fields),
+        metadata_fields=metadata_fields,
+    )
     recommendation_entity_threshold = (
         args.recommendation_entity_threshold
         if args.recommendation_entity_threshold is not None
@@ -553,6 +705,7 @@ def main() -> None:
             "score_thresholds": entity_thresholds,
             "record_thresholds": record_thresholds,
         },
+        "metadata_enrichment": metadata_enrichment_stats,
         "recommendation": recommendation,
         "output_files": {
             "metrics_csv": str((output_dir / "boost_factor_metrics.csv").resolve()),

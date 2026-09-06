@@ -169,6 +169,8 @@ Interpretation rule:
 
 - Refactored `src/tools/mine_train_oof_errors.py` so OOF outputs preserve row identity, low-threshold predictions, eval-threshold predictions, and optional metadata enrichment.
 - Added `src/tools/optimize_context_boost_factor.py` to simulate context boost factors over OOF predictions without retraining.
+- Found that using `data/large/large_sanitized_no_labeled_overlap.jsonl` as the metadata source for train OOF makes context-boost optimization a no-op, because the file intentionally excludes labeled-overlap records.
+- Extended `src/tools/optimize_context_boost_factor.py` so it can enrich OOF rows from explicit metadata source files by unique normalized text match, avoiding the need to rerun OOF just to recover metadata.
 
 ### 2026-09-01
 

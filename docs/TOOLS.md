@@ -1002,8 +1002,15 @@ Simula fatores de context boost sobre predições OOF já geradas, sem retreinar
 Use quando:
 
 - quer substituir um `boost_factor` arbitrário por um valor estimado no treino em regime OOF;
-- tem um `oof_predictions.jsonl` com `pred_spans`, `gold_spans`, scores e metadados;
+- tem um `oof_predictions.jsonl` com `pred_spans`, `gold_spans` e scores;
+- os metadados já estão no OOF ou podem ser recuperados por match exato normalizado de texto com `--metadata-sources`;
 - precisa escolher o fator antes de aplicar boost ao corpus não anotado.
+
+Observação:
+
+- não use `data/large/large_sanitized_no_labeled_overlap.jsonl` como fonte de metadados para OOF de treino, pois esse arquivo exclui por construção relatos que aparecem nos corpora anotados;
+- para recuperar metadados de OOF de treino, prefira as fontes sanitizadas originais com sobreposição possível, como `data/large_sanitized/large_sanitized.jsonl`, `data/large_sanitized/large_dropped.jsonl` e `data/large_sanitized/large_flagged.jsonl`;
+- o script só enriquece linhas com match de texto único e não ambíguo.
 
 Saídas:
 
@@ -1019,7 +1026,9 @@ Exemplo:
 ```bash
 PYTHONPATH=src python3 src/tools/optimize_context_boost_factor.py \
   --oof-predictions artifacts/error_analysis/train_oof_regex_for_boost_factor/oof_predictions.jsonl \
-  --output-dir artifacts/boost_factor_optimization/context_location_oof \
+  --output-dir artifacts/boost_factor_optimization/context_location_oof_with_metadata_sources \
+  --metadata-sources data/large_sanitized/large_sanitized.jsonl,data/large_sanitized/large_dropped.jsonl,data/large_sanitized/large_flagged.jsonl \
+  --metadata-source-text-fields relato,text \
   --boost-factors 1.00,1.05,1.10,1.15,1.20,1.30,1.50 \
   --target-label Location \
   --score-thresholds 0.6,0.7,0.8,0.9,0.95 \
