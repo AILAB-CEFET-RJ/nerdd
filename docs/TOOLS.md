@@ -41,6 +41,7 @@ Regra prática:
 | `src/tools/evaluate_chunk_quality.py` | auditoria | artefatos locais | sobrescreve saída | avaliar qualidade de um chunk a partir dos artefatos do ciclo |
 | `src/tools/export_dissertation_tables.py` | exportação | artefatos locais | sobrescreve saída | wrapper para exportar tabelas de dissertação |
 | `src/tools/export_thesis_tables.py` | exportação | artefatos locais | sobrescreve saída | consolidar artefatos em CSV/Markdown para escrita |
+| `src/tools/extract_app_dd_metadata_matches.py` | metadados | XLSX + JSON | sobrescreve saída | recuperar metadados originais de `data/app_dd.xlsx` para os corpora anotados por match textual |
 | `src/tools/inspect_dense_tips.py` | auditoria | JSON, JSONL | sobrescreve saída | filtrar e visualizar tips com muitas entidades |
 | `src/tools/prune_pseudolabel_tips.py` | limpeza | JSON, JSONL | sobrescreve saída | podar entidades de pseudolabel por score e densidade por tip |
 | `src/tools/rank_pseudolabel_candidates.py` | seleção | JSON, JSONL scoreado | sobrescreve saída | selecionar top-k candidatos de pseudolabel por score de registro |
@@ -1038,6 +1039,37 @@ PYTHONPATH=src python3 src/tools/optimize_context_boost_factor.py \
   --boost-scope location-matched-only \
   --match-policy any-metadata-in-text \
   --log-level INFO
+```
+
+### `src/tools/extract_app_dd_metadata_matches.py`
+
+Recupera metadados originais de localização do arquivo legado `data/app_dd.xlsx`
+e os associa aos corpora anotados atuais por match textual normalizado.
+
+Use quando:
+
+- precisa enriquecer `train`, `test` e `calibration` com `cidadeLocal`, `logradouroLocal`, `bairroLocal` e `pontodeReferenciaLocal`;
+- quer auditar a cobertura de metadados antes de rodar otimização de context boost;
+- o arquivo `app_dd.xlsx` está com linhas quebradas por vírgulas não escapadas.
+
+Observações:
+
+- o script lê `.xlsx` diretamente, sem depender de `openpyxl`;
+- corrige mojibake simples como `TrÃ¡fico` -> `Tráfico`;
+- tenta reconstruir relatos quebrados e extrai os metadados nas células imediatamente posteriores ao relato casado;
+- só considere automaticamente os casos `matched_unique` com `has_geo_metadata=True`; casos ambíguos ou sem match ficam no CSV de auditoria.
+
+Exemplo:
+
+```bash
+python3 src/tools/extract_app_dd_metadata_matches.py \
+  --app-xlsx data/app_dd.xlsx \
+  --labeled-input train:data/dd_corpus_small_train.json \
+  --labeled-input test:data/dd_corpus_small_test.json \
+  --labeled-input calibration:data/dd_corpus_small_calibration.json \
+  --output-jsonl artifacts/metadata/app_dd_labeled_metadata_matches.jsonl \
+  --audit-csv artifacts/metadata/app_dd_labeled_metadata_matches_audit.csv \
+  --summary-json artifacts/metadata/app_dd_labeled_metadata_matches_summary.json
 ```
 
 ### `src/tools/compare_spacy_predictions.py`

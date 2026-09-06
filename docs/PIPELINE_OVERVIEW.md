@@ -63,9 +63,15 @@ Important entrypoints:
 - `src/tools/mine_train_oof_errors.py`
 - `src/tools/audit_ner_errors_by_label.py`
 - `src/tools/calibrate_ner_scores.py`
+- `src/tools/extract_app_dd_metadata_matches.py`
 
 The server editor can save directly back to the dataset and creates timestamped
 backups beside the edited JSON file.
+
+The legacy spreadsheet `data/app_dd.xlsx` can be used to recover original
+location metadata for many labeled small-corpus rows. Use
+`src/tools/extract_app_dd_metadata_matches.py` to produce an auditable JSONL/CSV
+mapping before using those metadata in context-boost experiments.
 
 ### Supervised Training And Evaluation
 

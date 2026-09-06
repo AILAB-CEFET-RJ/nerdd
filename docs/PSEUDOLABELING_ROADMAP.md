@@ -110,16 +110,20 @@ For each strategy, measure:
 
 ## Near-Term Plan
 
-1. Generate the top-k `Location` candidate files from `05d_scored_context_boost_location_p75.jsonl`.
-2. Generate OOF predictions on the training corpus with low prediction threshold and metadata enrichment.
-3. Use `src/tools/optimize_context_boost_factor.py` to choose a data-driven context boost factor from those OOF predictions.
-4. Re-apply context boost to the frozen unlabeled predictions with the selected factor.
+1. Use `artifacts/metadata/app_dd_labeled_metadata_matches.jsonl` as the metadata source for train OOF context-boost optimization.
+2. Use `src/tools/optimize_context_boost_factor.py` to choose a data-driven context boost factor from OOF predictions enriched with `app_dd.xlsx` metadata.
+3. Re-apply context boost to the frozen unlabeled predictions with the selected factor.
+4. Generate the top-k `Location` candidate files from the updated boosted/scored predictions.
 5. Manually inspect the top-1000 HTML review artifact.
 6. Freeze one or more candidate volumes, starting with `1000`.
 7. Build refit-compatible pseudolabel inputs from the selected candidates.
 8. Run a controlled `supervised_only` vs `supervised_plus_pseudolabels` refit comparison.
 9. Use `Location` F1 as the primary success metric and monitor micro/macro F1 plus `Person`/`Organization` regressions.
 10. Only after the `Location` pilot is stable, compare semantic/context boost against a generative AI boost over the same frozen predictions.
+
+## TODO
+
+- Apply the same `app_dd.xlsx` matching strategy to the large unlabeled corpus to measure overlap and identify additional non-labeled records with recoverable metadata. This should be used for corpus accounting and possible metadata enrichment, while preserving the no-labeled-overlap constraint for pseudolabel selection.
 
 ## Location-First Pilot
 
@@ -171,6 +175,7 @@ Interpretation rule:
 - Added `src/tools/optimize_context_boost_factor.py` to simulate context boost factors over OOF predictions without retraining.
 - Found that using `data/large/large_sanitized_no_labeled_overlap.jsonl` as the metadata source for train OOF makes context-boost optimization a no-op, because the file intentionally excludes labeled-overlap records.
 - Extended `src/tools/optimize_context_boost_factor.py` so it can enrich OOF rows from explicit metadata source files by unique normalized text match, avoiding the need to rerun OOF just to recover metadata.
+- Added `src/tools/extract_app_dd_metadata_matches.py` to recover original `app_dd.xlsx` metadata for the labeled small corpora. The first run recovered unique geographic metadata for `3792/5230` labeled rows, including `3087/4226` train rows.
 
 ### 2026-09-01
 
