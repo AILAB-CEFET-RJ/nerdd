@@ -34,6 +34,8 @@ def _parse_csv_list(raw_value):
 
 
 def _reliability_rows(scores, targets, bins=10):
+    scores = np.asarray(scores, dtype=np.float64)
+    targets = np.asarray(targets, dtype=np.int64)
     edges = np.linspace(0.0, 1.0, bins + 1)
     bin_ids = np.digitize(scores, edges[1:-1], right=True)
     rows = []

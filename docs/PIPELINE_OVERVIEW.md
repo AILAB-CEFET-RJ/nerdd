@@ -63,6 +63,8 @@ Important entrypoints:
 - `src/tools/mine_train_oof_errors.py`
 - `src/tools/audit_ner_errors_by_label.py`
 - `src/tools/calibrate_ner_scores.py`
+- `src/tools/fit_ner_score_calibrator_oof.py`
+- `src/tools/apply_ner_score_calibrator.py`
 - `src/tools/extract_app_dd_metadata_matches.py`
 
 The server editor can save directly back to the dataset and creates timestamped
@@ -347,6 +349,29 @@ and `5000`.
 
 Use `src/tools/calibrate_ner_scores.py` on OOF prediction artifacts to understand
 how raw GLiNER scores behave by label and threshold.
+
+Use `src/tools/fit_ner_score_calibrator_oof.py` when a reusable score calibrator
+is needed. It fits per-label calibrators from out-of-fold predictions only, so
+the final test set remains untouched. The saved `calibrator.json` can then be
+applied to frozen large-corpus predictions with `src/tools/apply_ner_score_calibrator.py`
+or passed to the prediction pipeline through the existing calibrator hook.
+
+Current OOF calibrator command:
+
+```bash
+PYTHONPATH=src python3 src/tools/fit_ner_score_calibrator_oof.py \
+  --oof-predictions artifacts/error_analysis/train_oof_regex_for_boost_factor/oof_predictions.jsonl \
+  --output-dir artifacts/calibration/ner_score_calibrator_oof_regex \
+  --labels Person,Location,Organization \
+  --method isotonic \
+  --score-field score \
+  --pred-field pred_spans \
+  --gold-field gold_spans \
+  --min-positive 20 \
+  --min-negative 20 \
+  --bins 10 \
+  --log-level INFO
+```
 
 Interpretation:
 

@@ -20,6 +20,7 @@ Regra prática:
 | `src/tools/build_annotation_editor.py` | anotação | JSON, JSONL | sobrescreve saída | gerar um editor HTML para revisão manual de spans |
 | `src/tools/audit_calibration_by_label.py` | auditoria | CSV de calibração | sobrescreve saída | auditar scores brutos vs calibrados por label e por validade |
 | `src/tools/audit_refit_regressions.py` | auditoria | gold + predictions.jsonl | sobrescreve saída | auditar regressões entre baseline e refit, com wins/losses/ties e confusões de label |
+| `src/tools/apply_ner_score_calibrator.py` | calibração | JSONL de predições + calibrador JSON | sobrescreve saída | aplicar calibrador OOF salvo às scores de entidades NER |
 | `src/tools/build_calibration_dataset.py` | calibração | JSON, JSONL | sobrescreve saída | montar dataset de calibração a partir de previsões do modelo |
 | `src/tools/build_metadata_location_pseudolabels.py` | seleção | JSON, JSONL | sobrescreve saída | montar um pool conservador de pseudolabels `Location` por match literal de metadado no relato |
 | `src/tools/build_metadata_multilabel_pseudolabels.py` | seleção | JSON, JSONL | sobrescreve saída | montar um pool conservador `Person+Location+Organization` a partir do candidate pool metadata-based de `Location` |
@@ -42,6 +43,7 @@ Regra prática:
 | `src/tools/export_dissertation_tables.py` | exportação | artefatos locais | sobrescreve saída | wrapper para exportar tabelas de dissertação |
 | `src/tools/export_thesis_tables.py` | exportação | artefatos locais | sobrescreve saída | consolidar artefatos em CSV/Markdown para escrita |
 | `src/tools/extract_app_dd_metadata_matches.py` | metadados | XLSX + JSON | sobrescreve saída | recuperar metadados originais de `data/app_dd.xlsx` para os corpora anotados por match textual |
+| `src/tools/fit_ner_score_calibrator_oof.py` | calibração | OOF predictions JSONL | sobrescreve saída | ajustar calibrador por label a partir de predições out-of-fold |
 | `src/tools/inspect_dense_tips.py` | auditoria | JSON, JSONL | sobrescreve saída | filtrar e visualizar tips com muitas entidades |
 | `src/tools/prune_pseudolabel_tips.py` | limpeza | JSON, JSONL | sobrescreve saída | podar entidades de pseudolabel por score e densidade por tip |
 | `src/tools/rank_pseudolabel_candidates.py` | seleção | JSON, JSONL scoreado | sobrescreve saída | selecionar top-k candidatos de pseudolabel por score de registro |
@@ -839,6 +841,61 @@ Saídas:
 - `precision_at_threshold_by_label.csv`: precision/recall/F1 por label em cada threshold
 - `outcome_counts_by_label.csv`: contagem de `exact`, `boundary_mismatch`, `label_confusion` e `spurious`
 - `calibration_summary.json`: resumo e erros de alta confiança
+
+### `src/tools/fit_ner_score_calibrator_oof.py`
+
+Ajusta um calibrador reutilizável de scores NER a partir de predições
+out-of-fold. Cada predição vira um exemplo binário: `1` quando `(start, end,
+label)` coincide exatamente com o gold, `0` caso contrário.
+
+Use quando:
+
+- quer corrigir superconfiança dos scores GLiNER sem usar o conjunto de teste;
+- já tem um `oof_predictions.jsonl` emitido por `mine_train_oof_errors.py`;
+- precisa calibrar scores antes de aplicar context boost ou seleção top-k.
+
+Saídas:
+
+- `calibrator.json`
+- `calibration_examples.csv`
+- `reliability_raw_by_label.csv`
+- `reliability_calibrated_by_label.csv`
+- `calibration_summary.json`
+
+Exemplo:
+
+```bash
+PYTHONPATH=src python3 src/tools/fit_ner_score_calibrator_oof.py \
+  --oof-predictions artifacts/error_analysis/train_oof_regex_for_boost_factor/oof_predictions.jsonl \
+  --output-dir artifacts/calibration/ner_score_calibrator_oof_regex \
+  --labels Person,Location,Organization \
+  --method isotonic \
+  --score-field score \
+  --pred-field pred_spans \
+  --gold-field gold_spans \
+  --min-positive 20 \
+  --min-negative 20 \
+  --bins 10 \
+  --log-level INFO
+```
+
+### `src/tools/apply_ner_score_calibrator.py`
+
+Aplica um `calibrator.json` salvo a um JSONL de predições, adicionando
+`score_calibrated` em cada entidade com score válido.
+
+Exemplo:
+
+```bash
+PYTHONPATH=src python3 src/tools/apply_ner_score_calibrator.py \
+  --input-jsonl artifacts/pseudolabelling/frozen_baseline_regex_seed42/01_predictions.jsonl \
+  --output-jsonl artifacts/pseudolabelling/frozen_baseline_regex_seed42/01_predictions_calibrated.jsonl \
+  --calibrator artifacts/calibration/ner_score_calibrator_oof_regex/calibrator.json \
+  --score-field score \
+  --output-score-field score_calibrated \
+  --entity-key entities \
+  --log-level INFO
+```
 
 ### `src/tools/review_gliner2_predictions.py`
 

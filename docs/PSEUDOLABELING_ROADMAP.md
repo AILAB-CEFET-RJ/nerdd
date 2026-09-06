@@ -17,6 +17,7 @@ The active pilot is scoped to `Location` first. `Organization` remains the weake
 - The training pipeline now stores the resulting model under `best_model`.
 - OOF error auditing is available for label-focused review.
 - OOF score calibration is available for analyzing how reliable model scores are by label and threshold.
+- OOF score calibrator fitting is available for producing reusable per-label calibrator JSON artifacts.
 - `Organization` remains the most problematic class and should receive focused review.
 - A frozen fine-tuned baseline has been generated over the unlabeled corpus.
 - Context boost has been applied to the frozen predictions.
@@ -110,16 +111,18 @@ For each strategy, measure:
 
 ## Near-Term Plan
 
-1. Use `artifacts/metadata/app_dd_labeled_metadata_matches.jsonl` as the metadata source for train OOF context-boost optimization.
-2. Use `src/tools/optimize_context_boost_factor.py` to choose a data-driven context boost factor from OOF predictions enriched with `app_dd.xlsx` metadata.
-3. Re-apply context boost to the frozen unlabeled predictions with the selected factor.
-4. Generate the top-k `Location` candidate files from the updated boosted/scored predictions.
-5. Manually inspect the top-1000 HTML review artifact.
-6. Freeze one or more candidate volumes, starting with `1000`.
-7. Build refit-compatible pseudolabel inputs from the selected candidates.
-8. Run a controlled `supervised_only` vs `supervised_plus_pseudolabels` refit comparison.
-9. Use `Location` F1 as the primary success metric and monitor micro/macro F1 plus `Person`/`Organization` regressions.
-10. Only after the `Location` pilot is stable, compare semantic/context boost against a generative AI boost over the same frozen predictions.
+1. Fit a reusable OOF score calibrator from `artifacts/error_analysis/train_oof_regex_for_boost_factor/oof_predictions.jsonl`.
+2. Apply the calibrator to the frozen unlabeled predictions, producing `score_calibrated`.
+3. Use `artifacts/metadata/app_dd_labeled_metadata_matches.jsonl` as the metadata source for train OOF context-boost optimization.
+4. Use `src/tools/optimize_context_boost_factor.py` to choose a data-driven context boost factor from calibrated OOF predictions enriched with `app_dd.xlsx` metadata.
+5. Re-apply context boost to the calibrated frozen unlabeled predictions with the selected factor.
+6. Generate the top-k `Location` candidate files from the updated boosted/scored predictions.
+7. Manually inspect the top-1000 HTML review artifact.
+8. Freeze one or more candidate volumes, starting with `1000`.
+9. Build refit-compatible pseudolabel inputs from the selected candidates.
+10. Run a controlled `supervised_only` vs `supervised_plus_pseudolabels` refit comparison.
+11. Use `Location` F1 as the primary success metric and monitor micro/macro F1 plus `Person`/`Organization` regressions.
+12. Only after the `Location` pilot is stable, compare semantic/context boost against a generative AI boost over the same frozen predictions.
 
 ## TODO
 
@@ -176,6 +179,7 @@ Interpretation rule:
 - Found that using `data/large/large_sanitized_no_labeled_overlap.jsonl` as the metadata source for train OOF makes context-boost optimization a no-op, because the file intentionally excludes labeled-overlap records.
 - Extended `src/tools/optimize_context_boost_factor.py` so it can enrich OOF rows from explicit metadata source files by unique normalized text match, avoiding the need to rerun OOF just to recover metadata.
 - Added `src/tools/extract_app_dd_metadata_matches.py` to recover original `app_dd.xlsx` metadata for the labeled small corpora. The first run recovered unique geographic metadata for `3792/5230` labeled rows, including `3087/4226` train rows.
+- Added reusable OOF NER score calibration scripts: `src/tools/fit_ner_score_calibrator_oof.py` and `src/tools/apply_ner_score_calibrator.py`.
 
 ### 2026-09-01
 

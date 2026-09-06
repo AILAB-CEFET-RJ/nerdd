@@ -27,6 +27,11 @@ def load_calibrator(path):
 
 
 def apply_calibrator_to_score(score, label, calibrator):
+    if calibrator.get("kind") == "ner_score_calibrator_oof":
+        from calibration.ner_score_calibrator import apply_calibrator_to_score as apply_ner_score_calibrator
+
+        return apply_ner_score_calibrator(score, label, calibrator)
+
     method = calibrator["method"]
     score = _clip_score(score)
 
