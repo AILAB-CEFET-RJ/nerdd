@@ -120,6 +120,40 @@
     "log_level": "INFO"
   },
   {
+    "experiment_id": "quick_supervised_plus_location_pseudolabels_calibrated_t097_top1000",
+    "experiment_obs": "GLiNER quick run with supervised data plus the top 1000 calibrated Location-only pseudolabel records from the t097 pool.",
+    "entrypoint": "base_model_training.train_quick",
+    "n_repeats": 1,
+    "seed_start": 42,
+
+    "train_path": "data/dd_corpus_small_train.json",
+    "test_path": "data/dd_corpus_small_test.json",
+    "pseudolabel_path": "artifacts/pseudolabelling/frozen_baseline_regex_seed42/04_pseudolabels_location_calibrated_t097_top1000.jsonl",
+    "train_mode": "supervised_plus_pseudolabels",
+
+    "model_base": "urchade/gliner_multi-v2.1",
+    "output_dir": "artifacts/base_model_training/quick_supervised_plus_location_pseudolabels_calibrated_t097_top1000",
+
+    "seed": 42,
+    "tokenization_strategy": "regex",
+    "batch_size": 16,
+    "num_epochs": 20,
+    "max_length": 384,
+    "overlap": 100,
+
+    "backbone_lr": 1e-5,
+    "ner_lr": 3.38e-5,
+    "weight_decay": 0.086619,
+
+    "train_sampling": "weighted",
+    "refit_val_size": 0.2,
+    "early_stopping_patience": 7,
+    "early_stopping_threshold": 0.5,
+    "thresholds": [0.6],
+
+    "log_level": "INFO"
+  },
+  {
     "experiment_id": "quick_supervised_only_whitespace_seed42",
     "experiment_obs": "GLiNER quick supervised-only baseline with whitespace tokenization.",
     "entrypoint": "base_model_training.train_quick",
