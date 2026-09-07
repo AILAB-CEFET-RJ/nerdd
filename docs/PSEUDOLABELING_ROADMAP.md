@@ -173,6 +173,56 @@ Interpretation rule:
 
 ## Progress Log
 
+### 2026-09-07
+
+- Synchronized the current labeled train/test/calibration corpora and the large no-overlap corpus to `workstation02`; SHA-256 checksums matched across machines.
+- Re-ran the supervised-only regex baseline and the conservative `Location` pseudolabel condition on the same current train/test corpora.
+- Built the conservative pseudolabel condition from `score_calibrated` with:
+  - record selection: top 1000 records from the `t097` pool;
+  - entity selection: `Location` spans only;
+  - pseudolabel volume: `1000` reports and `2103` `Location` entities.
+- Completed a three-seed comparison for seeds `42`, `43`, and `44`.
+- Aggregate result for `quick_supervised_plus_location_pseudolabels_calibrated_t097_top1000_repeats3_current` versus `quick_supervised_only_regex_repeats3_current`:
+  - micro F1: `+0.001526 +/- 0.001843`;
+  - macro F1: `+0.003229 +/- 0.005157`;
+  - `Location` F1: `+0.000983 +/- 0.000963`;
+  - `Organization` F1: `+0.005216 +/- 0.010930`;
+  - `Person` F1: `+0.003488 +/- 0.005075`.
+- Interpretation: the `top1000` pseudolabel condition produced a small positive signal, with `Location` improving in all three seeds, but the effect is still too small and variable to treat as a robust pipeline improvement.
+- Next step: build a repeated-seed top-k curve to estimate whether the positive signal is volume-dependent.
+
+## Top-K Curve Plan
+
+The next experiment should vary only the number of accepted pseudolabeled records while keeping the base model, train/test corpora, tokenization, hyperparameters, threshold, and seeds fixed.
+
+Candidate volumes:
+
+- `top500`;
+- `top1000`;
+- `top2000`;
+- `top3000`;
+- optionally `top5000` if disk and training time permit.
+
+Controls:
+
+- supervised-only regex baseline with the same seeds;
+- same calibrated `Location` candidate pool;
+- same entity filter, keeping only `Location` spans from the selected pseudolabel records;
+- same repeated seeds, initially `42`, `43`, and `44`;
+- same fixed test set.
+
+Primary analysis:
+
+- mean and standard deviation of `Location` F1 by top-k size;
+- per-seed deltas against the supervised-only baseline;
+- micro and macro F1 deltas;
+- `Organization` and `Person` regressions.
+
+Decision rule:
+
+- Prefer the smallest top-k that improves mean `Location` F1 without consistent degradation in micro/macro F1 or non-Location labels.
+- If the curve is flat or unstable, treat pseudolabeling as not yet validated and move to error analysis or underboost/negative-filtering experiments.
+
 ### 2026-09-04
 
 - Refactored `src/tools/mine_train_oof_errors.py` so OOF outputs preserve row identity, low-threshold predictions, eval-threshold predictions, and optional metadata enrichment.
