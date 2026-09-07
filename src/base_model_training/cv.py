@@ -319,12 +319,19 @@ def _best_validation_f1(model, val_processed, thresholds, entity_labels):
         return float("-inf")
     best_threshold = max(threshold_metrics, key=threshold_metrics.get)
     best_score = threshold_metrics[best_threshold]
-    LOGGER.info(
-        "Validation threshold sweep: scores=[%s] | best_threshold=%s | best_f1=%.4f",
-        _format_threshold_scores(threshold_metrics),
-        best_threshold,
-        best_score,
-    )
+    if len(threshold_metrics) == 1:
+        LOGGER.info(
+            "Validation fixed threshold: threshold=%s | f1=%.4f",
+            best_threshold,
+            best_score,
+        )
+    else:
+        LOGGER.info(
+            "Validation threshold sweep: scores=[%s] | best_threshold=%s | best_f1=%.4f",
+            _format_threshold_scores(threshold_metrics),
+            best_threshold,
+            best_score,
+        )
     return best_score
 
 

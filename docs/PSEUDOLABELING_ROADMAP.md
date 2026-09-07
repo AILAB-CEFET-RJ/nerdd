@@ -127,6 +127,7 @@ For each strategy, measure:
 ## TODO
 
 - Apply the same `app_dd.xlsx` matching strategy to the large unlabeled corpus to measure overlap and identify additional non-labeled records with recoverable metadata. This should be used for corpus accounting and possible metadata enrichment, while preserving the no-labeled-overlap constraint for pseudolabel selection.
+- Evaluate a metadata- and rule-aware underboost strategy for reducing confidence in likely false-positive entities. This should be optimized on OOF predictions before use, measuring removed false positives, lost true positives, class-level F1 changes, and especially effects on `Location` and `Organization`. Treat underboost first as an audit/selection mechanism, not as an automatic training-data transformation.
 
 ## Location-First Pilot
 
