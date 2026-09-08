@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 import sys
 import unicodedata
 from collections import Counter
@@ -27,6 +28,12 @@ def _safe_float(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _json_float(value: float) -> float | None:
+    if math.isfinite(value):
+        return value
+    return None
 
 
 def _strip_accents(text: str) -> str:
@@ -353,7 +360,7 @@ def main() -> None:
         "config": {
             "top_n": args.top_n,
             "score_fields": _parse_csv(args.score_fields),
-            "min_score": args.min_score,
+            "min_score": _json_float(args.min_score),
             "text_fields": _parse_csv(args.text_fields),
             "span_keys": _parse_csv(args.span_keys),
             "label_field": args.label_field,
