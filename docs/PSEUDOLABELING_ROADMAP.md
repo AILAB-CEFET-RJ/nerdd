@@ -189,7 +189,21 @@ Interpretation rule:
   - `Organization` F1: `+0.005216 +/- 0.010930`;
   - `Person` F1: `+0.003488 +/- 0.005075`.
 - Interpretation: the `top1000` pseudolabel condition produced a small positive signal, with `Location` improving in all three seeds, but the effect is still too small and variable to treat as a robust pipeline improvement.
-- Next step: build a repeated-seed top-k curve to estimate whether the positive signal is volume-dependent.
+- Completed a repeated-seed top-k curve over the calibrated `t097` `Location` pseudolabel pool:
+  - `top500`: `500` reports and `1033` `Location` entities;
+  - `top1000`: `1000` reports and `2103` `Location` entities;
+  - `top2000`: `2000` reports and `4475` `Location` entities;
+  - `top3000`: `3000` reports and `7062` `Location` entities.
+- Top-k curve aggregate deltas versus the supervised-only repeated baseline:
+  - `top500`: micro F1 `+0.002261`, macro F1 `+0.003203`, `Location` F1 `+0.002437`;
+  - `top1000`: micro F1 `+0.001526`, macro F1 `+0.003229`, `Location` F1 `+0.000983`;
+  - `top2000`: micro F1 `+0.000901`, macro F1 `+0.002469`, `Location` F1 `+0.000316`;
+  - `top3000`: micro F1 `-0.001331`, macro F1 `-0.002470`, `Location` F1 `-0.000741`.
+- Interpretation: the positive effect is volume-sensitive. `top500` is the strongest current condition, improving `Location` in all three seeds; larger volumes dilute the gain and `top3000` becomes harmful.
+- Current decision: treat `top500` as the main pseudolabel condition and `top1000` as a secondary condition for comparison.
+- Next step: qualitatively audit the `top500` pseudolabel set to characterize the extra `Location` evidence it adds and identify systematic noise before expanding the pseudolabeling strategy.
+- Qualitative audit of `top500` found strong concentration in repeated `Location` strings and near-duplicate reports. A diverse selector was added as the next controlled variant: keep the same `top500` budget, but apply normalized text deduplication plus caps per `Location` term and per `Location`-set signature.
+- Next experiment: run `top500_diverse` with the same three seeds and compare against both supervised-only and the previous `top500` condition.
 
 ## Top-K Curve Plan
 
@@ -222,6 +236,12 @@ Decision rule:
 
 - Prefer the smallest top-k that improves mean `Location` F1 without consistent degradation in micro/macro F1 or non-Location labels.
 - If the curve is flat or unstable, treat pseudolabeling as not yet validated and move to error analysis or underboost/negative-filtering experiments.
+
+Current outcome:
+
+- `top500` is the selected operating point for the next pilot stage.
+- `top1000` remains a useful secondary point.
+- `top2000` and `top3000` should not be used as default conditions without additional filtering or diversity controls.
 
 ### 2026-09-04
 

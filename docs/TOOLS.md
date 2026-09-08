@@ -47,6 +47,7 @@ Regra prática:
 | `src/tools/inspect_dense_tips.py` | auditoria | JSON, JSONL | sobrescreve saída | filtrar e visualizar tips com muitas entidades |
 | `src/tools/prune_pseudolabel_tips.py` | limpeza | JSON, JSONL | sobrescreve saída | podar entidades de pseudolabel por score e densidade por tip |
 | `src/tools/rank_pseudolabel_candidates.py` | seleção | JSON, JSONL scoreado | sobrescreve saída | selecionar top-k candidatos de pseudolabel por score de registro |
+| `src/tools/select_diverse_pseudolabels.py` | seleção | JSON, JSONL scoreado | sobrescreve saída | selecionar top-k pseudorrótulos com deduplicação e limites por entidade/assinatura |
 | `src/tools/review_model_predictions.py` | auditoria | conjunto anotado | sobrescreve saída | gerar revisão HTML lado a lado de gold vs predição do modelo |
 | `src/tools/review_adjudication_cases.py` | auditoria | JSON, JSONL | sobrescreve saída | gerar revisão HTML multicamada de baseline, GLiNER2, seeds e entidades finais adjudicadas |
 | `src/tools/reshuffle_train_test_split.py` | split | JSON, JSONL | sobrescreve saída | recombinar train/test, opcionalmente remover duplicatas exatas entre inputs, e reemitir novos splits |
@@ -1051,6 +1052,53 @@ PYTHONPATH=src python3 src/tools/rank_pseudolabel_candidates.py \
   --min-score 0.80 \
   --top-n 1000 \
   --title "Location p75 top 1000 pseudolabel candidates"
+```
+
+### `src/tools/select_diverse_pseudolabels.py`
+
+Seleciona um top-k diverso a partir de um pool de pseudorrótulos já scoreado.
+É a alternativa preferida quando o top-k puro concentra muitos relatos quase
+duplicados ou repete excessivamente as mesmas entidades `Location`.
+
+Use quando:
+
+- o ranking por score gerou concentração alta em poucos locais;
+- você quer manter um orçamento fixo, como `top500`, mas aumentar variedade;
+- precisa reduzir quase duplicatas textuais antes do refit;
+- quer limitar quantos relatos de uma mesma entidade ou conjunto de entidades entram no lote.
+
+Controles principais:
+
+- `--score-fields`: campos candidatos de score, inclusive caminhos aninhados como `_pseudolabel.record_score_location`;
+- `--target-labels`: labels usados para deduplicação semântica, normalmente `Location`;
+- `--max-per-entity`: máximo de relatos selecionados por termo normalizado;
+- `--max-per-signature`: máximo de relatos por assinatura de conjunto de entidades;
+- `--signature-max-terms`: quantos termos entram na assinatura;
+- `--top-n`: orçamento final de registros.
+
+Saídas:
+
+- JSONL com registros selecionados e `_pseudolabel_selection`;
+- summary JSON com contadores de seleção/rejeição;
+- CSV opcional com auditoria de decisões;
+- HTML opcional para revisão visual.
+
+Exemplo para gerar um `top500` diverso do pool `Location` calibrado:
+
+```bash
+PYTHONPATH=src python3 src/tools/select_diverse_pseudolabels.py \
+  --input artifacts/pseudolabelling/frozen_baseline_regex_seed42/04_pseudolabels_location_calibrated_t097.jsonl \
+  --output-jsonl artifacts/pseudolabelling/frozen_baseline_regex_seed42/04_pseudolabels_location_calibrated_t097_top500_diverse.jsonl \
+  --summary-json artifacts/pseudolabelling/frozen_baseline_regex_seed42/04_pseudolabels_location_calibrated_t097_top500_diverse_summary.json \
+  --audit-csv artifacts/pseudolabelling/frozen_baseline_regex_seed42/04_pseudolabels_location_calibrated_t097_top500_diverse_audit.csv \
+  --output-html artifacts/pseudolabelling/frozen_baseline_regex_seed42/04_pseudolabels_location_calibrated_t097_top500_diverse.html \
+  --top-n 500 \
+  --score-fields record_score_location,_pseudolabel.record_score_location \
+  --target-labels Location \
+  --max-per-entity 10 \
+  --max-per-signature 2 \
+  --signature-max-terms 8 \
+  --title "Diverse Location pseudolabels t097 top500"
 ```
 
 ### `src/tools/optimize_context_boost_factor.py`

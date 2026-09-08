@@ -329,6 +329,29 @@ PYTHONPATH=src python3 src/tools/rank_pseudolabel_candidates.py \
 The output row metadata `_pseudolabel_selection` records source row, rank, score,
 score field, text length, entity count, and label counts.
 
+When the top-k set is too concentrated in repeated places or near-duplicate
+reports, use `src/tools/select_diverse_pseudolabels.py` on the same candidate
+pool. It keeps the fixed top-k budget but applies normalized text deduplication
+and caps per `Location` term and per `Location`-set signature. This is the
+current follow-up after the `top500` audit showed strong concentration in a few
+locations.
+
+```bash
+PYTHONPATH=src python3 src/tools/select_diverse_pseudolabels.py \
+  --input artifacts/pseudolabelling/frozen_baseline_regex_seed42/04_pseudolabels_location_calibrated_t097.jsonl \
+  --output-jsonl artifacts/pseudolabelling/frozen_baseline_regex_seed42/04_pseudolabels_location_calibrated_t097_top500_diverse.jsonl \
+  --summary-json artifacts/pseudolabelling/frozen_baseline_regex_seed42/04_pseudolabels_location_calibrated_t097_top500_diverse_summary.json \
+  --audit-csv artifacts/pseudolabelling/frozen_baseline_regex_seed42/04_pseudolabels_location_calibrated_t097_top500_diverse_audit.csv \
+  --output-html artifacts/pseudolabelling/frozen_baseline_regex_seed42/04_pseudolabels_location_calibrated_t097_top500_diverse.html \
+  --top-n 500 \
+  --score-fields record_score_location,_pseudolabel.record_score_location \
+  --target-labels Location \
+  --max-per-entity 10 \
+  --max-per-signature 2 \
+  --signature-max-terms 8 \
+  --title "Diverse Location pseudolabels t097 top500"
+```
+
 ## Split Flow
 
 `pseudolabelling.split_pseudolabels` is still useful for threshold-based counts
