@@ -10,6 +10,9 @@ experiments.
 - Keep canonical input datasets in `data/`.
 - Keep generated artifacts in `artifacts/`.
 - Run expensive training and large-corpus inference on `workstation02`.
+- After the Hugging Face model cache is warmed, run training commands with
+  `HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1` to avoid network metadata checks
+  and keep repeated runs tied to the cached snapshot.
 - Use the annotation guide in `docs/LABELLING_GUIDE.md` as the source of truth
   for `Person`, `Location`, and `Organization` spans.
 

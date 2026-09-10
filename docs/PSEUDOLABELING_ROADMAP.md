@@ -108,6 +108,11 @@ For each strategy, measure:
 - Keep corpus versions, model versions, config files, and thresholds explicit.
 - Treat GLiNER scores as ranking/confidence signals, not calibrated probabilities, unless calibration evidence supports that interpretation.
 - Analyze thresholds by label when possible, since `Organization` behaves differently from `Location` and `Person`.
+- For future training commands on `workstation02`, prefer
+  `HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1` after confirming that the GLiNER
+  and backbone model snapshots are already cached. This avoids Hugging Face
+  metadata checks during repeated runs and keeps experiments tied to the cached
+  model revision.
 
 ## Near-Term Plan
 
@@ -203,7 +208,8 @@ Interpretation rule:
 - Current decision: treat `top500` as the main pseudolabel condition and `top1000` as a secondary condition for comparison.
 - Next step: qualitatively audit the `top500` pseudolabel set to characterize the extra `Location` evidence it adds and identify systematic noise before expanding the pseudolabeling strategy.
 - Qualitative audit of `top500` found strong concentration in repeated `Location` strings and near-duplicate reports. A diverse selector was added as the next controlled variant: keep the same `top500` budget, but apply normalized text deduplication plus caps per `Location` term and per `Location`-set signature.
-- Next experiment: run `top500_diverse` with the same three seeds and compare against both supervised-only and the previous `top500` condition.
+- The first strict diversity condition (`max_per_signature=2`) retained a small `Location` gain but underperformed the pure `top500` condition and reduced `Person` F1. Its caps likely removed useful recurring high-confidence contexts.
+- Next experiment: run the softer `top500_diverse_sig5` condition with the same three seeds, preserving exact-text deduplication and the `max_per_entity=10` cap while relaxing `max_per_signature` from `2` to `5`.
 
 ## Top-K Curve Plan
 
