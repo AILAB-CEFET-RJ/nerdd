@@ -340,6 +340,14 @@ Current outcome:
 - Added `src/tools/extract_app_dd_metadata_matches.py` to recover original `app_dd.xlsx` metadata for the labeled small corpora. The first run recovered unique geographic metadata for `3792/5230` labeled rows, including `3087/4226` train rows.
 - Added reusable OOF NER score calibration scripts: `src/tools/fit_ner_score_calibrator_oof.py` and `src/tools/apply_ner_score_calibrator.py`.
 
+### 2026-09-11
+
+- Reannotated `data/dd_corpus_small_calibration.json` against the current labeling guide. The reviewed candidate version, `data/dd_corpus_small_calibration_current_guide.json`, has `906` spans instead of `1018`; the historical file remains preserved.
+- Evaluating identical seed-42 baseline predictions against the revised gold increased strict all-label F1 from `0.713` to `0.818`. The largest correction was for `Organization`, whose historical support dropped from `195` to `71` spans.
+- The OOF isotonic calibrator generalized to the revised held-out corpus: raw high-confidence predictions had precision `0.830` at mean score `0.9975`, while calibrated predictions with score `>= 0.90` had precision `0.912`.
+- Multi-seed validation showed that calibrated `Person >= 0.80` is stable (`393/406`, pooled precision `0.968`). `Location >= 0.95` reached pooled precision `0.901` but varied substantially by seed, while `Organization >= 0.90` reached only `0.895` pooled precision.
+- Frozen seed-42 predictions were filtered into a controlled pair of 500 identical reports. Each report contains one retained `Person` pseudolabel (`score_calibrated >= 0.80`) and one retained `Location` pseudolabel (`score_calibrated >= 0.95`). The control retains only the Person span. Three-seed refits will isolate the impact of retaining Location under otherwise identical pseudolabel reports.
+
 ### 2026-09-01
 
 - Updated the pipeline documentation to match the current JSON-configured quick-training and pseudolabeling workflow.

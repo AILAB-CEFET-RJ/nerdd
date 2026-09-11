@@ -255,6 +255,74 @@
     "log_level": "INFO"
   },
   {
+    "experiment_id": "quick_supervised_plus_person_pseudolabels_calibrated_top500_matched_repeats3_current",
+    "experiment_obs": "Controlled three-seed refit using 500 matched reports with one calibrated Person pseudolabel per report (score >= 0.80).",
+    "entrypoint": "base_model_training.train_quick",
+    "n_repeats": 3,
+    "seed_start": 42,
+
+    "train_path": "data/dd_corpus_small_train.json",
+    "test_path": "data/dd_corpus_small_test.json",
+    "pseudolabel_path": "artifacts/pseudolabelling/frozen_baseline_regex_seed42/10_person_ge080_location_ge095_has_person_top500_person_only.jsonl",
+    "train_mode": "supervised_plus_pseudolabels",
+
+    "model_base": "urchade/gliner_multi-v2.1",
+    "output_dir": "artifacts/base_model_training/quick_supervised_plus_person_pseudolabels_calibrated_top500_matched_repeats3_current",
+
+    "seed": 42,
+    "tokenization_strategy": "regex",
+    "batch_size": 16,
+    "num_epochs": 20,
+    "max_length": 384,
+    "overlap": 100,
+
+    "backbone_lr": 1e-5,
+    "ner_lr": 3.38e-5,
+    "weight_decay": 0.086619,
+
+    "train_sampling": "weighted",
+    "refit_val_size": 0.2,
+    "early_stopping_patience": 7,
+    "early_stopping_threshold": 0.5,
+    "thresholds": [0.6],
+
+    "log_level": "INFO"
+  },
+  {
+    "experiment_id": "quick_supervised_plus_person_location_pseudolabels_calibrated_top500_matched_repeats3_current",
+    "experiment_obs": "Controlled three-seed refit using the same 500 reports as the Person-only condition, retaining one calibrated Person (>= 0.80) and one calibrated Location (>= 0.95) pseudolabel per report.",
+    "entrypoint": "base_model_training.train_quick",
+    "n_repeats": 3,
+    "seed_start": 42,
+
+    "train_path": "data/dd_corpus_small_train.json",
+    "test_path": "data/dd_corpus_small_test.json",
+    "pseudolabel_path": "artifacts/pseudolabelling/frozen_baseline_regex_seed42/10_person_ge080_location_ge095_has_person_top500.jsonl",
+    "train_mode": "supervised_plus_pseudolabels",
+
+    "model_base": "urchade/gliner_multi-v2.1",
+    "output_dir": "artifacts/base_model_training/quick_supervised_plus_person_location_pseudolabels_calibrated_top500_matched_repeats3_current",
+
+    "seed": 42,
+    "tokenization_strategy": "regex",
+    "batch_size": 16,
+    "num_epochs": 20,
+    "max_length": 384,
+    "overlap": 100,
+
+    "backbone_lr": 1e-5,
+    "ner_lr": 3.38e-5,
+    "weight_decay": 0.086619,
+
+    "train_sampling": "weighted",
+    "refit_val_size": 0.2,
+    "early_stopping_patience": 7,
+    "early_stopping_threshold": 0.5,
+    "thresholds": [0.6],
+
+    "log_level": "INFO"
+  },
+  {
     "experiment_id": "quick_supervised_plus_location_pseudolabels_calibrated_t097_top500_diverse_repeats3_current",
     "experiment_obs": "Three-seed regex run with supervised data plus the diverse top 500 calibrated Location-only pseudolabel records.",
     "entrypoint": "base_model_training.train_quick",

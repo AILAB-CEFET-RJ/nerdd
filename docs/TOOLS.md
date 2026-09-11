@@ -35,6 +35,7 @@ Regra prática:
 | `src/tools/optimize_context_boost_factor.py` | seleção | OOF predictions JSONL | sobrescreve saída | simular fatores de context boost sobre predições OOF e recomendar um fator |
 | `src/tools/expand_location_spans_with_markers.py` | limpeza | JSON, JSONL | sobrescreve saída | expandir spans de `Location` para incluir marcadores locativos como `rua`, `trav`, `trv`, `av` quando estiverem imediatamente antes |
 | `src/tools/clean_generic_spans.py` | limpeza | JSON, JSONL | cuidado com `--inplace` | remover spans genéricos por banlist |
+| `src/tools/reannotate_legacy_calibration.py` | anotação | JSON array | sobrescreve saídas | criar uma revisão auditável do corpus legado de calibração segundo o guia atual |
 | `src/tools/build_refit_pseudolabel_dataset.py` | conversão | JSONL de adjudicação | sobrescreve saída | projetar `06_llm_adjudicated` para um `pseudolabel_path` compatível com refit |
 | `src/tools/compare_spacy_predictions.py` | auditoria | JSON, JSONL | sobrescreve saída | comparar previsões existentes contra spaCy no mesmo conjunto |
 | `src/tools/compare_gliner_predictions.py` | auditoria | JSON, JSONL | sobrescreve saída | comparar previsões existentes contra outro modelo GLiNER no mesmo conjunto |
@@ -133,6 +134,45 @@ Observações metodológicas:
 Saída:
 
 - relatório HTML estático
+
+### `src/tools/reannotate_legacy_calibration.py`
+
+Cria uma nova versão do corpus legado de calibração sem modificar o arquivo de
+origem. A revisão aplica decisões rastreáveis derivadas de
+`docs/LABELLING_GUIDE.md`, incluindo remoção de menções genéricas, plataformas,
+correções de fronteira, unidades policiais, sobreposições e usos espaciais de
+instituições.
+
+Use quando:
+
+- `data/dd_corpus_small_calibration.json` precisar ser alinhado ao guia atual;
+- você quiser preservar o corpus histórico e obter uma versão candidata para
+  revisão/adjudicação;
+- precisar de um diff por relato antes de usar o conjunto em calibração.
+
+Exemplo:
+
+```bash
+PYTHONPATH=src python3 src/tools/reannotate_legacy_calibration.py \
+  --input data/dd_corpus_small_calibration.json \
+  --output data/dd_corpus_small_calibration_current_guide.json \
+  --audit-json artifacts/annotation_review/dd_corpus_small_calibration_current_guide/reannotation_audit.json \
+  --summary-json artifacts/annotation_review/dd_corpus_small_calibration_current_guide/summary.json
+```
+
+Saídas:
+
+- corpus JSON revisado, em caminho distinto do input;
+- `reannotation_audit.json`, contendo `source_spans`, `revised_spans` e o diff
+  de cada relato alterado;
+- resumo de contagens e SHA-256 do insumo original.
+
+O resultado é uma revisão assistida por IA e deve passar por inspeção no editor
+antes de ser tratado como gold adjudicado.
+
+O script confere por padrão o SHA-256 do corpus histórico alvo. Para aplicá-lo
+deliberadamente a outra cópia, primeiro compare o conteúdo e a ordem dos relatos
+e só então use `--allow-source-sha256-mismatch`.
 
 ### `src/tools/review_adjudication_cases.py`
 
