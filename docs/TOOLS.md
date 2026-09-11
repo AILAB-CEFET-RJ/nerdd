@@ -26,6 +26,7 @@ Regra prática:
 | `src/tools/build_metadata_multilabel_pseudolabels.py` | seleção | JSON, JSONL | sobrescreve saída | montar um pool conservador `Person+Location+Organization` a partir do candidate pool metadata-based de `Location` |
 | `src/tools/profile_metadata_multilabel_signal.py` | auditoria | JSON, JSONL | sobrescreve saída | medir sinal conservador de `Person` e `Organization` dentro de um pool metadata-based já ancorado em `Location` |
 | `src/tools/profile_train_oof_coverage.py` | auditoria | treino anotado + OOF JSONL | sobrescreve saída | mapear cobertura do treino e erros OOF por forma, contexto e frequência de entidade |
+| `src/tools/audit_location_only_pseudolabels.py` | auditoria | pseudorrótulos `Location` + predições completas | sobrescreve saída | medir o risco de descartar predições `Person` e `Organization` em relatos `Location`-only |
 | `src/tools/build_political_lexicon.py` | léxico | TSE Dados Abertos | cache + sobrescreve saída | baixar dados de candidaturas do TSE e gerar CSV de nomes/nomes de urna de políticos do RJ |
 | `src/tools/political_lexicon_builder.py` | léxico | TSE Dados Abertos | biblioteca | lógica reutilizável para montar léxico político a partir de `consulta_cand` |
 | `src/tools/build_train_annotation_prompt_probe.py` | auditoria | audits + lote fonte | sobrescreve saída | montar um probe pequeno e diagnóstico para testar prompts de adjudicação voltados a treino |
@@ -711,6 +712,38 @@ Saídas:
 - `target_bucket_metrics.csv`: métricas por bucket;
 - `train_label_combinations.csv`: combinações de labels por relato de treino;
 - `coverage_review.html`: tabela priorizada pelos buckets com mais falsos negativos.
+
+### `src/tools/audit_location_only_pseudolabels.py`
+
+Audita o risco de supervisão incompleta quando um conjunto de pseudorrótulos conserva somente entidades `Location` de relatos que originalmente receberam predições para todas as classes.
+
+Use quando:
+
+- você quer medir se relatos selecionados para um refit `Location`-only contêm predições `Person` ou `Organization` que seriam descartadas;
+- precisa separar predições não retidas de baixa confiança daquelas que superam um limiar de risco explícito;
+- quer gerar uma amostra HTML com todas as entidades originalmente previstas antes de decidir por um gate de elegibilidade.
+
+O script associa cada pseudorrótulo selecionado à predição completa pelo identificador (`source_id`, quando disponível) ou por texto normalizado único. Correspondências ambíguas permanecem marcadas e não entram nas estatísticas de risco.
+
+Exemplo para o atual `top500`:
+
+```bash
+PYTHONPATH=src python3 src/tools/audit_location_only_pseudolabels.py \
+  --selected-jsonl artifacts/pseudolabelling/frozen_baseline_regex_seed42/04_pseudolabels_location_calibrated_t097_top500.jsonl \
+  --predictions-jsonl artifacts/pseudolabelling/frozen_baseline_regex_seed42/01_predictions_calibrated.jsonl \
+  --output-dir artifacts/pseudolabelling_analysis/location_only_top500_audit \
+  --target-label Location \
+  --omitted-labels Person,Organization \
+  --score-fields score_calibrated,score \
+  --credible-score-threshold 0.6 \
+  --max-review-rows 200
+```
+
+Saídas:
+
+- `location_only_supervision_summary.json`: taxas agregadas de predições não retidas;
+- `location_only_supervision_audit.csv`: uma linha por candidato, incluindo match, contagens e nível de risco;
+- `location_only_supervision_review.jsonl` e `.html`: predições completas dos relatos associados, ordenadas por risco.
 
 ### `src/tools/count_dataset_entities.py`
 

@@ -215,7 +215,10 @@ Interpretation rule:
 
 - The `top500_diverse_sig5` condition did not outperform pure `top500` for `Location`: its mean `Location` delta was effectively neutral (`-0.000031`), while pure `top500` retained `+0.002437`.
 - Added `src/tools/profile_train_oof_coverage.py` as the first diagnostic step for the next strategy iteration. It profiles raw training coverage and strict OOF outcomes for a target label by mention designator, token length, training recurrence and local context; it also reports label co-occurrence per annotated training report.
-- Next diagnostic step: inspect high-support, high-false-negative buckets and the rate of `Person`/`Organization` co-occurrence in `Location` reports. Use those findings to define a targeted candidate policy and a separate audit for incomplete `Location`-only pseudolabels.
+- OOF profiling confirmed that `Location` has an overall strict OOF precision/recall/F1 of `0.9050`/`0.8685`/`0.8864`. High-FN context templates have promising conditional precision but need manual validation; unseen `Location` surface forms have very low OOF precision and should not receive a generic novelty bonus.
+- The labeled train profile found that `1322/3015` (`43.8%`) reports containing `Location` also have a `Person` or `Organization` span. This makes incomplete `Location`-only supervision a concrete risk, not a theoretical concern.
+- Added `src/tools/audit_location_only_pseudolabels.py` for the Stage 2 audit. It maps selected `Location`-only candidates to full calibrated predictions and quantifies unretained `Person`/`Organization` predictions above a configurable risk threshold.
+- Next diagnostic step: run this audit on pure `top500`. Only after reviewing its matched-row rate and credible omitted-label rate should an eligibility gate or targeted candidate policy be designed.
 
 ## Data-Guided Pseudolabel Selection Plan
 
