@@ -890,6 +890,19 @@ python3 src/tools/calibrate_ner_scores.py \
   --thresholds 0.5,0.6,0.7,0.8,0.85,0.9,0.95
 ```
 
+Para decidir limiares de aceitação multilabel depois de aplicar o calibrador OOF, indique explicitamente o campo calibrado. O arquivo de saída continua usando a coluna genérica `score`, mas ela passa a representar o campo informado em `--score-field`.
+
+```bash
+PYTHONPATH=src python3 src/tools/calibrate_ner_scores.py \
+  --pred-jsonl artifacts/error_analysis/train_oof_regex_for_boost_factor/oof_predictions_calibrated.jsonl \
+  --output-dir artifacts/calibration/ner_scores_oof_calibrated_thresholds \
+  --pred-field pred_spans \
+  --score-field score_calibrated \
+  --labels Person,Location,Organization \
+  --bins 20 \
+  --thresholds 0.50,0.60,0.70,0.80,0.85,0.90,0.95,0.97,0.98
+```
+
 Exemplo com predições do teste:
 
 ```bash

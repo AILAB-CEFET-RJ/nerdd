@@ -61,6 +61,26 @@ class CalibrateNerScoresTests(unittest.TestCase):
         self.assertAlmostEqual(all_high["precision"], 0.5)
         self.assertAlmostEqual(all_high["score_mean"], 0.85)
 
+    def test_build_prediction_rows_can_use_calibrated_score_field(self):
+        rows = [
+            {
+                "row_index_1based": 1,
+                "text": "Rua Alfa",
+                "gold_spans": [{"start": 0, "end": 8, "label": "Location"}],
+                "pred_spans": [
+                    {"start": 0, "end": 8, "label": "Location", "score": 0.99, "score_calibrated": 0.75}
+                ],
+            }
+        ]
+
+        calibration_rows, _support = build_prediction_calibration_rows(
+            rows,
+            {"Location"},
+            score_field="score_calibrated",
+        )
+
+        self.assertEqual(calibration_rows[0]["score"], 0.75)
+
     def test_threshold_rows_computes_precision_recall_f1(self):
         rows = [
             {"label": "Organization", "score": 0.95, "target": 1},

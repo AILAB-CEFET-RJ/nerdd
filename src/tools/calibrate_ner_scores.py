@@ -19,9 +19,6 @@ from base_model_training.io_utils import load_jsonl
 from pseudolabelling.evaluate_refit_pipeline import load_gt_jsonl_strict
 
 LOGGER = logging.getLogger(__name__)
-SCORE_FIELDS = ("score", "ner_score", "confidence", "probability")
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
@@ -32,6 +29,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--gold-json", default="", help="Gold dataset JSON/JSONL. Optional if predictions contain gold_spans.")
     parser.add_argument("--pred-jsonl", required=True, help="Predictions JSONL/JSON. Supports entities or pred_spans fields.")
     parser.add_argument("--output-dir", required=True)
+    parser.add_argument("--pred-field", default="pred_spans", help="Prediction span list field. Falls back to entities when absent.")
+    parser.add_argument("--score-field", default="score", help="Entity score field to evaluate, such as score or score_calibrated.")
     parser.add_argument("--labels", default="Person,Location,Organization")
     parser.add_argument("--bins", type=int, default=10, help="Number of equal-width reliability bins over [0, 1].")
     parser.add_argument(
@@ -69,35 +68,34 @@ def _overlaps(left: dict[str, Any], right: dict[str, Any]) -> bool:
     return int(left["start"]) < int(right["end"]) and int(right["start"]) < int(left["end"])
 
 
-def _score(span: dict[str, Any]) -> float | None:
-    for field in SCORE_FIELDS:
-        if field in span and span[field] is not None:
-            try:
-                value = float(span[field])
-            except (TypeError, ValueError):
-                continue
-            if math.isfinite(value):
-                return value
+def _score(span: dict[str, Any], score_field: str) -> float | None:
+    if score_field in span and span[score_field] is not None:
+        try:
+            value = float(span[score_field])
+        except (TypeError, ValueError):
+            return None
+        if math.isfinite(value):
+            return value
     return None
 
 
-def _normalize_span(span: dict[str, Any], text: str) -> dict[str, Any]:
+def _normalize_span(span: dict[str, Any], text: str, score_field: str) -> dict[str, Any]:
     normalized = dict(span)
     normalized["start"] = int(normalized["start"])
     normalized["end"] = int(normalized["end"])
     normalized["label"] = str(normalized["label"])
     normalized["mention"] = text[normalized["start"] : normalized["end"]]
-    score = _score(normalized)
+    score = _score(normalized, score_field)
     if score is not None:
         normalized["score"] = score
     return normalized
 
 
-def _normalize_spans(spans: list[dict[str, Any]] | None, text: str) -> list[dict[str, Any]]:
-    return [_normalize_span(span, text) for span in (spans or [])]
+def _normalize_spans(spans: list[dict[str, Any]] | None, text: str, score_field: str) -> list[dict[str, Any]]:
+    return [_normalize_span(span, text, score_field) for span in (spans or [])]
 
 
-def _load_prediction_rows(path: Path) -> list[dict[str, Any]]:
+def _load_prediction_rows(path: Path, pred_field: str) -> list[dict[str, Any]]:
     rows = load_jsonl(str(path))
     normalized = []
     for idx, row in enumerate(rows, start=1):
@@ -107,7 +105,7 @@ def _load_prediction_rows(path: Path) -> list[dict[str, Any]]:
         normalized.append(
             {
                 "text": text,
-                "pred_spans": row.get("pred_spans", row.get("entities", [])) or [],
+                "pred_spans": row.get(pred_field, row.get("entities", [])) or [],
                 "gold_spans": row.get("gold_spans", row.get("spans")),
                 "sample_id": row.get("sample_id"),
                 "fold": row.get("fold"),
@@ -169,14 +167,19 @@ def _classify_prediction(pred_span: dict[str, Any], gold_spans: list[dict[str, A
     return "spurious", []
 
 
-def build_prediction_calibration_rows(rows: list[dict[str, Any]], allowed_labels: set[str] | None = None) -> tuple[list[dict[str, Any]], dict[str, int]]:
+def build_prediction_calibration_rows(
+    rows: list[dict[str, Any]],
+    allowed_labels: set[str] | None = None,
+    *,
+    score_field: str = "score",
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
     calibration_rows: list[dict[str, Any]] = []
     gold_support = Counter()
 
     for row_index_0based, row in enumerate(rows):
         text = row["text"]
-        gold_spans = _normalize_spans(row["gold_spans"], text)
-        pred_spans = _normalize_spans(row["pred_spans"], text)
+        gold_spans = _normalize_spans(row["gold_spans"], text, score_field)
+        pred_spans = _normalize_spans(row["pred_spans"], text, score_field)
         if allowed_labels is not None:
             gold_spans = [span for span in gold_spans if span["label"] in allowed_labels]
             pred_spans = [span for span in pred_spans if span["label"] in allowed_labels]
@@ -409,6 +412,8 @@ def build_summary(
     gold_support: dict[str, int],
     reliability: list[dict[str, Any]],
     threshold_report: list[dict[str, Any]],
+    pred_field: str,
+    score_field: str,
 ) -> dict[str, Any]:
     outcome_counts = Counter(row["outcome"] for row in rows)
     label_counts = Counter(row["label"] for row in rows)
@@ -420,6 +425,8 @@ def build_summary(
     ]
     return {
         "prediction_rows": len(rows),
+        "prediction_field": pred_field,
+        "score_field": score_field,
         "labels": labels,
         "bins": bins,
         "thresholds": thresholds,
@@ -453,9 +460,13 @@ def main() -> None:
     )
     labels = _parse_labels(args.labels)
     threshold_values = _parse_thresholds(args.thresholds)
-    pred_rows = _load_prediction_rows(Path(args.pred_jsonl))
+    pred_rows = _load_prediction_rows(Path(args.pred_jsonl), args.pred_field)
     paired_rows = _pair_rows(Path(args.gold_json) if args.gold_json else None, pred_rows)
-    calibration_rows, gold_support = build_prediction_calibration_rows(paired_rows, set(labels))
+    calibration_rows, gold_support = build_prediction_calibration_rows(
+        paired_rows,
+        set(labels),
+        score_field=args.score_field,
+    )
     reliability = reliability_rows(calibration_rows, labels, args.bins)
     threshold_report = threshold_rows(calibration_rows, labels, threshold_values, gold_support)
     outcomes = outcome_summary_rows(calibration_rows, labels)
@@ -467,6 +478,8 @@ def main() -> None:
         gold_support=gold_support,
         reliability=reliability,
         threshold_report=threshold_report,
+        pred_field=args.pred_field,
+        score_field=args.score_field,
     )
     outputs = write_outputs(
         Path(args.output_dir),

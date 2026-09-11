@@ -218,7 +218,8 @@ Interpretation rule:
 - OOF profiling confirmed that `Location` has an overall strict OOF precision/recall/F1 of `0.9050`/`0.8685`/`0.8864`. High-FN context templates have promising conditional precision but need manual validation; unseen `Location` surface forms have very low OOF precision and should not receive a generic novelty bonus.
 - The labeled train profile found that `1322/3015` (`43.8%`) reports containing `Location` also have a `Person` or `Organization` span. This makes incomplete `Location`-only supervision a concrete risk, not a theoretical concern.
 - Added `src/tools/audit_location_only_pseudolabels.py` for the Stage 2 audit. It maps selected `Location`-only candidates to full calibrated predictions and quantifies unretained `Person`/`Organization` predictions above a configurable risk threshold.
-- Next diagnostic step: run this audit on pure `top500`. Only after reviewing its matched-row rate and credible omitted-label rate should an eligibility gate or targeted candidate policy be designed.
+- The pure `top500` audit matched all `500` candidates and found `414/500` (`82.8%`) with at least one unretained `Person` or `Organization` prediction at calibrated score `>= 0.6`. This is a risk signal rather than gold evidence: manual review and OOF threshold analysis are required before deciding whether to gate `Location`-only records or retain multiple labels.
+- Next diagnostic step: use `calibrate_ner_scores.py` with `--score-field score_calibrated` on OOF predictions. Select conservative, label-specific thresholds from OOF precision tables before constructing any gated `Location`-only or multilabel candidate condition.
 
 ## Data-Guided Pseudolabel Selection Plan
 
