@@ -211,6 +211,84 @@ Interpretation rule:
 - The first strict diversity condition (`max_per_signature=2`) retained a small `Location` gain but underperformed the pure `top500` condition and reduced `Person` F1. Its caps likely removed useful recurring high-confidence contexts.
 - Next experiment: run the softer `top500_diverse_sig5` condition with the same three seeds, preserving exact-text deduplication and the `max_per_entity=10` cap while relaxing `max_per_signature` from `2` to `5`.
 
+### 2026-09-11
+
+- The `top500_diverse_sig5` condition did not outperform pure `top500` for `Location`: its mean `Location` delta was effectively neutral (`-0.000031`), while pure `top500` retained `+0.002437`.
+- Added `src/tools/profile_train_oof_coverage.py` as the first diagnostic step for the next strategy iteration. It profiles raw training coverage and strict OOF outcomes for a target label by mention designator, token length, training recurrence and local context; it also reports label co-occurrence per annotated training report.
+- Next diagnostic step: inspect high-support, high-false-negative buckets and the rate of `Person`/`Organization` co-occurrence in `Location` reports. Use those findings to define a targeted candidate policy and a separate audit for incomplete `Location`-only pseudolabels.
+
+## Data-Guided Pseudolabel Selection Plan
+
+### Objective
+
+Replace generic confidence-only selection and hard exact-name diversity caps with a `Location` pseudolabel policy that preferentially adds evidence for weaknesses observed in the labeled training distribution and in OOF errors. The policy must be developed without selecting it on the fixed test set.
+
+`top500` from the calibrated `t097` pool remains the reference condition. Any proposed policy must be compared to the same three supervised-only seeds and to this reference under otherwise identical training settings.
+
+### Stage 1: Profile Train Coverage and OOF Errors
+
+Use `src/tools/profile_train_oof_coverage.py` on the current annotated train set and current OOF predictions.
+
+For `Location`, inspect support, strict precision/recall and false-negative counts by:
+
+- designator class, such as `rua`, `bairro`, `morro` and bare mentions;
+- mention length;
+- normalized mention frequency in training (`unseen`, singleton, rare and frequent);
+- local left/right context and context template;
+- label combinations present in annotated train reports.
+
+Deliverable: a ranked list of high-support error buckets. Priority should go to buckets with enough gold support, elevated false-negative rate and a plausible representation in the unlabeled corpus.
+
+### Stage 2: Audit Incomplete Location-Only Supervision
+
+Before changing the selector, quantify the risk created by retaining only `Location` spans from full reports.
+
+- Measure, in the annotated train set, how often reports containing `Location` also contain gold `Person` or `Organization` spans.
+- In candidate pseudolabel reports, compare the selected `Location` evidence with the model's unretained `Person` and `Organization` predictions.
+- Manually inspect samples from the selected pool, stratified by target bucket and by whether other predicted labels are present.
+
+Decision rule: if selected reports frequently contain credible omitted non-`Location` entities, test a conservative eligibility gate before increasing pseudolabel volume. Candidate gates include selecting reports with only predicted `Location` entities, or reports whose non-`Location` predictions are below a low-risk score ceiling. These gates must be evaluated as separate experimental conditions rather than assumed beneficial.
+
+### Stage 3: Build a Targeted Candidate Policy
+
+Define a transparent record utility using only information available before refitting:
+
+`utility = calibrated Location reliability + coverage-need bonus + context-novelty bonus - redundancy penalty - omission-risk penalty`
+
+The initial implementation should remain conservative and interpretable:
+
+- start from the calibrated `t097` `Location` candidate pool;
+- prioritize pre-specified high-FN buckets from Stage 1;
+- use soft quotas or a rank bonus per bucket, not a strict cap by exact entity name;
+- use normalized-text deduplication and optionally a token/chunk budget, because long reports create more training chunks;
+- preserve a high calibrated-score floor and record an audit trail explaining each selected record's bucket, score and selection reason.
+
+The first targeted policy must use a fixed total budget of `500` reports, so its effect can be isolated from volume.
+
+### Stage 4: Develop Without Reusing the Test Set
+
+Use OOF outputs and the calibration set for policy development:
+
+- estimate bucket-level reliability and expected promotions from OOF predictions;
+- freeze bucket definitions, weights and gates before any test comparison;
+- use the held-out calibration corpus only as a secondary sanity check when it is independent of OOF fitting;
+- do not choose the final policy by repeatedly maximizing the fixed test score.
+
+The fixed test set is reserved for a small number of pre-registered confirmation comparisons after the policy is frozen.
+
+### Stage 5: Controlled Refit and Decision Criteria
+
+For each frozen condition, run seeds `42`, `43` and `44` with the same model, train/test corpora, tokenization, hyperparameters and fixed threshold as the supervised baseline.
+
+Report:
+
+- per-seed and mean-plus-sample-standard-deviation deltas for micro, macro and per-label F1;
+- `Location` precision and recall separately;
+- selected pseudolabel counts, entity counts, chunk/token load and bucket composition;
+- rate of selected reports with potential omitted non-`Location` predictions.
+
+Advance a policy only when it improves mean `Location` F1 over both the supervised-only baseline and pure `top500`, without a consistent regression in micro/macro F1 or a material drop in `Person` or `Organization`. If no targeted condition satisfies this criterion, stop expanding pseudolabel volume and return to annotation, metadata quality or model-error analysis.
+
 ## Top-K Curve Plan
 
 The next experiment should vary only the number of accepted pseudolabeled records while keeping the base model, train/test corpora, tokenization, hyperparameters, threshold, and seeds fixed.

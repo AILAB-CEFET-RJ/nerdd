@@ -25,6 +25,7 @@ Regra prática:
 | `src/tools/build_metadata_location_pseudolabels.py` | seleção | JSON, JSONL | sobrescreve saída | montar um pool conservador de pseudolabels `Location` por match literal de metadado no relato |
 | `src/tools/build_metadata_multilabel_pseudolabels.py` | seleção | JSON, JSONL | sobrescreve saída | montar um pool conservador `Person+Location+Organization` a partir do candidate pool metadata-based de `Location` |
 | `src/tools/profile_metadata_multilabel_signal.py` | auditoria | JSON, JSONL | sobrescreve saída | medir sinal conservador de `Person` e `Organization` dentro de um pool metadata-based já ancorado em `Location` |
+| `src/tools/profile_train_oof_coverage.py` | auditoria | treino anotado + OOF JSONL | sobrescreve saída | mapear cobertura do treino e erros OOF por forma, contexto e frequência de entidade |
 | `src/tools/build_political_lexicon.py` | léxico | TSE Dados Abertos | cache + sobrescreve saída | baixar dados de candidaturas do TSE e gerar CSV de nomes/nomes de urna de políticos do RJ |
 | `src/tools/political_lexicon_builder.py` | léxico | TSE Dados Abertos | biblioteca | lógica reutilizável para montar léxico político a partir de `consulta_cand` |
 | `src/tools/build_train_annotation_prompt_probe.py` | auditoria | audits + lote fonte | sobrescreve saída | montar um probe pequeno e diagnóstico para testar prompts de adjudicação voltados a treino |
@@ -678,6 +679,38 @@ Subcomandos:
   - junta todos os chunks concluídos em um output final JSONL
 
 ## Inspeção E Profiling
+
+### `src/tools/profile_train_oof_coverage.py`
+
+Relaciona a cobertura do corpus de treino anotado aos erros estritos de predições OOF para uma classe alvo.
+
+Use quando:
+
+- você quer decidir quais lacunas de `Location` têm maior potencial para orientar a seleção de pseudorrótulos;
+- precisa separar erros em menções inéditas, menções raras e menções frequentes no treino;
+- quer identificar designadores, extensões de span e contextos com muitos falsos negativos;
+- precisa quantificar quantos relatos com a classe alvo também contêm outras classes anotadas, antes de usar pseudorrótulos apenas de `Location`.
+
+As métricas usam matching estrito de span (`start`, `end` e `label`) nos dados OOF. Os buckets incluem designador, comprimento da menção, frequência normalizada da menção no treino e palavra adjacente à esquerda/direita. O script não escolhe pseudorrótulos: ele produz o diagnóstico para orientar essa política.
+
+Exemplo:
+
+```bash
+PYTHONPATH=src python3 src/tools/profile_train_oof_coverage.py \
+  --train data/dd_corpus_small_train.json \
+  --oof-predictions artifacts/error_analysis/train_oof_regex_for_boost_factor/oof_predictions.jsonl \
+  --output-dir artifacts/pseudolabelling_analysis/train_oof_location_coverage \
+  --target-label Location \
+  --pred-field pred_spans_eval \
+  --min-bucket-support 10
+```
+
+Saídas:
+
+- `coverage_summary.json`: visão geral do treino e das métricas OOF da classe alvo;
+- `target_bucket_metrics.csv`: métricas por bucket;
+- `train_label_combinations.csv`: combinações de labels por relato de treino;
+- `coverage_review.html`: tabela priorizada pelos buckets com mais falsos negativos.
 
 ### `src/tools/count_dataset_entities.py`
 
