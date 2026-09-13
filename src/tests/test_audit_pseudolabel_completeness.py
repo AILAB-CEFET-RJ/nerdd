@@ -66,3 +66,22 @@ class AuditPseudolabelCompletenessTests(unittest.TestCase):
         self.assertEqual(entity_rows[0]["status"], "overlap_not_retained_same_label")
         self.assertEqual(record_rows[0]["risk_level"], "credible_omission")
         self.assertEqual(summary["entity_status_counts"]["overlap_not_retained_same_label"], 1)
+
+    def test_matches_equivalent_duplicate_prediction_texts(self):
+        text = "Rua Alfa"
+        selected = [{"text": text, "entities": [entity(text, "Rua Alfa", "Location", 0.95)]}]
+        predictions = [
+            {"text": text, "entities": [entity(text, "Rua Alfa", "Location", 0.95)]},
+            {"text": text, "entities": [entity(text, "Rua Alfa", "Location", 0.95)]},
+        ]
+
+        _entity_rows, record_rows, _review_rows, summary = audit_completeness(
+            selected,
+            predictions,
+            score_fields=["score_calibrated"],
+            credible_score_threshold=0.9,
+            id_fields=["source_id"],
+        )
+
+        self.assertEqual(record_rows[0]["match_status"], "normalized_text_equivalent_duplicate")
+        self.assertEqual(summary["matched_rows"], 1)

@@ -100,12 +100,28 @@ def _index_predictions(
     return by_id, by_text
 
 
+def _prediction_signature(row: dict[str, Any], score_fields: list[str]) -> tuple[tuple[Any, ...], ...]:
+    """Return the audit-relevant prediction content for safe duplicate matching."""
+    signature = []
+    for entity in _valid_entities(row):
+        signature.append(
+            (
+                entity["start"],
+                entity["end"],
+                entity["label"],
+                *(repr(_entity_score(entity, [field])) for field in score_fields),
+            )
+        )
+    return tuple(sorted(signature))
+
+
 def _match_prediction(
     row: dict[str, Any],
     *,
     by_id: dict[str, list[tuple[int, dict[str, Any]]]],
     by_text: dict[str, list[tuple[int, dict[str, Any]]]],
     id_fields: list[str],
+    score_fields: list[str],
 ) -> tuple[str, int | None, dict[str, Any] | None]:
     identifier = _get_identifier(row, id_fields)
     if identifier:
@@ -119,6 +135,9 @@ def _match_prediction(
     if len(matches) == 1:
         return "normalized_text", matches[0][0], matches[0][1]
     if len(matches) > 1:
+        signatures = {_prediction_signature(match_row, score_fields) for _index, match_row in matches}
+        if len(signatures) == 1:
+            return "normalized_text_equivalent_duplicate", matches[0][0], matches[0][1]
         return "ambiguous_text", None, None
     return "unmatched", None, None
 
@@ -148,6 +167,7 @@ def audit_completeness(
             by_id=by_id,
             by_text=by_text,
             id_fields=id_fields,
+            score_fields=score_fields,
         )
         counters[f"match_{match_status}"] += 1
         base = {
