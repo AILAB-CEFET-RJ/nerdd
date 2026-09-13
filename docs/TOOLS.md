@@ -27,6 +27,7 @@ Regra prática:
 | `src/tools/profile_metadata_multilabel_signal.py` | auditoria | JSON, JSONL | sobrescreve saída | medir sinal conservador de `Person` e `Organization` dentro de um pool metadata-based já ancorado em `Location` |
 | `src/tools/profile_train_oof_coverage.py` | auditoria | treino anotado + OOF JSONL | sobrescreve saída | mapear cobertura do treino e erros OOF por forma, contexto e frequência de entidade |
 | `src/tools/audit_location_only_pseudolabels.py` | auditoria | pseudorrótulos `Location` + predições completas | sobrescreve saída | medir o risco de descartar predições `Person` e `Organization` em relatos `Location`-only |
+| `src/tools/audit_pseudolabel_completeness.py` | auditoria | pseudorrótulos selecionados + predições completas | sobrescreve saída | medir entidades retidas e omitidas de qualquer classe antes do refit |
 | `src/tools/build_political_lexicon.py` | léxico | TSE Dados Abertos | cache + sobrescreve saída | baixar dados de candidaturas do TSE e gerar CSV de nomes/nomes de urna de políticos do RJ |
 | `src/tools/political_lexicon_builder.py` | léxico | TSE Dados Abertos | biblioteca | lógica reutilizável para montar léxico político a partir de `consulta_cand` |
 | `src/tools/build_train_annotation_prompt_probe.py` | auditoria | audits + lote fonte | sobrescreve saída | montar um probe pequeno e diagnóstico para testar prompts de adjudicação voltados a treino |
@@ -784,6 +785,36 @@ Saídas:
 - `location_only_supervision_summary.json`: taxas agregadas de predições não retidas;
 - `location_only_supervision_audit.csv`: uma linha por candidato, incluindo match, contagens e nível de risco;
 - `location_only_supervision_review.jsonl` e `.html`: predições completas dos relatos associados, ordenadas por risco.
+
+### `src/tools/audit_pseudolabel_completeness.py`
+
+Audita supervisão incompleta em qualquer conjunto de pseudorrótulos selecionado.
+Ao contrário do auditor `Location`-only, compara por offsets e label todas as
+entidades retidas contra a predição completa correspondente. Assim identifica
+omissões de qualquer label, inclusive entidades adicionais da mesma classe e
+divergências de fronteira.
+
+Use antes de refits que conservem apenas parte das predições de cada relato,
+como condições `Person`-only ou `Person + Location`.
+
+Exemplo para o par controlado de 500 relatos:
+
+```bash
+PYTHONPATH=src python3 src/tools/audit_pseudolabel_completeness.py \
+  --selected-jsonl artifacts/pseudolabelling/frozen_baseline_regex_seed42/10_person_ge080_location_ge095_has_person_top500_person_only.jsonl \
+  --predictions-jsonl artifacts/pseudolabelling/frozen_baseline_regex_seed42/01_predictions_calibrated.jsonl \
+  --output-dir artifacts/pseudolabelling_analysis/person_only_top500_completeness \
+  --score-fields score_calibrated,score \
+  --credible-score-threshold 0.8 \
+  --max-review-rows 200
+```
+
+Saídas:
+
+- `completeness_summary.json`: taxas de omissão e contagens por label/status;
+- `entity_completeness_audit.csv`: uma linha por entidade prevista;
+- `record_completeness_audit.csv`: risco agregado por relato;
+- `completeness_review.jsonl` e `.html`: relatos incompletos ordenados pelo maior score omitido.
 
 ### `src/tools/count_dataset_entities.py`
 
