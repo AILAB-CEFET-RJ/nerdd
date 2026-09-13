@@ -816,6 +816,37 @@ Saídas:
 - `record_completeness_audit.csv`: risco agregado por relato;
 - `completeness_review.jsonl` e `.html`: relatos incompletos ordenados pelo maior score omitido.
 
+### `src/tools/filter_pseudolabels_by_completeness.py`
+
+Converte os CSVs de uma auditoria de completude em um gate reproduzível para
+selecionar relatos aptos ao refit. Um relato só é mantido quando possui uma
+correspondência não ambígua com a predição completa e não omite uma entidade
+com score maior ou igual ao piso definido para sua label.
+
+Use quando a auditoria indicar que a seleção de pseudorrótulos deixou de fora
+entidades confiáveis, especialmente `Organization`, mas você quer excluir o
+relato inteiro em vez de incluir essa entidade como pseudorrótulo.
+
+Exemplo para o par controlado `Person + Location`:
+
+```bash
+PYTHONPATH=src python3 src/tools/filter_pseudolabels_by_completeness.py \
+  --selected-jsonl artifacts/pseudolabelling/frozen_baseline_regex_seed42/10_person_ge080_location_ge095_has_person_top500.jsonl \
+  --record-audit-csv artifacts/pseudolabelling_analysis/person_location_top500_completeness/record_completeness_audit.csv \
+  --entity-audit-csv artifacts/pseudolabelling_analysis/person_location_top500_completeness/entity_completeness_audit.csv \
+  --output-jsonl artifacts/pseudolabelling/frozen_baseline_regex_seed42/11_person_location_top500_completeness_gated.jsonl \
+  --summary-json artifacts/pseudolabelling/frozen_baseline_regex_seed42/11_person_location_top500_completeness_gated_summary.json \
+  --decisions-csv artifacts/pseudolabelling/frozen_baseline_regex_seed42/11_person_location_top500_completeness_gated_decisions.csv \
+  --output-html artifacts/pseudolabelling/frozen_baseline_regex_seed42/11_person_location_top500_completeness_gated.html \
+  --label-min-scores Person=0.80,Location=0.95,Organization=0.90
+```
+
+Saídas:
+
+- JSONL com os relatos elegíveis e metadado `_pseudolabel_completeness_gate`;
+- summary JSON com decisões agregadas e entidades que causaram exclusão;
+- CSV opcional com a decisão por relato e HTML opcional para revisão dos retidos.
+
 ### `src/tools/count_dataset_entities.py`
 
 Conta spans e distribuição de labels em um corpus.

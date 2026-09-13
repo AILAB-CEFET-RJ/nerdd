@@ -221,6 +221,13 @@ Interpretation rule:
 - The pure `top500` audit matched all `500` candidates and found `414/500` (`82.8%`) with at least one unretained `Person` or `Organization` prediction at calibrated score `>= 0.6`. This is a risk signal rather than gold evidence: manual review and OOF threshold analysis are required before deciding whether to gate `Location`-only records or retain multiple labels.
 - Next diagnostic step: use `calibrate_ner_scores.py` with `--score-field score_calibrated` on OOF predictions. Select conservative, label-specific thresholds from OOF precision tables before constructing any gated `Location`-only or multilabel candidate condition.
 
+### 2026-09-13
+
+- A controlled comparison over the same 500 reports found no reliable gain from `Person`-only pseudolabels and a consistent `Person` regression when `Person + Location` labels were retained. This indicated that report-level supervision completeness, rather than only entity confidence, must be controlled.
+- The completeness audit compared each selected report against its full frozen prediction. Under the label-specific OOF-calibrated risk floors (`Person >= 0.80`, `Location >= 0.95`, `Organization >= 0.90`), `356` of `457` unambiguously matched `Person + Location` reports had no omitted high-confidence entity. All `101` risky reports were excluded because of omitted `Organization` predictions; no high-confidence `Person` or `Location` omissions remained.
+- Added `src/tools/filter_pseudolabels_by_completeness.py` to turn that audit into a reproducible eligibility gate. It excludes unmatched or ambiguous rows and records with label-specific high-confidence omissions, while preserving the original retained entities.
+- Next experiment: compare paired three-seed refits on the same completeness-gated reports: `Person` only versus `Person + Location`. Do not add `Organization` pseudolabels in this experiment; the class is used only as an exclusion signal.
+
 ## Data-Guided Pseudolabel Selection Plan
 
 ### Objective
